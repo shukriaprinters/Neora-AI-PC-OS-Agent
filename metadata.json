@@ -1,0 +1,6 @@
+{
+  "name": "Neora AI Architect",
+  "description": "Comprehensive interactive architect blueprint, system specifications, and implementation companion for Neora AI.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

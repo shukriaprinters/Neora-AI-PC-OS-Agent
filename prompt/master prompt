@@ -1,0 +1,249 @@
+# NEORA AI — MASTER ARCHITECT BLUEPRINT & SPECIFICATION
+## SYSTEM MASTER PROMPT FOR END-TO-END DEVELOPMENT
+
+You are the Neora Lead Systems Architect. Your mission is to implement Neora AI — an advanced, autonomous AI agent capable of full PC automation, based on the exhaustive specification laid out below. Every file, database table, API route, and system boundary must be built exactly to these production-grade guidelines.
+
+---
+
+### SECTION 1 — SYSTEM IDENTITY
+Neora AI is a JARVIS-inspired personal AI assistant operating as:
+1. **A Browser-Based PWA**: Fully installable, touch-optimized, and offline-capable.
+2. **A Local Desktop Environment**: Run via `run.bat` (Windows) or `start.sh` (Unix) with direct local PC control.
+3. **A Multilingual Voice System**: Fully fluent in Bangla and English across the UI, TTS, and wake word layers.
+4. **Autonomous State Machine**: Supporting 5 levels of autonomy, sliding from manual suggestion to full agent execution.
+
+#### Monorepo Workspace Structure:
+The system is constructed as a pnpm monorepo:
+```text
+├── artifacts/
+│   ├── neora/                  # Frontend: React 19 + Vite PWA (Port 8081 Local / 5000 Replit)
+│   ├── api-server/             # Backend: Express 5 + Drizzle ORM (Port 8080)
+│   ├── mockup-sandbox/         # Interactive UI sandbox for component previews
+│   └── automation-policy.json  # Allowed applications, write roots, and shell prefixes
+├── lib/
+│   ├── db/                     # Drizzle PostgreSQL schema definitions (16 tables)
+│   ├── api-spec/               # OpenAPI 3.0 specification
+│   ├── api-zod/                # Automated Zod schemas matching DB and API specs
+│   ├── api-client-react/       # Generated TanStack Query v5 client hooks
+│   ├── local-agent-python/     # Python local-PC agent (neora_agent.py file control)
+│   ├── local-agent-protocol/   # TypeScript type contracts for action schemas
+│   └── update-runner/          # Pre-update dry-runner and roll-back manager
+```
+
+---
+
+### SECTION 2 — BOOT, INITIALIZATION, AND READINESS
+#### Boot Sequence:
+1. **Host Launch**: Host executes `run.bat` or `start.sh`.
+2. **Environments Verification**: Loads `.env.local` verifying critical keys: `GROQ_API_KEY`, `DATABASE_URL`, `SESSION_SECRET`.
+3. **Ports Allocation**: Spawns Express API on port `8080` (with `50MB` body payload size limit) and Frontend on port `8081`.
+4. **Graceful Degradation (Limited Mode)**: If `DATABASE_URL` is unreachable or absent, Neora defaults to "Limited Mode". Direct chat actions function via file fallback (`artifacts/api-server/data/fallback-db.json`). Database actions are disabled in the UI with a clear status bar lock icon.
+5. **PC Agent Registry**: The desktop agent (`neora_agent.py`) retries connections to `/api/healthz` 5 times using exponential backoff. Upon connection, it issues a `POST /api/agents/register` sending OS metadata, capabilities list, and platform details.
+6. **Voice Announcement**: Upon verifying the database or fallback layer, the API status, and the agent register, the system announces: **"Neora is ready, boss."** using the active language choice.
+
+---
+
+### SECTION 3 — CORE CAPABILITIES TO ARCHITECT
+#### 3A. AI Core & Model Registry
+- **Preferred Registry Platform**: Groq Cloud + Ollama Local.
+- **Provider Chain Selection**: DeepSeek, OpenAI, and Gemini free tier map as fallback candidates.
+- **Unified Action Parsing**: Sourced via `lib/neora.ts` wrapping model definitions:
+  - Ranked Models:
+    1. **Neora Personal** (Priority 100, custom router)
+    2. **Llama 3.3 70B** (Priority 90, Groq)
+    3. **Kimi K2** (Priority 85, Groq, 262K context)
+    4. **GPT-OSS 120B** (Priority 82, Groq)
+    5. **Llama 3.1 8B** (Priority 60, translation/fast checks)
+    - *Auto Vision Classifier*: **Llama 4 Scout** (for screen-capture interpretation).
+- **Streaming Pipeline**: Sourced via Server-Sent Events (SSE) `/api/chat` with unified Markdown formatting.
+
+#### 3B. Multimodal Interaction System
+- **Speech-To-Text (STT)**: Web Speech API with automatic language parsing.
+- **Language Detection Rule**: Regex search pattern `[\u0980-\u09FF]` checks for Bengali character set. If matched, locales map instantly to `bn-BD` for STT and Bangla neural voice settings; otherwise, system maps to `en-US`.
+- **Screen-Content Auditing**: The Python agent takes display screenshots (`screenshot.capture`) and feeds them to the configured vision engine (e.g., Llama 4 Scout) to analyze on-screen code or program bugs.
+
+#### 3C. Full Desktop Autonomy System (Local PC Agent)
+A Python agent executes 27 canonical actions divided into:
+- **Application Control**: `app.launch`, `app.close`
+- **Browser Control**: `browser.open`, `browser.search`
+- **Shell Execution**: `shell.run` inside a sandbox with execution boundaries
+- **File System**: `file.read`, `file.write`, `file.list`, `file.delete`
+- **Input Simulation**: `screenshot.capture`, `keyboard.type`, `keyboard.hotkey`, `mouse.click`, `mouse.move`, `clipboard.set`, `clipboard.get`
+- **Process management**: `process.list`, `process.kill`
+- **System Actions**: `notification.send`, `system.info`, `system.sleep`, `system.shutdown` (gated by auth), `system.restart` (gated by auth)
+
+#### 3D. Autonomy Framework
+Gated by a five-tier state control matrix (`lib/autonomy.ts`):
+1. **Level 1 (Suggest Only)**: AI designs JSON suggestions. Zero automated file or shell side-effects allowed.
+2. **Level 2 (Plan & Prepare)**: Automatically generates plans, but execution steps require manual Click-to-Run.
+3. **Level 3 (Execute Safe)**: Read-only files, system diagnostics, and safe, bounded `file.write` (with automatic back up) execute automatically. Unsafe system paths or system commands trigger approval UI prompts.
+4. **Level 4 (Workflow Executor)**: Runs multi-step scripts automatically. Reversible actions pass. Dangerous external system updates insert an approval block.
+5. **Level 5 (Full Agent)**: Direct desktop autonomy. Requires immediate structural backups prior to running any terminal actions.
+
+#### 3E. Run Plan Execution Engine
+- **Engine Logic (`lib/executor.ts`)**: Takes parsed JSON steps: `shell` | `file_write` | `code_edit` | `verify` | `note` | `tool_call`.
+- **Auto-Repair Loop**: If a step fails, the planner invokes a diagnostic LLM call to suggest an error fix, patching the plan and retrying up to 2 times before locking and prompting the user.
+
+#### 3F. Self-Update System
+Updates follow a secure multi-phase lifecycle: `proposed` → `dry_run_ok` → `approved` → `applying` → `applied` (or `failed` causing an instant rollback).
+- Whitelists only write to `artifacts/`, `lib/`, and `docs/`.
+- Paths utilizing `../` are thrown out during path sanitization.
+
+#### 3G. Productivity Suite
+Full REST CRUD endpoints and interactive UI screens for:
+- **Memories**: Long-term key-value pairings with impact rankings (1 to 5).
+- **Notes**: Formatted content files with title searching.
+- **Tasks**: Productivity task tracker with prioritized lists and status tracking.
+- **Reminders**: Date-time alarms with repeat options (daily, weekly, monthly, custom cron).
+- **Workflows**: Multi-step templates utilizing prompt variables.
+- **Morning Briefing (`/api/dashboard/briefing`)**: Dynamically aggregates Bengali date format (e.g., "শনিবার, ৬ জুন ২০২৬"), pending alarms, highest-priority task lists, recent memories, and a text-to-speech briefing read button.
+
+#### 3H. Specialized Studios
+- **Coding Studio**: Interactive code generator supporting 15 languages, featuring bug squashing, architectural blueprints, secure tests development, and dynamic diff comparison modules.
+- **Design Studio**: CSS token generator, custom asset brand brief creation, contract templates, contrast checkers, and dynamic canvas-dimension audits.
+- **Earning Studio**: Freelancer template portfolio containing 17 templates including proposal drafts, work schedules, pitch emails, and and a dynamic client invoice builder calculating sales taxes.
+
+#### 3I. GitHub Integration
+Backend proxy endpoints in `/api/github` for: `status`, `commit`, `push`, `pull`, `branch`, `stash`, `create-pr`, and `version-check`. All actions verify a valid `GITHUB_TOKEN` environment key and refuse hazardous force actions.
+
+#### 3J. Chat & Conversation System
+Maintains conversation history and message metadata.
+- **Slash Commands**: `/summarize`, `/translate`, `/code`, `/fix`, `/explain`, `/doc`, `/audit`, `/optimize`, `/test`, `/shell`, `/plan`, `/remind`, `/task`, `/note`, `/memory`.
+- Supports image payload attachments (50MB size ceiling).
+
+---
+
+### SECTION 4 — DATABASE ARCHITECTURE
+The system targets PostgreSQL managed via Drizzle.
+Canonical 16 database tables must be defined in `lib/db/schema.ts`:
+1. **conversations**: Session container (id, title, personaId, modeId, timestamps).
+2. **messages**: Individual chats (id, conversationId, role, content, attachments, provider, timestamp).
+3. **memories**: Core preference configurations (id, key, value, category, importance).
+4. **notes**: Notepad items (id, title, content, timestamp).
+5. **tasks**: To-do items (id, title, notes, priority, dueAt, status, completed).
+6. **reminders**: Temporal notification gates (id, title, remindAt, repeat, status).
+7. **workflows**: Prompts sequencing plans (id, title, steps).
+8. **activity**: Global system log audited actions (id, kind, title, details, timestamp).
+9. **settings**: Global preferences (id, language, activeProvider, autonomyLevel, wakeWord, etc.).
+10. **agents**: Registered local-PC companion info (id, platform, capabilities, lastSeenAt).
+11. **agentActions**: History logs of PC controller executions (id, agentId, kind, payload, result, status).
+12. **plans**: Execution steps sequence (id, goal, plan [JSON], status, runtime).
+13. **updates**: System updates log (id, manifest [JSON], status, log).
+14. **earningProjects**: Client project container (id, name, budget, status).
+15. **earningDeliverables**: Milestones tied to projects (id, projectId, title, level, status).
+16. **chatInteractions**: Auditable analytics metric tracker (id, provider, model, tokens, latency).
+
+---
+
+### SECTION 5 — BACKEND API ARCHITECTURE
+- **Root Routing**: Express v5 app listening on `0.0.0.0:3000` (production) or `3000` (development container forwarding).
+- **23 backend controllers** must be written:
+  `health.ts`, `meta.ts`, `conversations.ts`, `messages.ts`, `memories.ts`, `notes.ts`, `tasks.ts`, `reminders.ts`, `workflows.ts`, `dashboard.ts`, `briefing.ts`, `activity.ts`, `settings.ts`, `tools.ts`, `coding.ts`, `design.ts`, `earning.ts`, `github.ts`, `intelligence.ts`, `providers.ts`, `intent.ts`, `agentMode.ts`, `agents.ts`, `runplan.ts`, `updates.ts`, and `autonomy.ts`.
+- **Shared Libraries**: Core orchestration models (Model Router, Step Execution Engine, State Approvals Guard, Metrics Logger, Fallback File DB Adapter).
+
+---
+
+### SECTION 6 — FRONTEND ARCHITECTURE
+React 19, Tailwind CSS v4, Framer Motion v12, Wouter routing, and Lucide React icons.
+- **20 UI Pages**: Chat, Dashboard, History, Memory, Notes, Tasks, Reminders, Workflows, RunPlan, Tools, Coding, Design, Earning, Invoice, GitHub, Intelligence, Providers, Models, Capabilities, Devices, Updates, Settings, Help.
+- **PWA Specifications**: Responsive design, custom manifest, and service worker caching files on client device.
+
+---
+
+### SECTION 7 — LAUNCHER AND RUNTIME ARCHITECTURE
+- **`run.bat` / `start.sh`**: Launch files executing environmental checks. Never invokes `pnpm install` in regular loops to avoid file lock blocking. Prevents binding clashes by scanning and ending dead node/python instances on binding ports (`8080`, `8081`).
+- **`setup.bat` / `setup.sh`**: Installs pnpm packages, performs DB migrations, and prompts user parameters for `.env.local`.
+
+---
+
+### SECTION 8 — VOICE, WAKE WORD, AND ALWAYS-ON LISTENING
+- **Continuous Voice Input Capture**: Frontend speech systems continuously pool audio buffers via Web Speech API, searching for the wake word activation phrase "Neora". 
+- **Voice Response Synthesizer**: Speech answers stream audio responses in English or Bangla with native punctuation pauses.
+
+---
+
+### SECTION 9 — CAPABILITY CATALOG
+The system defines 147 granular modules mapped over 13 categorized operational classes (e.g., Coding & Development, Communication & Chat, Content & Writing, System & Local PC Desktop Controls). Every entry in the registry is referenced by risk level and route mapping.
+
+---
+
+### SECTION 10 — AUTOMATION, AGENT MODE, AND MULTI-STEP WORKFLOWS
+Multi-step goal execution models rely on structural steps schema validation. If any critical environment parameters (like system shell prefixes) mismatch security bounds, execution drops instantly to safe approval holding.
+
+---
+
+### SECTION 11 — ACTIVITY, AUDIT, AND INTELLIGENCE
+Every database update or PC agent action triggers a global log event `activity` capture payload. Systems collect performance indexes (token use, round-trip AI agency latency) displaying dynamic analytics charts on the Intelligence dashboard.
+
+---
+
+### SECTION 12 — SECURITY AND SAFETY MODEL
+- **Rate-Limiting Rule**: Token bucket rules allowing 60 requests/minute.
+- **Inputs Verification**: Full Zod schema validation.
+- **Path Guard**: Verification steps explicitly block path-traversal formats (`../`). Command lists enforce regex sanitization structures.
+
+---
+
+### SECTION 13 — BILINGUAL AND LOCALIZATION
+A primary context wrapper `LangProvider` handles Bangla/English interface localization translation mapping. Direct voice inputs detect regional vowel characters, applying targeted accent outputs.
+
+---
+
+### SECTION 14 — DOCKER, DEPLOYMENT, AND DISTRIBUTION
+Container targets run in cloud architectures bound to ingress policies. Local platform installations are fully portable and container-ready.
+
+---
+
+### SECTION 15 — IMPLEMENTATION ORDER AND DEPENDENCIES
+Follow this strict sequence to implement the full-stack system:
+
+1. **Monorepo scaffolding**: Build root dependencies (`package.json`), configure subfolders workspace allocations, and link tsconfig.json configurations.
+2. **Database schema**: Define 16 structural Drizzle tables. Write fallback mock file logic to manage safe operations when SQL databases are unavailable.
+3. **Core API Server setup**: Construct Express 5 entry point, verify error middleware handlers, and configure health status validations.
+4. **Provider routing library**: Write model request routers wrapping Groq/Ollama APIs, including connection fallback arrays.
+5. **Conversations and SSE Streaming core**: Implement server-sent events for streaming, and bind histories and files.
+6. **Productivity CRUD Engines**: Complete memories, notes, tasks, alarms, and workflows backends.
+7. **Autonomy Guard state engine**: Map risk categorization checks across runtime actions. Create the Action Approval interface.
+8. **PC agent integration backend & desktop python companion**: Write `neora_agent.py` in Python. Formulate the registry, polling endpoints, and response handling for the 27 workspace actions.
+9. **Run Plan Step Executor pipeline**: Integrate action execution with active auto-repair loops. Connect real-time progress trackers.
+10. **Self-Update pipeline core**: Build dry-runners checking manifest syntax alongside automatic file restoration steps.
+11. **Voice Integration engine**: Configure STT/TTS modules, wake word checkers, and Bengali detection logic.
+12. **Specialized Studios components**:
+    - **Coding Studio**: Complete 15 languages templates, debugging visualizers, testing suites, and git-diff views.
+    - **Design Studio**: Complete standard paletting components, custom asset templates, and contrast calculators.
+    - **Earning Studio**: Implement 17 project files, milestones lists, and dynamic tax invoice forms.
+13. **GitHub Integration API proxy**: Write rest endpoints handling commits, branches, PRs, and safe stash/pull updates.
+14. **Activity loggers & Intelligence metrics system**: Write activity monitors, logging database entities, and plotting real-time graphs.
+15. **Container configuration, Replit adaptations & Final Release QA**: Set up multi-stage Docker builds, bundle build tasks, apply complete TypeScript type checking, and launch unit-test coverage.
+
+---
+
+### SECTION 16 — TESTING, INTEGRATION & RELIABILITY GATES
+To achieve industrial-grade reliability, the codebase must clear four distinct quality gates before compile-time verification:
+
+#### 1. Unit Testing Matrix:
+- **Core Orchestrator**: Test `lib/providers.ts` to ensure that if Groq fails or returns a 5xx status, failover switches gracefully to Ollama, and then to Gemini in under 1500ms.
+- **Autonomy Lock**: Mock agent executions in `lib/autonomy.ts` to guarantee that level 3 blocks nested file deletion actions without user approvals.
+- **Path Sanitization**: Execute fuzzing attempts against file action parameters containing traversal suffixes (e.g., `/allowed/root/../../etc/passwd`, `C:\allowed\..\Windows\System32`) ensuring all of them throw precise validation errors.
+
+#### 2. Local-Agent Connection Mocking:
+- Create mock client-polling scripts mimicking the registered PC Agent. Ensure the backend correctly dispatches steps sequentially, holds executions, handles mock results payloads, and logs failures without locking thread pools.
+
+#### 3. Database Graceful Fallback Dry-Runs:
+- Simulate container execution with `DATABASE_URL` set to an empty string. Attempt to log in, write messages, and create tasks. Verify that the UI displays the fallback status bar and local storage caching files correctly without causing route crashes.
+
+#### 4. Automated UI Integration Tests:
+- Script end-to-end user navigation flow: Chat → Voice Trigger → Open Code Studio → Trigger Plan → Execute Reversible Script → Complete Earning Invoice. Ensure that page transitions perform under 150ms.
+
+---
+
+### SECTION 17 — DEFINITION OF DONE (DoD)
+Every repository merge or workspace delivery is fully complete only when it meets the following criteria:
+
+- [ ] **Type Checked**: Zero compilation warnings under `tsc --noEmit` and strict linting.
+- [ ] **Database Integrity**: Push scripts schema fully migrated to local database, and mock database backups match exact JSON fallback states.
+- [ ] **Secure API Boundaries**: All API routes validate incoming bodies using Zod, sanitize all strings, and prevent shell execution escapes.
+- [ ] **Zero Exposed Keys**: Zero hardcoded local keys or local development tokens in source code. All tokens are sourced from standard system environments.
+- [ ] **Dynamic Responsiveness**: All 20 application pages load flawlessly on both ultra-wide screens and compact touch devices.
+- [ ] **Polished Typography & Theming**: Zero plain standard browser styling. Typography matches Space Grotesk display headings paired with JetBrains Mono, styled in Cosmic Dark Slate colors.
+- [ ] **PWA Audit Standards**: Google Lighthouse scores exceed 90 points across performance, accessibility, SEO, and PWA criteria.
