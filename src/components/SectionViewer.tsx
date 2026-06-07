@@ -3,6 +3,7 @@ import { ArchitectSection } from '../types';
 import { RAW_MASTER_PROMPT } from '../masterPromptText';
 import { getIcon } from './Sidebar';
 import { Copy, Check, Download, FileText, ArrowRight, CheckSquare } from 'lucide-react';
+import { copyToClipboardFailsafe } from '../utils/clipboard';
 
 interface SectionViewerProps {
   section: ArchitectSection | undefined;
@@ -22,15 +23,21 @@ export function SectionViewer({ section }: SectionViewerProps) {
   }
 
   const handleCopySection = () => {
-    navigator.clipboard.writeText(section.content);
-    setCopiedSection(true);
-    setTimeout(() => setCopiedSection(false), 2000);
+    copyToClipboardFailsafe(section.content).then((success) => {
+      if (success) {
+        setCopiedSection(true);
+        setTimeout(() => setCopiedSection(false), 2000);
+      }
+    });
   };
 
   const handleCopyFullPrompt = () => {
-    navigator.clipboard.writeText(RAW_MASTER_PROMPT);
-    setCopiedFull(true);
-    setTimeout(() => setCopiedFull(false), 2000);
+    copyToClipboardFailsafe(RAW_MASTER_PROMPT).then((success) => {
+      if (success) {
+        setCopiedFull(true);
+        setTimeout(() => setCopiedFull(false), 2000);
+      }
+    });
   };
 
   const handleDownloadFullPrompt = () => {

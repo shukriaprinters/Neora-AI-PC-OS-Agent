@@ -4,6 +4,7 @@ import {
   Layers, Database, Workflow, Layout, Compass, Cpu, Sliders, Languages,
   FileCode, ShieldCheck, Terminal, Heart, ArrowRight, Download, Copy, Check
 } from 'lucide-react';
+import { copyToClipboardFailsafe } from '../utils/clipboard';
 
 export function getStatIcon(name: string, className?: string) {
   const props = { className: className || "w-5 h-5 text-cyan-400" };
@@ -24,9 +25,12 @@ export function AnalyticsPanel() {
   const [copied, setCopied] = React.useState(false);
 
   const handleCopyFullPrompt = () => {
-    navigator.clipboard.writeText(RAW_MASTER_PROMPT);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    copyToClipboardFailsafe(RAW_MASTER_PROMPT).then((success) => {
+      if (success) {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
+    });
   };
 
   const handleDownloadFullPrompt = () => {

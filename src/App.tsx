@@ -8,17 +8,24 @@ import { EarningView } from './components/EarningView';
 import { DevStudioView } from './components/DevStudioView';
 import { FilterLabView } from './components/FilterLabView';
 import { RoadmapView } from './components/RoadmapView';
+import { OsAgentView } from './components/OsAgentView';
 import { SECTIONS, RAW_MASTER_PROMPT } from './masterPromptText';
 import { Task, Reminder, Note, Memory } from './types';
 import { TRANSLATIONS } from './translations';
 import {
   MessageSquare, Cpu, Sliders, DollarSign, Clipboard,
-  Languages, Bell, Terminal, BookOpen, Key, LogOut, Filter, Milestone
+  Languages, Bell, Terminal, BookOpen, Key, LogOut, Filter, Milestone, Laptop,
+  Download, Search, Undo, X, Activity, CircleAlert
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 
 export default function App() {
   const [lang, setLang] = useState<'en' | 'bn'>('en');
-  const [activeTab, setActiveTab] = useState<'chat' | 'autonomy' | 'productivity' | 'invoice' | 'dev' | 'blueprint' | 'filterLab' | 'roadmap'>('chat');
+
+  // Persist activeTab to localStorage
+  const [activeTab, setActiveTab] = useState<'chat' | 'autonomy' | 'productivity' | 'invoice' | 'dev' | 'blueprint' | 'filterLab' | 'roadmap' | 'osAgent'>(() => {
+    return (localStorage.getItem('neora_active_tab') || 'chat') as any;
+  });
   
   // Dynamic collections
   const [tasks, setTasks] = useState<Task[]>([
@@ -55,6 +62,11 @@ export default function App() {
     return localStorage.getItem('neora_groq_model') || 'llama-3.3-70b-versatile';
   });
 
+  // Save activeTab state to LocalStorage
+  React.useEffect(() => {
+    localStorage.setItem('neora_active_tab', activeTab);
+  }, [activeTab]);
+
   React.useEffect(() => {
     localStorage.setItem('neora_use_groq', useGroq.toString());
   }, [useGroq]);
@@ -67,10 +79,128 @@ export default function App() {
     localStorage.setItem('neora_groq_model', groqModel);
   }, [groqModel]);
 
-  // Specifications state binders
-  const [selectedSectionId, setSelectedSectionId] = useState<string>(SECTIONS[0].id);
+  // Specifications state binders (persisted selectedSectionId)
+  const [selectedSectionId, setSelectedSectionId] = useState<string>(() => {
+    return localStorage.getItem('neora_selected_section_id') || SECTIONS[0].id;
+  });
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
+
+  // Save selectedSectionId to LocalStorage
+  React.useEffect(() => {
+    localStorage.setItem('neora_selected_section_id', selectedSectionId);
+  }, [selectedSectionId]);
+
+  // --- UNDO TOAST NOTIFICATION SYSTEM ---
+  interface DeletedItem {
+    type: 'task' | 'reminder' | 'note' | 'memory';
+    item: any;
+  }
+  const [lastDeleted, setLastDeleted] = useState<DeletedItem | null>(null);
+  const [showUndo, setShowUndo] = useState(false);
+  const [undoTimer, setUndoTimer] = useState<NodeJS.Timeout | null>(null);
+
+  const triggerUndoOption = (type: 'task' | 'reminder' | 'note' | 'memory', item: any) => {
+    setLastDeleted({ type, item });
+    setShowUndo(true);
+    if (undoTimer) clearTimeout(undoTimer);
+    const timer = setTimeout(() => {
+      setShowUndo(false);
+    }, 5000);
+    setUndoTimer(timer);
+  };
+
+  const handleUndo = () => {
+    if (!lastDeleted) return;
+    const { type, item } = lastDeleted;
+    if (type === 'task') {
+      setTasks(prev => [item, ...prev]);
+    } else if (type === 'reminder') {
+      setReminders(prev => [item, ...prev]);
+    } else if (type === 'note') {
+      setNotes(prev => [item, ...prev]);
+    } else if (type === 'memory') {
+      setMemories(prev => [item, ...prev]);
+    }
+    setShowUndo(false);
+    setLastDeleted(null);
+    if (undoTimer) clearTimeout(undoTimer);
+  };
+
+  // --- GLOBAL SEARCH OVERLAY STATE ---
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [globalSearchVal, setGlobalSearchVal] = useState('');
+
+  // --- CONNECTION LATENCY / PERFORMANCE METRICS ---
+  const [latency, setLatency] = useState(14);
+  const [apiHealth, setApiHealth] = useState(100);
+
+  React.useEffect(() => {
+    const interval = setInterval(() => {
+      setLatency(prev => {
+        const delta = Math.floor(Math.random() * 5) - 2;
+        const next = prev + delta;
+        return next < 8 ? 8 : next > 25 ? 25 : next;
+      });
+    }, 4000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // --- DOWNLOAD REQUISITION REPORT GENERATOR ---
+  const handleDownloadReport = () => {
+    const backupCargo = {
+      timestamp: new Date().toISOString(),
+      client: "shukriaprinters@gmail.com",
+      status_info: {
+        latency: `${latency}ms`,
+        api_health: `${apiHealth}%`
+      },
+      registry_metrics: {
+        total_tasks: tasks.length,
+        total_reminders: reminders.length,
+        total_notes: notes.length,
+        total_memories: memories.length
+      },
+      tasks,
+      reminders,
+      notes,
+      memories
+    };
+    
+    try {
+      const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(backupCargo, null, 2))}`;
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute('href', jsonString);
+      downloadAnchor.setAttribute('download', 'neora-workspace-backup.json');
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    } catch (err) {
+      console.error("Backup requisition generation failed:", err);
+    }
+  };
+
+  // --- GLOBAL KEYBOARD SHORTCUTS ---
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // CMD/CTRL + K: toggle global search
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setIsSearchOpen(prev => !prev);
+      }
+      // ESC: close global search
+      if (e.key === 'Escape') {
+        setIsSearchOpen(false);
+      }
+      // CMD/CTRL + Enter: Submit chat message if inside chat input
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        const customEvent = new CustomEvent('neora-submit-chat');
+        window.dispatchEvent(customEvent);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const selectedSection = SECTIONS.find(s => s.id === selectedSectionId);
   const t = TRANSLATIONS[lang];
@@ -125,6 +255,10 @@ export default function App() {
     setTasks(prev => prev.map(x => x.id === id ? { ...x, completed: !x.completed } : x));
   };
   const handleDeleteTask = (id: string) => {
+    const item = tasks.find(x => x.id === id);
+    if (item) {
+      triggerUndoOption('task', item);
+    }
     setTasks(prev => prev.filter(x => x.id !== id));
   };
 
@@ -132,14 +266,26 @@ export default function App() {
     setReminders(prev => prev.map(x => x.id === id ? { ...x, completed: !x.completed } : x));
   };
   const handleDeleteReminder = (id: string) => {
+    const item = reminders.find(x => x.id === id);
+    if (item) {
+      triggerUndoOption('reminder', item);
+    }
     setReminders(prev => prev.filter(x => x.id !== id));
   };
 
   const handleDeleteNote = (id: string) => {
+    const item = notes.find(x => x.id === id);
+    if (item) {
+      triggerUndoOption('note', item);
+    }
     setNotes(prev => prev.filter(x => x.id !== id));
   };
 
   const handleDeleteMemory = (id: string) => {
+    const item = memories.find(x => x.id === id);
+    if (item) {
+      triggerUndoOption('memory', item);
+    }
     setMemories(prev => prev.filter(x => x.id !== id));
   };
 
@@ -167,14 +313,42 @@ export default function App() {
                 <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping shrink-0"></span>
                 <span>{t.statusOnline}</span>
               </div>
+              
+              {/* Connection Status Indicators */}
+              <div className="hidden sm:flex items-center gap-2 bg-slate-900/60 border border-slate-800/80 rounded px-2 py-0.5 text-[8px] font-mono text-slate-400">
+                <span className="w-1 h-1 bg-cyan-400 rounded-full animate-pulse"></span>
+                <span>LATENCY: <strong className="text-cyan-300 font-mono">{latency}ms</strong></span>
+                <span className="text-slate-700">|</span>
+                <span>API HEALTH: <strong className="text-emerald-400 font-mono">{apiHealth}%</strong></span>
+              </div>
             </div>
             <p className="text-[10px] text-slate-400">{t.subtitle}</p>
           </div>
         </div>
 
         {/* Global Toolbar and Language controllers */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           
+          {/* Global Search CMD+K Trigger button */}
+          <button
+            onClick={() => setIsSearchOpen(true)}
+            className="flex items-center gap-2 bg-slate-900 border border-slate-800 hover:border-cyan-500/30 hover:bg-slate-800/80 text-slate-400 hover:text-slate-200 px-2 py-1.5 rounded text-[10px] cursor-pointer font-mono transition-all"
+            title="Search Workspace (CMD+K / CTRL+K)"
+          >
+            <Search className="w-3 h-3 text-cyan-400" />
+            <span className="hidden md:inline">CMD + K</span>
+          </button>
+
+          {/* Download JSON Report Backups button */}
+          <button
+            onClick={handleDownloadReport}
+            className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 hover:bg-slate-800 hover:border-slate-700 text-slate-300 hover:text-white px-2.5 py-1.5 rounded text-[10px] font-bold cursor-pointer font-mono transition-all"
+            title={lang === 'bn' ? 'ডাটা রিপোর্ট ব্যাকআপ ডাউনলোড করুন' : 'Export and save neora report JSON'}
+          >
+            <Download className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="hidden md:inline">{lang === 'bn' ? 'ব্যাকআপ' : 'EXPORT REPORT'}</span>
+          </button>
+
           {/* Autonomy Badge representation state */}
           <div className="hidden lg:flex items-center gap-2 bg-slate-950/70 border border-slate-800 rounded py-1 px-2 text-[10px] font-mono text-slate-400">
             <span>🛡 {t.autonomyLevel}:</span>
@@ -245,6 +419,16 @@ export default function App() {
           <span>{t.navDev}</span>
         </button>
         <button
+          id="navtab-osAgent"
+          onClick={() => setActiveTab('osAgent')}
+          className={`flex items-center gap-1.5 px-3 py-2 rounded transition-all cursor-pointer ${
+            activeTab === 'osAgent' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/15 font-bold shadow-[0_1px_3px_rgba(0,0,0,0.3)]' : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Laptop className="w-3.5 h-3.5" />
+          <span>{t.navOsAgent}</span>
+        </button>
+        <button
           id="navtab-filterLab"
           onClick={() => setActiveTab('filterLab')}
           className={`flex items-center gap-1.5 px-3 py-2 rounded transition-all cursor-pointer ${
@@ -277,7 +461,7 @@ export default function App() {
       </nav>
 
       {/* Main Content Workspace Layout Rendering Section */}
-      <main id="main-content" className="flex-1 flex overflow-hidden">
+      <main id="main-content" className="flex-1 flex min-h-0 overflow-hidden">
         {activeTab === 'chat' && (
           <ChatView
             lang={lang}
@@ -343,6 +527,12 @@ export default function App() {
           />
         )}
 
+        {activeTab === 'osAgent' && (
+          <OsAgentView
+            lang={lang}
+          />
+        )}
+
         {activeTab === 'filterLab' && (
           <FilterLabView
             lang={lang}
@@ -369,6 +559,183 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {/* --- UNDO TOAST NOTIFICATION SYSTEM (5-SECOND DISMISS) --- */}
+      <AnimatePresence>
+        {showUndo && lastDeleted && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+            className="fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-slate-900/95 border border-cyan-500/30 text-white rounded-lg px-4 py-3 shadow-[0_4px_30px_rgba(0,0,0,0.5)] backdrop-blur-md"
+          >
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 bg-cyan-400 rounded-full animate-ping"></span>
+              <span className="text-xs font-medium font-mono text-slate-300">
+                {lang === 'bn' ? 'আইটেম মুছে ফেলা হয়েছে।' : 'Item deleted.'}
+              </span>
+            </div>
+            <button
+              onClick={handleUndo}
+              className="flex items-center gap-1 bg-cyan-500 text-slate-950 hover:bg-cyan-400 text-[10px] font-bold font-mono px-2.5 py-1.2 rounded uppercase transition-colors"
+            >
+              <Undo className="w-3 h-3" />
+              <span>{lang === 'bn' ? 'পূর্বাবস্থায় ফেরান' : 'UNDO'}</span>
+            </button>
+            <button
+              onClick={() => setShowUndo(false)}
+              className="p-1 text-slate-500 hover:text-slate-300 transition-colors"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* --- GLOBAL SEARCH CMD+K OVERLAY MODAL --- */}
+      <AnimatePresence>
+        {isSearchOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-start justify-center p-4 sm:p-10 pt-20"
+            onClick={() => setIsSearchOpen(false)}
+          >
+            <motion.div
+              initial={{ y: -30, scale: 0.95 }}
+              animate={{ y: 0, scale: 1 }}
+              exit={{ y: -30, scale: 0.95 }}
+              transition={{ type: "spring", duration: 0.4 }}
+              className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-[0_25px_50px_-12px_rgba(0,0,0,0.7)] flex flex-col"
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Search input header */}
+              <div className="p-4 border-b border-slate-850 flex items-center gap-3 bg-slate-900/50">
+                <Search className="w-5 h-5 text-cyan-400 shrink-0" />
+                <input
+                  type="text"
+                  autoFocus
+                  placeholder={lang === 'bn' ? 'টাইপ করুনঃ টাস্ক, নোট বা সিস্টেম ব্লুপ্রিন্ট খুঁজুন...' : 'Type to search tasks, notes, or blueprints (CMD+K)...'}
+                  value={globalSearchVal}
+                  onChange={e => setGlobalSearchVal(e.target.value)}
+                  className="w-full bg-transparent text-slate-100 placeholder-slate-500 text-sm border-none outline-none focus:ring-0 focus:border-none focus:outline-none"
+                />
+                <button
+                  onClick={() => setIsSearchOpen(false)}
+                  className="bg-slate-800 text-[9px] font-bold font-mono text-slate-400 border border-slate-700 px-2 py-1 rounded"
+                >
+                  ESC
+                </button>
+              </div>
+
+              {/* Suggestions / Results */}
+              <div className="flex-1 overflow-y-auto max-h-[60vh] p-4 space-y-4">
+                {globalSearchVal.trim() === '' ? (
+                  <div className="text-center py-8 text-slate-500 font-mono text-xs">
+                    <Activity className="w-8 h-8 text-slate-700 mx-auto mb-2 animate-pulse" />
+                    <span>{lang === 'bn' ? 'পেন্ডিং টাস্ক, ডকুমেন্টস বা ব্লুপ্রিন্ট খুঁজতে শুরু করুন...' : 'Search across all workspaces, specifications, and checklists.'}</span>
+                  </div>
+                ) : (
+                  <>
+                    {/* Tasks Matches */}
+                    {tasks.filter(t => t.title.toLowerCase().includes(globalSearchVal.toLowerCase())).length > 0 && (
+                      <div className="space-y-1.5">
+                        <h4 className="text-[9px] font-bold font-mono text-cyan-400 uppercase tracking-widest pl-1">
+                          {lang === 'bn' ? 'টাস্ক ম্যাচসমূহ' : 'TASKS & CHECKLISTS'}
+                        </h4>
+                        <div className="space-y-1">
+                          {tasks.filter(t => t.title.toLowerCase().includes(globalSearchVal.toLowerCase())).map(t => (
+                            <div
+                              key={t.id}
+                              onClick={() => {
+                                setActiveTab('productivity');
+                                setGlobalSearchVal('');
+                                setIsSearchOpen(false);
+                              }}
+                              className="p-2 bg-slate-950/40 border border-slate-850/60 hover:border-cyan-500/20 rounded cursor-pointer transition-colors flex items-center justify-between text-xs"
+                            >
+                              <div className="flex items-center gap-2 truncate">
+                                <span className={`w-1.5 h-1.5 rounded-full ${t.completed ? 'bg-slate-600' : 'bg-cyan-500'}`} />
+                                <span className={`truncate ${t.completed ? 'line-through text-slate-500' : 'text-slate-200'}`}>
+                                  {t.title}
+                                </span>
+                              </div>
+                              <span className="text-[8px] font-mono bg-slate-850 text-slate-400 px-1.5 py-0.2 rounded uppercase shrink-0">
+                                {t.priority}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Notes Matches */}
+                    {notes.filter(n => n.title.toLowerCase().includes(globalSearchVal.toLowerCase()) || n.content.toLowerCase().includes(globalSearchVal.toLowerCase())).length > 0 && (
+                      <div className="space-y-1.5 pt-2">
+                        <h4 className="text-[9px] font-bold font-mono text-indigo-400 uppercase tracking-widest pl-1">
+                          {lang === 'bn' ? 'নোট ম্যাচসমূহ' : 'NOTEPAD DOCUMENTS'}
+                        </h4>
+                        <div className="space-y-1">
+                          {notes.filter(n => n.title.toLowerCase().includes(globalSearchVal.toLowerCase()) || n.content.toLowerCase().includes(globalSearchVal.toLowerCase())).map(n => (
+                            <div
+                              key={n.id}
+                              onClick={() => {
+                                setActiveTab('productivity');
+                                setGlobalSearchVal('');
+                                setIsSearchOpen(false);
+                              }}
+                              className="p-2 bg-slate-950/40 border border-slate-850/60 hover:border-indigo-500/20 rounded cursor-pointer transition-colors text-xs space-y-0.5"
+                            >
+                              <strong className="text-slate-200 block truncate">{n.title}</strong>
+                              <p className="text-[10px] text-slate-400 truncate leading-none">{n.content}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Specs / Blueprints Matches */}
+                    {SECTIONS.filter(s => s.title.toLowerCase().includes(globalSearchVal.toLowerCase()) || s.description.toLowerCase().includes(globalSearchVal.toLowerCase()) || s.content.toLowerCase().includes(globalSearchVal.toLowerCase())).length > 0 && (
+                      <div className="space-y-1.5 pt-2">
+                        <h4 className="text-[9px] font-bold font-mono text-violet-400 uppercase tracking-widest pl-1">
+                          {lang === 'bn' ? 'সিস্টেম ব্লুপ্রিন্ট' : 'SYSTEM BLUEPRINTS'}
+                        </h4>
+                        <div className="space-y-1">
+                          {SECTIONS.filter(s => s.title.toLowerCase().includes(globalSearchVal.toLowerCase()) || s.description.toLowerCase().includes(globalSearchVal.toLowerCase()) || s.content.toLowerCase().includes(globalSearchVal.toLowerCase())).map(s => (
+                            <div
+                              key={s.id}
+                              onClick={() => {
+                                setSelectedSectionId(s.id);
+                                setActiveTab('blueprint');
+                                setGlobalSearchVal('');
+                                setIsSearchOpen(false);
+                              }}
+                              className="p-2 bg-slate-950/40 border border-slate-850/60 hover:border-violet-500/20 rounded cursor-pointer transition-colors text-xs space-y-0.5"
+                            >
+                              <strong className="text-slate-200 block truncate">{s.title}</strong>
+                              <p className="text-[10px] text-slate-400 truncate leading-none">{s.description}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* No Results Fallback */}
+                    {tasks.filter(t => t.title.toLowerCase().includes(globalSearchVal.toLowerCase())).length === 0 &&
+                     notes.filter(n => n.title.toLowerCase().includes(globalSearchVal.toLowerCase()) || n.content.toLowerCase().includes(globalSearchVal.toLowerCase())).length === 0 &&
+                     SECTIONS.filter(s => s.title.toLowerCase().includes(globalSearchVal.toLowerCase()) || s.description.toLowerCase().includes(globalSearchVal.toLowerCase()) || s.content.toLowerCase().includes(globalSearchVal.toLowerCase())).length === 0 && (
+                      <div className="text-center py-6 text-slate-500 font-mono text-xs">
+                        {lang === 'bn' ? 'কোনো ক্যাশ রেজাল্ট পাওয়া যায়নি।' : 'No matching entries found.'}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

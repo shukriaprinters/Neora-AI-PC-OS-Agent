@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { TRANSLATIONS } from '../translations';
 import { Code, Sparkles, RefreshCw, Eye, ShieldAlert, Palette, CheckCircle, Copy, AlertCircle, Cpu, Database, Sliders, Key, Settings } from 'lucide-react';
+import { copyToClipboardFailsafe } from '../utils/clipboard';
 
 interface DevStudioViewProps {
   lang: 'en' | 'bn';
@@ -341,9 +342,12 @@ export function calculateTotalBillingGuard(
                   <span className="truncate">rounded-[{clipBorderRadius}px] shadow-lg</span>
                   <button
                     onClick={() => {
-                      navigator.clipboard.writeText(`style="border-radius: ${clipBorderRadius}px; box-shadow: 0 0 ${clipShadowIntensity * 4}px rgba(6,182,212, 0.4);"`);
-                      setCopiedText(true);
-                      setTimeout(() => setCopiedText(false), 2000);
+                      copyToClipboardFailsafe(`style="border-radius: ${clipBorderRadius}px; box-shadow: 0 0 ${clipShadowIntensity * 4}px rgba(6,182,212, 0.4);"`).then((success) => {
+                        if (success) {
+                          setCopiedText(true);
+                          setTimeout(() => setCopiedText(false), 2000);
+                        }
+                      });
                     }}
                     className="text-cyan-400 hover:text-cyan-300 font-bold cursor-pointer"
                   >

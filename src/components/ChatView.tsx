@@ -18,7 +18,8 @@ import {
   Layers, 
   Compass, 
   RefreshCw,
-  Settings
+  Settings,
+  Wand2
 } from 'lucide-react';
 
 interface ChatViewProps {
@@ -70,6 +71,40 @@ export function ChatView({
 
   const [showSettings, setShowSettings] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isEnhancing, setIsEnhancing] = useState(false);
+
+  // Ollama Client Integration states
+  const [useOllama, setUseOllama] = useState<boolean>(false);
+  const [ollamaStatus, setOllamaStatus] = useState<'checking' | 'available' | 'partial' | 'blocked' | 'not_installed'>('checking');
+  const [ollamaModels, setOllamaModels] = useState<any[]>([]);
+  const [selectedOllamaModel, setSelectedOllamaModel] = useState<string>('llama3');
+
+  const checkOllamaStatus = async () => {
+    try {
+      const res = await fetch('/api/ollama/status');
+      if (res.ok) {
+        const data = await res.json();
+        setOllamaStatus(data.status);
+        setOllamaModels(data.models || []);
+        if (data.models && data.models.length > 0) {
+          const names = data.models.map((m: any) => m.name);
+          if (!names.includes(selectedOllamaModel)) {
+            setSelectedOllamaModel(names[0]);
+          }
+        }
+      } else {
+        setOllamaStatus('not_installed');
+      }
+    } catch {
+      setOllamaStatus('not_installed');
+    }
+  };
+
+  useEffect(() => {
+    checkOllamaStatus();
+    const interval = setInterval(checkOllamaStatus, 15000); // Poll status every 15s
+    return () => clearInterval(interval);
+  }, []);
 
   const handlersRef = useRef({ onAddTask, onAddReminder, onAddNote, onSearchBlueprints });
 
@@ -80,6 +115,14 @@ export function ChatView({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  useEffect(() => {
+    const handleGlobalSubmit = () => {
+      handleSendMessage();
+    };
+    window.addEventListener('neora-submit-chat', handleGlobalSubmit);
+    return () => window.removeEventListener('neora-submit-chat', handleGlobalSubmit);
+  }, [inputValue, isGenerating]);
 
   const handleSpeak = (text: string) => {
     if (!speakVolumeOn) return;
@@ -350,6 +393,37 @@ export function ChatView({
     }
   };
 
+  const handleEnhancePrompt = async () => {
+    if (!inputValue.trim() || isEnhancing) return;
+
+    setIsEnhancing(true);
+    try {
+      const response = await fetch('/api/prompt/enhance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: inputValue,
+          lang: lang,
+          useOllama: useOllama,
+          selectedOllamaModel: selectedOllamaModel
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to enhance prompt');
+      }
+
+      const resData = await response.json();
+      if (resData.status === 'success' && resData.text) {
+        setInputValue(resData.text);
+      }
+    } catch (err) {
+      console.error('Enhance prompt error:', err);
+    } finally {
+      setIsEnhancing(false);
+    }
+  };
+
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isGenerating) return;
 
@@ -366,7 +440,7 @@ export function ChatView({
 
     const lowerText = userText.toLowerCase();
     const isBangla = /[\u0980-\u09FF]/.test(userText);
-    const currentHandlers = handlersRef.current;
+    const currentHandlers = handlersRef?.current;
 
     // 1. Process local workspace triggers (instant scheduling)
     if (lowerText.includes('remind') || lowerText.includes('মনে করিয়ে') || lowerText.includes('রিমাইন্ডার')) {
@@ -375,21 +449,111 @@ export function ChatView({
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
       const dateStr = tomorrow.toISOString().substring(0, 16);
-      currentHandlers.onAddReminder(alarmTitle, dateStr, 'none');
+      if (currentHandlers?.onAddReminder) {
+        currentHandlers.onAddReminder(alarmTitle, dateStr, 'none');
+      }
     } 
     else if (lowerText.includes('task') || lowerText.includes('টাস্ক') || lowerText.includes('কাজ')) {
       const taskTitle = userText.replace(/create task|add task|টাস্ক তৈরি করো|টাস্ক যোগ করো/gi, '').trim();
       const titleToUse = taskTitle || (isBangla ? 'পার্সড টাস্ক আইটেম' : 'Parsed workspace priority task');
-      currentHandlers.onAddTask(titleToUse, 'high');
+      if (currentHandlers?.onAddTask) {
+        currentHandlers.onAddTask(titleToUse, 'high');
+      }
     }
     else if (lowerText.includes('note') || lowerText.includes('নোট') || lowerText.includes('লিখো')) {
       const noteContent = userText.replace(/write note|create note|নোট তৈরি করো|নোট লিখো/gi, '').trim();
       const noteTitle = isBangla ? 'সংরক্ষিত এআই নোট' : 'Captured AI Chat note';
-      currentHandlers.onAddNote(noteTitle, noteContent || userText);
+      if (currentHandlers?.onAddNote) {
+        currentHandlers.onAddNote(noteTitle, noteContent || userText);
+      }
     }
 
-    // 2. Determine AI Response Pathway: Groq vs Local Preset
-    if (useGroq) {
+    // 2. Determine AI Response Pathway: Ollama vs Groq vs Gemini LLM
+    if (useOllama) {
+      setIsGenerating(true);
+      
+      const loadingMsgId = Math.random().toString();
+      const loadingMsg: Message = {
+        id: loadingMsgId,
+        role: 'assistant',
+        content: lang === 'bn' ? `নিওরা অফলাইন ব্রেইন চিন্তাভাবনা করছে (Ollama: ${selectedOllamaModel} সক্রিয়)...` : `Neora offline brain is thinking (Ollama: ${selectedOllamaModel} Active)...`,
+        timestamp: new Date().toLocaleTimeString()
+      };
+      setMessages(prev => [...prev, loadingMsg]);
+
+      // Define local fallback helper for Ollama errors
+      const runLocalPresetFallback = () => {
+        setMessages(prev => prev.filter(m => m.id !== loadingMsgId));
+        
+        let botResponse = '';
+        if (lowerText.includes('remind') || lowerText.includes('মনে করিয়ে') || lowerText.includes('রিমাইন্ডার')) {
+          const remindTitle = userText.replace(/remind me to|remember to|রিমাইন্ডার|মনে করিয়ে দিও/gi, '').trim();
+          botResponse = isBangla 
+            ? `অবশ্যই বস! আমি একটি নতুন রিমাইন্ডার তৈরি করেছি: "${remindTitle || 'মিটিং'}" (কালকের জন্য)।`
+            : `Absolutely, boss! Created an active reminder: "${remindTitle || 'Meeting'}" scheduled for tomorrow.`;
+        } 
+        else if (lowerText.includes('task') || lowerText.includes('টাস্ক') || lowerText.includes('কাজ')) {
+          const taskTitle = userText.replace(/create task|add task|টাস্ক তৈরি করো|টাস্ক যোগ করো/gi, '').trim();
+          botResponse = isBangla
+            ? `টাস্ক লিস্ট আপডেট করা হয়েছে! নতুন টাস্ক যোগ করা হয়েছে: "${taskTitle || 'সিস্টেম মেইনটেন্যান্স'}"`
+            : `Workspace priority list updated! Created task: "${taskTitle || 'System Maintenance'}" (High Priority).`;
+        }
+        else {
+          botResponse = isBangla
+            ? `আমি বুঝতে পেরেছি, বস। দুঃখিত, লোকাল ওল্লামা (Ollama) ব্রেইনটি কানেক্ট করা সম্ভব হয়নি। দয়া করে নিশ্চিত করুন আপনার লোকাল পিসিতে ওল্লামা চালু আছে এবং "${selectedOllamaModel}" ইনস্টল করা আছে।`
+            : `I understood, boss. I could not connect to your local Ollama instance on localhost. Please make sure Ollama is running and "${selectedOllamaModel}" is installed on your local system.`;
+        }
+
+        const botReply: Message = {
+          id: Math.random().toString(),
+          role: 'assistant',
+          content: botResponse,
+          timestamp: new Date().toLocaleTimeString()
+        };
+        setMessages(prev => [...prev, botReply]);
+        handleSpeak(botResponse);
+      };
+
+      try {
+        const recentHistory = [...messages, newMsg].slice(-8);
+        
+        const response = await fetch('/api/chat-ollama', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            messages: recentHistory,
+            model: selectedOllamaModel,
+            lang: lang
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error('Ollama API request failed');
+        }
+
+        const resData = await response.json();
+        
+        if (resData.status === 'success' && resData.text) {
+          const contentText = resData.text;
+          setMessages(prev => prev.filter(m => m.id !== loadingMsgId).concat({
+            id: Math.random().toString(),
+            role: 'assistant',
+            content: contentText,
+            timestamp: new Date().toLocaleTimeString()
+          }));
+          handleSpeak(contentText);
+        } else {
+          throw new Error('Invalid raw response received from local Ollama');
+        }
+      } catch (err) {
+        console.error('Ollama connection error, fallback triggered:', err);
+        runLocalPresetFallback();
+      } finally {
+        setIsGenerating(false);
+      }
+    } else if (useGroq) {
       setIsGenerating(true);
       
       const loadingMsgId = Math.random().toString();
@@ -400,6 +564,49 @@ export function ChatView({
         timestamp: new Date().toLocaleTimeString()
       };
       setMessages(prev => [...prev, loadingMsg]);
+
+      // Define local fallback helper for Groq errors
+      const runLocalPresetFallback = () => {
+        setMessages(prev => prev.filter(m => m.id !== loadingMsgId));
+        
+        let botResponse = '';
+        if (lowerText.includes('remind') || lowerText.includes('মনে করিয়ে') || lowerText.includes('রিমাইন্ডার')) {
+          const remindTitle = userText.replace(/remind me to|remember to|রিমাইন্ডার|মনে করিয়ে দিও/gi, '').trim();
+          botResponse = isBangla 
+            ? `অবশ্যই বস! আমি একটি নতুন রিমাইন্ডার তৈরি করেছি: "${remindTitle || 'মিটিং'}"`
+            : `Absolutely, boss! Created an active reminder: "${remindTitle || 'Meeting'}" scheduled for tomorrow.`;
+        } 
+        else if (lowerText.includes('task') || lowerText.includes('টাস্ক') || lowerText.includes('কাজ')) {
+          const taskTitle = userText.replace(/create task|add task|টাস্ক তৈরি করো|টাস্ক যোগ করো/gi, '').trim();
+          botResponse = isBangla
+            ? `টাস্ক লিস্ট আপডেট করা হয়েছে! নতুন টাস্ক যোগ করা হয়েছে: "${taskTitle || 'সিস্টেম মেইনটেন্যান্স'}"`
+            : `Workspace priority list updated! Created task: "${taskTitle || 'System Maintenance'}" (High Priority).`;
+        }
+        else if (lowerText.includes('note') || lowerText.includes('নোট') || lowerText.includes('লিখো')) {
+          botResponse = isBangla
+            ? `নোটপ্যাডে সফলভাবে আপনার নোটটি সংরক্ষণ করা হয়েছে, বস।`
+            : `Saved safely to your workspace notepad documents, boss.`;
+        }
+        else if (lowerText.includes('shukria') || lowerText.includes('printer') || lowerText.includes('প্রিন্ট')) {
+          botResponse = isBangla
+            ? `শুকরিয়া প্রিন্টার্সের জন্য ইনভয়েস তৈরি করতে চান বস? দয়া করে "Earning Studio" ট্যাবে যান। সেখানে ট্যাক্স হিসেবসহ সম্পন্ন পিডিএফ ইনভয়েস পেয়ে যাবেন!`
+            : `Looking to build billing specs for Shukria Printers, boss? Shift onto the "Earning Studio" tab to generate and print PDF invoices instantly!`;
+        }
+        else {
+          botResponse = isBangla
+            ? `আমি বুঝতে পেরেছি, বস। আমি এটিকে নিওরা অটোমেশন প্রোটকলে রেখেছি। আপনি "Agent Planner" ট্যাবে গিয়ে এটি দেখতে পারবেন!`
+            : `Understood, boss. Captured query. For advanced workflows, please select the "Agent Planner" tab.`;
+        }
+
+        const botReply: Message = {
+          id: Math.random().toString(),
+          role: 'assistant',
+          content: botResponse,
+          timestamp: new Date().toLocaleTimeString()
+        };
+        setMessages(prev => [...prev, botReply]);
+        handleSpeak(botResponse);
+      };
 
       try {
         const recentHistory = [...messages, newMsg].slice(-8);
@@ -412,7 +619,8 @@ export function ChatView({
           body: JSON.stringify({
             messages: recentHistory,
             model: groqModel,
-            key: groqKey
+            key: groqKey,
+            lang: lang
           })
         });
 
@@ -425,64 +633,56 @@ export function ChatView({
         if (resData.status === 'api_key_missing') {
           setMessages(prev => prev.filter(m => m.id !== loadingMsgId));
           const warningContent = lang === 'bn'
-            ? '❌ আপনার Groq API Key সেট করা পাওয়া যায়নি। অনুগ্রহ করে উপরের "Settings⚙️" আইকনটি ক্লিক করে কি (Key) সেট করুন।'
-            : '❌ Missing Groq API Key! Click the Settings cog icon on the top right to configure your custom key.';
-          
+            ? '❌ আপনার Groq API Key সেট করা পাওয়া যায়নি। অনুগ্রহ করে উপরের "Settings⚙️/DevStudio" ট্যাবে গিয়ে একটি সঠিক কী সাবমিট করুন।'
+            : '❌ Your Groq API Key was not found. Please click on Settings/DevStudio tab above to save a key first.';
           setMessages(prev => [...prev, {
             id: Math.random().toString(),
             role: 'assistant',
             content: warningContent,
             timestamp: new Date().toLocaleTimeString()
           }]);
-          handleSpeak(warningContent);
-          setIsGenerating(false);
-          return;
-        }
-
-        if (resData.status === 'success' && resData.data?.choices?.[0]?.message?.content) {
-          const aiResponseText = resData.data.choices[0].message.content;
-          
+        } else if (resData.status === 'success' && resData.data?.choices?.[0]?.message?.content) {
+          const contentText = resData.data.choices[0].message.content;
           setMessages(prev => prev.filter(m => m.id !== loadingMsgId).concat({
             id: Math.random().toString(),
             role: 'assistant',
-            content: aiResponseText,
+            content: contentText,
             timestamp: new Date().toLocaleTimeString()
           }));
-          handleSpeak(aiResponseText);
+          handleSpeak(contentText);
         } else {
-          throw new Error('Incomplete response layout');
+          throw new Error('Invalid response payload from Groq');
         }
       } catch (err) {
-        console.error('Groq cloud connection error:', err);
-        setMessages(prev => prev.filter(m => m.id !== loadingMsgId));
-        
-        const fallbackContent = lang === 'bn'
-          ? '⚠️ Groq এপিআই নেটওয়ার্ক ত্রুটি। নিওরা অফলাইন লোকাল ইন্টেলিজেন্ট মডিউল দিয়ে আপনার ব্যাকআপ প্রসেস করেছে!'
-          : '⚠️ Groq cloud node returned a network error. Neora automatic failover triggered local presets!';
-        
-        setMessages(prev => [...prev, {
-          id: Math.random().toString(),
-          role: 'assistant',
-          content: fallbackContent,
-          timestamp: new Date().toLocaleTimeString()
-        }]);
-        handleSpeak(fallbackContent);
+        console.error('Groq live engine error, fallback triggered:', err);
+        runLocalPresetFallback();
       } finally {
         setIsGenerating(false);
       }
     } else {
-      // Local Preset Simulation Flow
-      setTimeout(() => {
-        let botResponse = '';
-        let actionInfo = '';
+      // Dynamic Gemini Active LLM Query Flow with Adaptive Local Fallback
+      setIsGenerating(true);
+      const loadingMsgId = Math.random().toString();
+      const loadingMsg: Message = {
+        id: loadingMsgId,
+        role: 'assistant',
+        content: lang === 'bn' ? 'নিওরা চিন্তাভাবনা করছে (Gemini सक्रिय)...' : 'Neora is thinking (Gemini Active)...',
+        timestamp: new Date().toLocaleTimeString()
+      };
+      setMessages(prev => [...prev, loadingMsg]);
 
+      // Define local preset recovery function
+      const runLocalPresetFallback = () => {
+        // Remove typing indicator if present
+        setMessages(prev => prev.filter(m => m.id !== loadingMsgId));
+        
+        let botResponse = '';
         if (lowerText.includes('remind') || lowerText.includes('মনে করিয়ে') || lowerText.includes('রিমাইন্ডার')) {
           const remindTitle = userText.replace(/remind me to|remember to|রিমাইন্ডার|মনে করিয়ে দিও/gi, '').trim();
           const alarmTitle = remindTitle || (isBangla ? 'পার্সড রিমাইন্ডার টাস্ক' : 'Parsed alarm item');
           botResponse = isBangla 
             ? `অবশ্যই বস! আমি একটি নতুন রিমাইন্ডার তৈরি করেছি: "${alarmTitle}" (কালকের জন্য)।`
             : `Absolutely, boss! Created an active reminder: "${alarmTitle}" scheduled for tomorrow.`;
-          actionInfo = 'reminder';
         } 
         else if (lowerText.includes('task') || lowerText.includes('টাস্ক') || lowerText.includes('কাজ')) {
           const taskTitle = userText.replace(/create task|add task|টাস্ক তৈরি করো|টাস্ক যোগ করো/gi, '').trim();
@@ -490,40 +690,32 @@ export function ChatView({
           botResponse = isBangla
             ? `টাস্ক লিস্ট আপডেট করা হয়েছে! নতুন টাস্ক যোগ করা হয়েছে: "${titleToUse}"`
             : `Workspace priority list updated! Created task inside database: "${titleToUse}" (High Priority).`;
-          actionInfo = 'task';
         }
         else if (lowerText.includes('note') || lowerText.includes('নোট') || lowerText.includes('লিখো')) {
           const noteContent = userText.replace(/write note|create note|নোট তৈরি করো|নোট লিখো/gi, '').trim();
-          const noteTitle = isBangla ? 'সংরক্ষিত এআই নোট' : 'Captured AI Chat note';
           botResponse = isBangla
             ? `নোটপ্যাডে সফলভাবে সেভ করা হয়েছে, বস।`
             : `Saved safely to your workspace notepad documents, boss.`;
-          actionInfo = 'note';
         }
         else if (lowerText.includes('p-5') || lowerText.includes('p-6') || lowerText.includes('filter') || lowerText.includes('ফিল্টার')) {
           botResponse = isBangla
-            ? `অবশ্যই বস! আমি পি-৫ (P-5) এবং পি-৬ (P-6) ডাবল মাইক্রো-ফিল্টারের ওপর বিস্তারিত গবেষণা সম্পন্ন করেছি। \n\nএই সিস্টেমে ২০০ মেশ এবং ৫০০ মেশের দুটি বাস্কেট রয়েছে, যা ৭৪μm ও ৩০μm পর্যন্ত কণা আটকাতে পারে। আপনি ওপরের "Filter Lab" বা "ফিল্টার রিচার্স" ট্যাবে গিয়ে এই ফিল্টারের মেটেরিয়াল সায়েন্স, কাইনেটিক সিমুলেশন এবং আমাদের প্রস্তুতকৃত ৫-পর্যায়ের অ্যাডভান্সড ইমপ্রুভমেন্ট প্ল্যান দেখতে পারবেন!`
-            : `Excellent, boss! I have completed deep research on the P-5 & P-6 double micro-filtration systems.\n\nThese systems utilize a dual-basket design (Stages of 200 Mesh / ~74μm and 500 Mesh / ~30μm) along with a patented food-grade silicone double-lip seal to achieve absolute bypass exclusion (down to under 0.01%).\n\nI have created a dedicated "Filter Research Lab" tab at the top of your workspace. Please head over there to interact with the material science specs, adjust the physical brewing simulators, and review our 5-State Engineering Optimization Plan!`;
+            ? `অবশ্যই বস! আমি পি-৫ (P-5) এবং পি-৬ (P-6) ডাবল মাইক্রো-ফিল্টারের ওপর বিস্তারিত গবেষণা সম্পন্ন করেছি। \n\nএই সিস্টেমে ২০০ মেশ এবং ৫০০ মেশের দুটি বাস্কেট রয়েছে, যা ৭৪μm ও ৩০μm পর্যন্ত কণা আটকাতে পারে। আপনি ওপরের "Filter Lab" ট্যাবে গিয়ে এই ফিল্টারের মেটেরিয়াল সায়েন্স এবং আমাদের প্রস্তুতকৃত ৫-পর্যায়ের অ্যাডভান্সড প্ল্যান দেখতে পারবেন!`
+            : `Excellent, boss! I have completed deep research on the P-5 & P-6 double micro-filtration systems.\n\nThese systems utilize a dual-basket design (Stages of 200 Mesh / ~74μm and 500 Mesh / ~30μm) along with silicone double sills.\n\nPlease head over to the "Filter Lab" tab to interact with the simulations!`;
         }
         else if (lowerText.includes('shukria') || lowerText.includes('printer') || lowerText.includes('প্রিন্ট')) {
           botResponse = isBangla
             ? `শুকরিয়া প্রিন্টার্সের জন্য ইনভয়েস তৈরি করতে চান বস? অনুগ্রহ করে "Earning Studio" ট্যাবে যান। সেখানে ট্যাক্স হিসেবসহ সম্পূর্ণ পিডিএফ প্রিন্ট রেডি ইনভয়েস জেনারেট করতে পারবেন!`
-            : `Looking to build billing specs for Shukria Printers, boss? Shift onto the "Earning Studio" tab. I have prepared an enterprise corporate tax invoice builder that aggregates items and exports formatted fullpage PDFs instantly!`;
+            : `Looking to build billing specs for Shukria Printers, boss? Shift onto the "Earning Studio" tab to generate enterprise corporate tax invoices and print PDFs instantly!`;
         }
         else if (lowerText.includes('roadmap') || lowerText.includes('রোডম্যাপ') || lowerText.includes('পরিকল্পনা')) {
           botResponse = isBangla
-            ? `অবশ্যই বস! আমি নিওরা প্রোডাকশনের জন্য ১০০০% কার্যকরী ৬-ধাপের একটি উন্নয়ন রোডম্যাপ তৈরি করেছি। এই রোডম্যাপে pnpm মনোরেপো, ড্রিল রুলস, ওএস অ্যাকশন পোলিং এবং ডায়াগনস্টিক ইন্টেলিজেন্স রয়েছে। ওপরের 'উন্নয়ন রোডম্যাপ' (Neora Launch Roadmap) ট্যাবে যান এবং প্রতিটি ধাপের জটিলতা এবং অটো-রিপেয়ারিং টার্মিনাল টেস্ট করে দেখুন!`
-            : `I have got you covered, boss! I've architected a comprehensive 6-Stage Production Roadmap for Neora AI. It details the complete integration across the pnpm monorepo architecture, Drizzle ORM, multi-provider model registries, and the low-level Python desktop agent.\n\nPlease head over to the new "Neora Launch Roadmap" tab at the top of your workspace to inspect phase timelines, complexity levels, step dependencies, and run live interactive auto-repair diagnostics!`;
-        }
-        else if (lowerText.includes('help') || lowerText.includes('সাহায্য') || lowerText.includes('কমান্ড')) {
-          botResponse = isBangla
-            ? `নিওরা অ্যাসিস্ট্যান্ট কমান্ড নির্দেশিকা:\n- **টাস্ক তৈরি করুন**: লিখুন "টাস্ক: নতুন ব্যানার ডিজাইন"\n- **রিমাইন্ডার সেট করুন**: লিখুন "মনে করিয়ে দিও কাল ক্লায়েন্ট মিটিং"\n- **নোট সেভ করুন**: লিখুন "নোট: ইনভয়েস পেমেন্ট বকেয়া"\n- **ভয়েস আউটপুট**: ডানদিকের স্পিকার আইকন ব্যবহার করুন।`
-            : `Neora NLP Intent Trigger Commands Guideline:\n- **Add Database Task**: Type "task: Design poster package"\n- **Add Alarm Reminder**: Type "remind me tomorrow to deliver proofing"\n- **Save Notes block**: Type "note: Payment balance outstanding"\n- **Language**: Use toggle on header to switch fully.`;
+            ? `অবশ্যই বস! আমি নিওরা প্রোডাকশনের জন্য ১০০০% কার্যকরী ৬-ধাপের একটি উন্নয়ন রোডম্যাপ তৈরি করেছি। ওপরের 'Roadmap' ট্যাবে যান এবং প্রতিটি ধাপের জটিলতা এবং অটো-রিপেয়ারিং টার্মিনাল টেস্ট করে দেখুন!`
+            : `I have got you covered, boss! I've architected a comprehensive 6-Stage Production Roadmap for Neora AI. Please head over to the "Neora Launch Roadmap" tab at the top of your workspace to inspect diagnostics!`;
         }
         else {
           botResponse = isBangla
             ? `আমি বুঝতে পেরেছি, বস। আমি এটিকে নিওরা অটোমেশন প্রোটকলে রেখেছি। আপনি "Agent Planner" ট্যাবে গিয়ে আপনার যেকোনো জটিল লক্ষ্যকে ধাপে ধাপে এক্সিকিউট করতে পারবেন!`
-            : `Understood, boss. Monitoring active inputs. For orchestrating multi-step complex server actions (git staging, file backups, system cleanups) proceed directly to the "Agent Planner" tab workspace.`;
+            : `Understood, boss. For orchestrating multi-step complex server actions or diagnostics, proceed directly to the "Agent Planner" tab workspace.`;
         }
 
         const botReply: Message = {
@@ -532,10 +724,53 @@ export function ChatView({
           content: botResponse,
           timestamp: new Date().toLocaleTimeString()
         };
-
         setMessages(prev => [...prev, botReply]);
         handleSpeak(botResponse);
-      }, 1000);
+      };
+
+      try {
+        const recentHistory = [...messages, newMsg].slice(-8);
+        const response = await fetch('/api/chat-gemini', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            messages: recentHistory,
+            lang: lang
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error('Gemini connection error');
+        }
+
+        const resData = await response.json();
+        
+        if (resData.status === 'api_key_missing') {
+          runLocalPresetFallback();
+          setIsGenerating(false);
+          return;
+        }
+
+        if (resData.status === 'success' && resData.text) {
+          // Speak and render human-like dynamic response
+          setMessages(prev => prev.filter(m => m.id !== loadingMsgId).concat({
+            id: Math.random().toString(),
+            role: 'assistant',
+            content: resData.text,
+            timestamp: new Date().toLocaleTimeString()
+          }));
+          handleSpeak(resData.text);
+        } else {
+          throw new Error('Invalid response payload');
+        }
+      } catch (err) {
+        console.error('Gemini live engine error, fallback triggered:', err);
+        runLocalPresetFallback();
+      } finally {
+        setIsGenerating(false);
+      }
     }
   };
 
@@ -721,6 +956,118 @@ export function ChatView({
                   ? '✦ মেমরি এবং লজিক্যাল অ্যাকশনের জন্য 70B মডেলটি রিকমেন্ডেড।' 
                   : '✦ Ultra-fast open weight models powered by Groq LPUs.'}
               </span>
+            </div>
+          </div>
+
+          {/* Ollama Local Offline AI Brain Panel */}
+          <div className="border-t border-slate-800/80 pt-3.5 mt-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-white font-bold uppercase text-[10px] tracking-wider text-cyan-400 flex items-center gap-1.5 font-mono">
+                <Cpu className="w-4 h-4 text-cyan-400" />
+                <span>{lang === 'bn' ? 'লোকাল ওল্লামা অফলাইন এআই ব্রেইন' : 'LOCAL OLLAMA OFFLINE AI BRAIN'}</span>
+              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-slate-400">{lang === 'bn' ? 'ওল্লামা অফলাইন মোড:' : 'Enable Local Ollama:'}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextUseOllama = !useOllama;
+                    setUseOllama(nextUseOllama);
+                    if (nextUseOllama) {
+                      setUseGroq(false); // Make them mutually exclusive
+                    }
+                  }}
+                  className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase transition-all cursor-pointer ${
+                    useOllama 
+                      ? 'bg-cyan-950 text-cyan-400 border border-cyan-500/30' 
+                      : 'bg-slate-950 text-slate-500 border border-slate-850'
+                  }`}
+                >
+                  {useOllama ? (lang === 'bn' ? 'সক্রিয়' : 'ACTIVE') : (lang === 'bn' ? 'নিষ্ক্রিয়' : 'DISABLED')}
+                </button>
+              </div>
+            </div>
+
+            <p className="text-[10px] text-slate-400 leading-relaxed font-sans">
+              {lang === 'bn' 
+                ? 'ওল্লামা আপনাকে সম্পূর্ণ ইন্টারনেটবিহীন অফলাইনে কাজ করার সুবিধা দেয়। আপনার কম্পিউটারে চলা Llama3 বা DeepSeek-R1 মডেলগুলোর সাথে এটি সরাসরি যুক্ত হয়।' 
+                : 'Ollama integration enables completely private, internet-free offline processing. It maps prompts straight to llama3, mistral, or deepseek-r1 models running inside your offline local container setup.'}
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1.5">
+              <div className="space-y-1.5">
+                <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wide block">{lang === 'bn' ? 'ওল্লামা অফলাইন স্ট্যাটাস:' : 'Ollama Offline Connection:'}</span>
+                <div className="flex items-center gap-2">
+                  {ollamaStatus === 'checking' && (
+                    <span className="text-amber-400 text-xs flex items-center gap-1.5 font-mono">
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Checking local...
+                    </span>
+                  )}
+                  {ollamaStatus === 'available' && (
+                    <span className="text-emerald-400 text-xs font-bold uppercase flex items-center gap-1.5 font-mono">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                      {lang === 'bn' ? 'সংযুক্ত' : 'CONNECTED'}
+                    </span>
+                  )}
+                  {ollamaStatus === 'not_installed' && (
+                    <span className="text-slate-500 text-xs font-bold uppercase flex items-center gap-1.5 font-mono">
+                      <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                      {lang === 'bn' ? 'অফলাইন' : 'OFFLINE'}
+                    </span>
+                  )}
+                  {ollamaStatus === 'partial' && (
+                    <span className="text-amber-500 text-xs font-bold uppercase flex items-center gap-1.5 font-mono">
+                      <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span>
+                      {lang === 'bn' ? 'আংশিক' : 'PARTIAL'}
+                    </span>
+                  )}
+                  <button 
+                    type="button" 
+                    onClick={checkOllamaStatus}
+                    className="p-1 text-slate-400 hover:text-white rounded bg-slate-950 border border-slate-800 transition"
+                    title="Perform Manual Handshake"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                  </button>
+                </div>
+                <span className="text-[8px] text-slate-500 block leading-tight">
+                  {lang === 'bn' 
+                    ? '✦ নিশ্চিত করুন ওল্লামা পোর্ট ১১৪৩৪-এ লোকালহোস্টে সচল রয়েছে।' 
+                    : '✦ Automatically detects Ollama listening daemon running locally on Port 11434.'}
+                </span>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wide block">{lang === 'bn' ? 'ওল্লামা মডেল নির্বাচন:' : 'Select Ollama Model:'}</label>
+                {ollamaModels.length > 0 ? (
+                  <select
+                    value={selectedOllamaModel}
+                    onChange={(e) => setSelectedOllamaModel(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-slate-205 outline-none focus:border-cyan-500/50"
+                  >
+                    {ollamaModels.map((m: any, idx: number) => (
+                      <option key={idx} value={m.name}>{m.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <select
+                    value={selectedOllamaModel}
+                    onChange={(e) => setSelectedOllamaModel(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-slate-500 outline-none focus:border-cyan-500/50"
+                  >
+                    <option value="llama3">llama3 (Default Llama)</option>
+                    <option value="mistral">mistral</option>
+                    <option value="qwen">qwen</option>
+                    <option value="phi3">phi3</option>
+                    <option value="deepseek-r1">deepseek-r1 (Reasoning)</option>
+                  </select>
+                )}
+                <span className="text-[8px] text-slate-500 block leading-tight">
+                  {lang === 'bn' 
+                    ? '✦ নতুন মডেল ডাউনলোড করতে ওল্লামায় "ollama run" ট্রাই করুন।' 
+                    : '✦ Discovered active model weights. Run "ollama run llama3" or "ollama run deepseek-r1" to fetch.'}
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -963,6 +1310,22 @@ export function ChatView({
             
             {/* Embedded Action Panel */}
             <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={handleEnhancePrompt}
+                disabled={!inputValue.trim() || isEnhancing}
+                className={`p-2 rounded-full transition-all cursor-pointer flex items-center justify-center ${
+                  isEnhancing 
+                    ? 'bg-amber-600 text-white animate-pulse'
+                    : inputValue.trim()
+                      ? 'bg-gradient-to-r from-violet-600/60 to-indigo-600/60 text-white hover:from-violet-500 hover:to-indigo-500 border border-violet-500/20 hover:shadow-[0_0_12px_rgba(139,92,246,0.4)]'
+                      : 'bg-slate-950 text-slate-600 border border-slate-800 cursor-not-allowed opacity-50'
+                }`}
+                title={lang === 'bn' ? 'প্রম্পট উন্নত করুন (AI দিয়ে)' : 'Enhance Prompt (utilizing AI for clear execution pathways)'}
+              >
+                <Wand2 className={`w-3.5 h-3.5 ${isEnhancing ? 'animate-spin' : ''}`} />
+              </button>
+
               <button
                 onClick={toggleMic}
                 className={`p-2 rounded-full transition-all cursor-pointer ${

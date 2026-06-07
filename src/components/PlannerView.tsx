@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Plan, PlanStep } from '../types';
 import { TRANSLATIONS } from '../translations';
 import { SystemJournal } from './SystemJournal';
+import { motion } from 'motion/react';
 import { 
   Play, 
   Sliders, 
@@ -235,6 +236,19 @@ export function PlannerView({ lang, autonomyLevel, setAutonomyLevel }: PlannerVi
     }, 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Automatically toggle active tabs and console monitoring visibility depending on the user's Autonomy Level selection
+  useEffect(() => {
+    if (autonomyLevel === 1) {
+      // Single-column mode, right console panel hidden.
+    } else if (autonomyLevel === 2) {
+      setActiveSubTab('threads');
+    } else if (autonomyLevel === 3) {
+      setActiveSubTab('processes');
+    } else if (autonomyLevel >= 4) {
+      setActiveSubTab('proactive');
+    }
+  }, [autonomyLevel]);
 
   // Autonomous Background Daemon Heartbeat Thread
   useEffect(() => {
@@ -739,6 +753,20 @@ export function PlannerView({ lang, autonomyLevel, setAutonomyLevel }: PlannerVi
       ? 'ক্রিটিক্যাল ত্রুটি: ডিরেক্টরি লক EPERM এক্সেপশন। ফাইল রাইট অপারেশন সম্পূর্ণ হতে পারেনি।'
       : 'CRITICAL ERROR: Directory assets/ locked by concurrent process stream. File write operation aborted.';
     setDiagnosticsIncidents(prev => [`[${new Date().toLocaleTimeString()}] [CRITICAL] ${failMsg}`, ...prev]);
+
+    // Dispatch custom event to System Journal Component immediately
+    window.dispatchEvent(new CustomEvent('neora-journal-add', {
+      detail: {
+        id: "jnl-err-" + Math.floor(Math.random() * 10000),
+        timestamp: new Date().toLocaleTimeString().split(' ')[0],
+        category: 'autonomous_decision',
+        level: 'CRITICAL',
+        message: failMsg,
+        details: `[ALARM_TRIGGER] Autonomous step execution failed.\nStep: Write Shukria poster template to layout filesystem.\nError: EPERM Locked directory stream.\nAutonomy active level: ${autonomyLevel}`,
+        actor: 'Storage Sandbox Agent',
+        impactMetrics: { label: 'ALARM_CODE', value: 'EPERM_LOCK' }
+      }
+    }));
 
     // Push proactive decision log
     setProactiveDecisions(prev => [
@@ -2100,6 +2128,60 @@ export function PlannerView({ lang, autonomyLevel, setAutonomyLevel }: PlannerVi
               ))}
             </div>
 
+            {selfCorrectionState === 'pending' && (
+              <div 
+                id="self-correction-banner" 
+                className="bg-rose-950/20 border border-rose-500/30 p-3 rounded-lg text-left select-none animate-pulse space-y-2.5"
+              >
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-[10px] font-bold text-white uppercase tracking-wider font-mono">
+                      {lang === 'bn' ? 'অটোনমাস সেলফ-কারেকশন লুপ ট্রিগারড' : 'AUTONOMOUS SELF-CORRECTION PROTOCOL TRIPPED'}
+                    </p>
+                    <p className="text-[8.5px] text-rose-300 font-sans mt-0.5 leading-relaxed">
+                      {lang === 'bn' 
+                        ? 'সিলিকন স্যান্ডবক্স ফাইলসিস্টেম রাইট ব্লকড (EPERM)। আপনার অনুমোদন সাপেক্ষে এআই স্বয়ংক্রিয়ভাবে মেরামতের চেষ্টা বা সম্পূর্ণ বিকল্প অফসেট ব্যাকআপ রুট নিতে প্রস্তুত।' 
+                        : 'Simulated Sandbox asset directory write intercepted (EPERM exception). Core agent is waiting for user authorization to execute self-healing.'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-[9px] font-mono">
+                  <button
+                    id="btn-approve-retry"
+                    onClick={handleApproveSelfRepair}
+                    className="py-1.5 px-2 bg-rose-900/40 hover:bg-rose-900 text-white rounded border border-rose-700 font-bold transition-all flex items-center justify-center gap-1 cursor-pointer uppercase text-center"
+                  >
+                    <Sliders className="w-3 h-3 text-emerald-400 shrink-0" />
+                    <span>{lang === 'bn' ? 'রিপেয়ার অনুমোদন' : 'Approve Repair'}</span>
+                  </button>
+                  <button
+                    id="btn-adjust-path"
+                    onClick={handleAdjustPath}
+                    className="py-1.5 px-2 bg-slate-900 hover:bg-slate-800 text-cyan-400 hover:text-white rounded border border-slate-850 font-bold transition-all flex items-center justify-center gap-1 cursor-pointer uppercase text-center"
+                  >
+                    <AlertTriangle className="w-3 h-3 text-cyan-400 shrink-0" />
+                    <span>{lang === 'bn' ? 'বিকল্প পথ সমন্বয়' : 'Adjust Target Path'}</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {selfCorrectionState === 'resolving' && (
+              <div className="bg-cyan-950/10 border border-cyan-500/30 p-3 rounded-lg text-left select-none animate-pulse flex items-center gap-2">
+                <Loader2 className="w-4 h-4 text-cyan-400 animate-spin shrink-0" />
+                <div>
+                  <p className="text-[10px] font-bold text-white uppercase tracking-wider font-mono">
+                    {lang === 'bn' ? 'সেলফ-হিলিং প্রটোকল সক্রিয়ভাবে কাজ করছে...' : 'EXECUTING SELF-HEALING RECOVERY VECTORS...'}
+                  </p>
+                  <p className="text-[8.5px] text-cyan-400 font-mono mt-0.5 leading-relaxed">
+                    {lang === 'bn' ? 'উইন্ডোজ ডেসক্রিপ্টর লক অবমুক্ত করা হচ্ছে এবং ডিরেক্টরি পারমিশন পুনরুদ্ধার করা হচ্ছে।' : 'Releasing EPERM locks, purging concurrent workspace handles, and writing HTML asset files...'}
+                  </p>
+                </div>
+              </div>
+            )}
+
             <button
               onClick={handleRunWorkflow}
               disabled={isRunning || plan.status === 'completed'}
@@ -2128,13 +2210,23 @@ export function PlannerView({ lang, autonomyLevel, setAutonomyLevel }: PlannerVi
             </button>
           </div>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-center p-6 text-slate-550 border border-slate-900 border-dashed rounded-lg bg-slate-900/10 select-none pb-8">
-            <Cpu className="w-8 h-8 text-slate-800 mb-1.5 animate-pulse" />
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease: "easeOut" }}
+            className="flex-1 flex flex-col items-center justify-center text-center p-6 text-slate-550 border border-slate-900 border-dashed rounded-lg bg-slate-900/10 select-none pb-8"
+          >
+            <motion.div
+              animate={{ y: [0, -5, 0] }}
+              transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" }}
+            >
+              <Cpu className="w-8 h-8 text-slate-800 mb-1.5" />
+            </motion.div>
             <p className="text-[10px] font-mono font-semibold text-slate-400 uppercase tracking-widest">{lang === 'bn' ? 'অ্যাকশন প্ল্যান প্রত্যাশিত' : 'Awaiting Action Formulation'}</p>
             <p className="text-[9px] text-slate-600 max-w-xs mt-0.5">
               {lang === 'bn' ? 'কনসোলে আপনার উচ্চ-মানের উদ্দেশ্যগুলো ডিফাইন করুন এবং মাল্টি-এজেন্ট প্রসেস ম্যাপ করতে ফর্মুলেট বাটনে ক্লিক করুন।' : 'Define your high-level objectives in the controller input and click formulate to index safe multi-agent instructions vectors.'}
             </p>
-          </div>
+          </motion.div>
         )}
 
         {/* Real-time terminal ticker logs */}

@@ -183,6 +183,23 @@ export function SystemJournal({ lang, onAddSystemLog, onModifyVirtualFile }: Sys
     }
   }, [entries, isPlaying]);
 
+  // Listen for external real-time journal additions (e.g. from the planner self-correction engine fails)
+  useEffect(() => {
+    const handleAddJournal = (val: Event) => {
+      const customVal = val as CustomEvent<JournalEntry>;
+      if (customVal.detail) {
+        setEntries(prev => [...prev.slice(-39), customVal.detail]);
+        if (onAddSystemLog) {
+          onAddSystemLog(`[JOURNAL RECORDED] [${customVal.detail.level}] ${customVal.detail.message}`);
+        }
+      }
+    };
+    window.addEventListener('neora-journal-add', handleAddJournal);
+    return () => {
+      window.removeEventListener('neora-journal-add', handleAddJournal);
+    };
+  }, [onAddSystemLog]);
+
   // Simulated Real-Time Autonomous Log Stream loop
   useEffect(() => {
     if (!isPlaying || isUpdatingSelf) return;

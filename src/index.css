@@ -6,6 +6,34 @@
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 }
 
+/* Custom Scrollbars global overrides */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.4);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(6, 182, 212, 0.25);
+  border-radius: 99px;
+  border: 1px solid rgba(15, 23, 42, 0.6);
+  transition: all 0.25s ease-in-out;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(6, 182, 212, 0.5);
+  box-shadow: 0 0 8px rgba(6, 182, 212, 0.4);
+}
+
+/* Hardware accelerated smooth scrolling */
+.overflow-y-auto, .overflow-x-auto, select, textarea, pre {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
 /* Custom Print Configuration Stylesheet for invoice exporting */
 @media print {
   body {
