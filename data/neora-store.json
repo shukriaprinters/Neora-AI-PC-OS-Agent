@@ -1,0 +1,60 @@
+{
+  "memories": [
+    {
+      "id": "mem-test",
+      "key": "preferred_browser",
+      "value": "chrome",
+      "category": "preference",
+      "importance": 5,
+      "createdAt": "2026-06-08T00:20:50.666Z",
+      "updatedAt": "2026-06-08T00:20:50.666Z"
+    }
+  ],
+  "plans": [
+    {
+      "id": "plan-ynnlwtz",
+      "goal": "open notepad and write a memo",
+      "steps": [
+        {
+          "id": "step-23sxcld",
+          "kind": "shell",
+          "title": "Launch allowlisted app",
+          "payload": "notepad",
+          "status": "pending"
+        },
+        {
+          "id": "step-z07tm26",
+          "kind": "tool_call",
+          "title": "Type requested text",
+          "payload": "Hello, boss! This note was automatically typed by Neora.",
+          "status": "pending"
+        },
+        {
+          "id": "step-yoe9ezu",
+          "kind": "tool_call",
+          "title": "Press keyboard shortcut",
+          "payload": "enter",
+          "status": "pending"
+        },
+        {
+          "id": "step-w6wjdw7",
+          "kind": "verify",
+          "title": "Verify outcome",
+          "payload": "Confirm result and summarize",
+          "status": "pending"
+        }
+      ],
+      "status": "pending",
+      "createdAt": "2026-06-08T00:20:50.766Z",
+      "updatedAt": "2026-06-08T00:20:50.766Z"
+    }
+  ],
+  "conversationSummaries": [
+    {
+      "id": "sum-djopmi2",
+      "title": "Test session",
+      "summary": "Neora can now persist context.",
+      "updatedAt": "2026-06-08T00:20:50.748Z"
+    }
+  ]
+}

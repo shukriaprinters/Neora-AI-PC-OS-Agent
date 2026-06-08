@@ -1,21 +1,24 @@
-import React, { useState } from 'react';
+import React, { Suspense, useState } from 'react';
+import { AppShell } from './components/layout/AppShell';
 import { Sidebar } from './components/Sidebar';
-import { SectionViewer } from './components/SectionViewer';
-import { ChatView } from './components/ChatView';
-import { PlannerView } from './components/PlannerView';
-import { OrganizerView } from './components/OrganizerView';
-import { EarningView } from './components/EarningView';
-import { DevStudioView } from './components/DevStudioView';
-import { FilterLabView } from './components/FilterLabView';
-import { RoadmapView } from './components/RoadmapView';
-import { OsAgentView } from './components/OsAgentView';
+const SectionViewer = React.lazy(() => import('./components/SectionViewer').then((m) => ({ default: m.SectionViewer })));
+const ChatView = React.lazy(() => import('./components/ChatView').then((m) => ({ default: m.ChatView })));
+const PlannerView = React.lazy(() => import('./components/PlannerView').then((m) => ({ default: m.PlannerView })));
+const OrganizerView = React.lazy(() => import('./components/OrganizerView').then((m) => ({ default: m.OrganizerView })));
+const EarningView = React.lazy(() => import('./components/EarningView').then((m) => ({ default: m.EarningView })));
+const DevStudioView = React.lazy(() => import('./components/DevStudioView').then((m) => ({ default: m.DevStudioView })));
+const FilterLabView = React.lazy(() => import('./components/FilterLabView').then((m) => ({ default: m.FilterLabView })));
+const RoadmapView = React.lazy(() => import('./components/RoadmapView').then((m) => ({ default: m.RoadmapView })));
+const OsAgentView = React.lazy(() => import('./components/OsAgentView').then((m) => ({ default: m.OsAgentView })));
+const VSCodeView = React.lazy(() => import('./components/vscode/VSCodeView').then((m) => ({ default: m.VSCodeView })));
 import { SECTIONS, RAW_MASTER_PROMPT } from './masterPromptText';
 import { Task, Reminder, Note, Memory } from './types';
 import { TRANSLATIONS } from './translations';
+import { neoraDelete, neoraGet, neoraPost } from './lib/neoraApi';
 import {
   MessageSquare, Cpu, Sliders, DollarSign, Clipboard,
-  Languages, Bell, Terminal, BookOpen, Key, LogOut, Filter, Milestone, Laptop,
-  Download, Search, Undo, X, Activity, CircleAlert
+  Languages, Terminal, BookOpen, Key, LogOut, Filter, Milestone, Laptop,
+  Download, Search, Undo, X, Activity, CircleAlert, Upload
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -23,7 +26,7 @@ export default function App() {
   const [lang, setLang] = useState<'en' | 'bn'>('en');
 
   // Persist activeTab to localStorage
-  const [activeTab, setActiveTab] = useState<'chat' | 'autonomy' | 'productivity' | 'invoice' | 'dev' | 'blueprint' | 'filterLab' | 'roadmap' | 'osAgent'>(() => {
+  const [activeTab, setActiveTab] = useState<'chat' | 'autonomy' | 'productivity' | 'invoice' | 'dev' | 'blueprint' | 'filterLab' | 'roadmap' | 'osAgent' | 'vscode'>(() => {
     return (localStorage.getItem('neora_active_tab') || 'chat') as any;
   });
   
@@ -91,6 +94,26 @@ export default function App() {
     localStorage.setItem('neora_selected_section_id', selectedSectionId);
   }, [selectedSectionId]);
 
+  React.useEffect(() => {
+    const syncMemoryState = async () => {
+      try {
+        const data: any = await neoraGet('/api/memory');
+        if (Array.isArray(data.memories)) {
+          setMemories(data.memories.map((memory: any) => ({
+            id: memory.id,
+            key: memory.key,
+            value: memory.value,
+            category: memory.category,
+            importance: memory.importance
+          })));
+        }
+      } catch (err) {
+        console.warn('Memory sync failed:', err);
+      }
+    };
+    syncMemoryState();
+  }, []);
+
   // --- UNDO TOAST NOTIFICATION SYSTEM ---
   interface DeletedItem {
     type: 'task' | 'reminder' | 'note' | 'memory';
@@ -134,6 +157,7 @@ export default function App() {
   // --- CONNECTION LATENCY / PERFORMANCE METRICS ---
   const [latency, setLatency] = useState(14);
   const [apiHealth, setApiHealth] = useState(100);
+  const recoveryImportRef = React.useRef<HTMLInputElement | null>(null);
 
   React.useEffect(() => {
     const interval = setInterval(() => {
@@ -178,6 +202,31 @@ export default function App() {
     } catch (err) {
       console.error("Backup requisition generation failed:", err);
     }
+  };
+
+  const handleExportRecoveryBundle = async () => {
+    try {
+      const bundle: any = await neoraGet('/api/recovery/bundle');
+      const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(bundle, null, 2))}`;
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute('href', jsonString);
+      downloadAnchor.setAttribute('download', 'neora-recovery-bundle.json');
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    } catch (err) {
+      console.error('Recovery bundle export failed:', err);
+    }
+  };
+
+  const handleImportRecoveryBundle = async (file: File) => {
+    const text = await file.text();
+    const payload = JSON.parse(text);
+    const passphrase = window.prompt('Enter recovery bundle passphrase') || '';
+    await neoraPost('/api/recovery/bundle', {
+      ...payload,
+      passphrase
+    });
   };
 
   // --- GLOBAL KEYBOARD SHORTCUTS ---
@@ -247,6 +296,9 @@ export default function App() {
       category,
       importance
     };
+    neoraPost('/api/memory', { id: newMem.id, key, value, category, importance }).catch((err) => {
+      console.warn('Failed to persist memory:', err);
+    });
     setMemories(prev => [newMem, ...prev]);
   };
 
@@ -286,11 +338,16 @@ export default function App() {
     if (item) {
       triggerUndoOption('memory', item);
     }
+    neoraDelete(`/api/memory/${id}`).catch((err) => {
+      console.warn('Failed to delete memory on server:', err);
+    });
     setMemories(prev => prev.filter(x => x.id !== id));
   };
 
   return (
+    <AppShell activeTab={activeTab as any} onChangeTab={setActiveTab as any}>
     <div id="app-wrapper" className="flex flex-col h-screen bg-slate-950 font-sans text-slate-200 overflow-hidden print:bg-white print:text-black relative">
+      <Suspense fallback={<div className="flex min-h-[60vh] items-center justify-center text-cyan-200">Loading workspace…</div>}>
       {/* Global Animated Holographic Scanline Overlay Screen Layer */}
       <div className="holo-scanline-container print:hidden">
         <div className="holo-scanline-bar"></div>
@@ -348,6 +405,37 @@ export default function App() {
             <Download className="w-3.5 h-3.5 text-cyan-400" />
             <span className="hidden md:inline">{lang === 'bn' ? 'ব্যাকআপ' : 'EXPORT REPORT'}</span>
           </button>
+
+          <button
+            onClick={handleExportRecoveryBundle}
+            className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 hover:bg-slate-800 hover:border-slate-700 text-slate-300 hover:text-white px-2.5 py-1.5 rounded text-[10px] font-bold cursor-pointer font-mono transition-all"
+            title="Export full recovery bundle"
+          >
+            <Download className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="hidden md:inline">RECOVERY</span>
+          </button>
+
+          <button
+            onClick={() => recoveryImportRef.current?.click()}
+            className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 hover:bg-slate-800 hover:border-slate-700 text-slate-300 hover:text-white px-2.5 py-1.5 rounded text-[10px] font-bold cursor-pointer font-mono transition-all"
+            title="Import full recovery bundle"
+          >
+            <Upload className="w-3.5 h-3.5 text-amber-400" />
+            <span className="hidden md:inline">IMPORT</span>
+          </button>
+          <input
+            ref={recoveryImportRef}
+            type="file"
+            accept="application/json"
+            className="hidden"
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (file) {
+                await handleImportRecoveryBundle(file);
+              }
+              e.target.value = '';
+            }}
+          />
 
           {/* Autonomy Badge representation state */}
           <div className="hidden lg:flex items-center gap-2 bg-slate-950/70 border border-slate-800 rounded py-1 px-2 text-[10px] font-mono text-slate-400">
@@ -448,17 +536,70 @@ export default function App() {
           <Milestone className="w-3.5 h-3.5" />
           <span>{t.navRoadmap}</span>
         </button>
-        <button
-          id="navtab-blueprint"
-          onClick={() => setActiveTab('blueprint')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded transition-all cursor-pointer ${
-            activeTab === 'blueprint' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/15 font-bold shadow-[0_1px_3px_rgba(0,0,0,0.3)]' : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <BookOpen className="w-3.5 h-3.5" />
-          <span>{t.navSpecs}</span>
-        </button>
-      </nav>
+<button
+           id="navtab-blueprint"
+           onClick={() => setActiveTab('blueprint')}
+           className={`flex items-center gap-1.5 px-3 py-2 rounded transition-all cursor-pointer ${
+             activeTab === 'blueprint' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/15 font-bold shadow-[0_1px_3px_rgba(0,0,0,0.3)]' : 'text-slate-400 hover:text-slate-200'
+           }`}
+         >
+           <BookOpen className="w-3.5 h-3.5" />
+           <span>{t.navSpecs}</span>
+         </button>
+         <button
+           id="navtab-vscode"
+           onClick={() => setActiveTab('vscode')}
+           className={`flex items-center gap-1.5 px-3 py-2 rounded transition-all cursor-pointer ${
+             activeTab === 'vscode' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/15 font-bold shadow-[0_1px_3px_rgba(0,0,0,0.3)]' : 'text-slate-400 hover:text-slate-200'
+           }`}
+         >
+           <Terminal className="w-3.5 h-3.5" />
+           <span>VS Code</span>
+         </button>
+       </nav>
+
+      {/* Command Center Summary */}
+      <section className="px-5 py-3 print:hidden">
+        <div className="grid grid-cols-1 xl:grid-cols-4 gap-3">
+          <div className="xl:col-span-2 rounded-3xl border border-slate-800/80 bg-slate-950/70 backdrop-blur-xl px-4 py-4 shadow-[0_10px_40px_rgba(0,0,0,0.2)]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.3em] text-cyan-400 font-mono">Workspace Command Center</div>
+                <h2 className="mt-1 text-xl font-semibold text-white">
+                  {lang === 'bn' ? 'এক নজরে Neora workspace' : 'Neora workspace at a glance'}
+                </h2>
+                <p className="mt-1 text-sm text-slate-400 max-w-2xl">
+                  {lang === 'bn'
+                    ? 'চ্যাট, অটোমেশন, মেমরি, রিপোর্ট, এবং OS agent সব এক স্ক্রিনে; professional users-এর জন্য অপারেশনাল visibility, দ্রুত execution, এবং recovery control।'
+                    : 'Chat, automation, memory, reports, and the OS agent in one view with operational visibility, fast execution, and recovery controls.'}
+                </p>
+              </div>
+              <div className="hidden md:flex flex-wrap gap-2 justify-end">
+                <button onClick={() => setActiveTab('chat')} className="px-3 py-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 text-xs font-semibold uppercase">Chat</button>
+                <button onClick={() => setActiveTab('osAgent')} className="px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs font-semibold uppercase">OS Agent</button>
+                <button onClick={() => setActiveTab('autonomy')} className="px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-slate-200 text-xs font-semibold uppercase">Planner</button>
+                <button onClick={() => setActiveTab('roadmap')} className="px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-slate-200 text-xs font-semibold uppercase">Roadmap</button>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-slate-800/80 bg-slate-950/70 backdrop-blur-xl px-4 py-4">
+            <div className="text-[10px] uppercase tracking-[0.25em] text-slate-500 font-mono">Tasks</div>
+            <div className="mt-2 text-2xl font-semibold text-white">{tasks.length}</div>
+            <div className="text-sm text-slate-400">{tasks.filter(t => !t.completed).length} active</div>
+          </div>
+          <div className="rounded-3xl border border-slate-800/80 bg-slate-950/70 backdrop-blur-xl px-4 py-4">
+            <div className="text-[10px] uppercase tracking-[0.25em] text-slate-500 font-mono">Memory</div>
+            <div className="mt-2 text-2xl font-semibold text-white">{memories.length}</div>
+            <div className="text-sm text-slate-400">Persistent entries</div>
+          </div>
+          <div className="rounded-3xl border border-slate-800/80 bg-slate-950/70 backdrop-blur-xl px-4 py-4">
+            <div className="text-[10px] uppercase tracking-[0.25em] text-slate-500 font-mono">Agent</div>
+            <div className="mt-2 text-2xl font-semibold text-white">{latency}ms</div>
+            <div className="text-sm text-slate-400">{apiHealth}% health</div>
+          </div>
+        </div>
+      </section>
 
       {/* Main Content Workspace Layout Rendering Section */}
       <main id="main-content" className="flex-1 flex min-h-0 overflow-hidden">
@@ -545,20 +686,24 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'blueprint' && (
-          <div className="flex-1 flex h-full overflow-hidden shrink-0">
-            <Sidebar
-              searchQuery={searchQuery}
-              setSearchQuery={setSearchQuery}
-              selectedSectionId={selectedSectionId}
-              setSelectedSectionId={setSelectedSectionId}
-              selectedTag={selectedTag}
-              setSelectedTag={setSelectedTag}
-            />
-            <SectionViewer section={selectedSection} />
-          </div>
-        )}
-      </main>
+{activeTab === 'blueprint' && (
+           <div className="flex-1 flex h-full overflow-hidden shrink-0">
+             <Sidebar
+               searchQuery={searchQuery}
+               setSearchQuery={setSearchQuery}
+               selectedSectionId={selectedSectionId}
+               setSelectedSectionId={setSelectedSectionId}
+               selectedTag={selectedTag}
+               setSelectedTag={setSelectedTag}
+             />
+             <SectionViewer section={selectedSection} />
+           </div>
+         )}
+
+         {activeTab === 'vscode' && (
+           <VSCodeView />
+         )}
+       </main>
 
       {/* --- UNDO TOAST NOTIFICATION SYSTEM (5-SECOND DISMISS) --- */}
       <AnimatePresence>
@@ -736,6 +881,8 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+      </Suspense>
     </div>
+    </AppShell>
   );
 }

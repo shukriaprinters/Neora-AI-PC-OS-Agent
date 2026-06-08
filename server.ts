@@ -1,9 +1,14 @@
 import express from "express";
+import fs from "node:fs";
+import crypto from "node:crypto";
 import path from "path";
 import multer from "multer";
 import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
+import { buildNeoraActions, classifyNeoraPrompt } from "./src/lib/neoraCommand";
+import { appendConversationSummary, readNeoraStore, upsertMemory, upsertPlan, writeNeoraStore } from "./src/lib/neoraStore";
+import { buildNeoraPlan } from "./src/lib/neoraPlanner";
 
 // Neora OS Agent Type Specifications and State Storage
 interface OsCommand {
@@ -12,7 +17,9 @@ interface OsCommand {
   actions: Array<{ action: string; param: string }>;
   status: "pending" | "running" | "completed" | "failed";
   timestamp: string;
+  classification?: "chat" | "os-command" | "rejected";
   result?: string;
+  retryCount?: number;
 }
 
 interface OsCommandHistory {
@@ -21,12 +28,28 @@ interface OsCommandHistory {
   timestamp: string;
   status: "completed" | "failed";
   actionsCount: number;
+  classification?: "chat" | "os-command" | "rejected";
   result?: string;
+  retryCount?: number;
+}
+
+const AGENT_TOKEN = (process.env.NEORA_AGENT_TOKEN || "NEORA-X7-AGENT").trim();
+function buildChatSystemInstruction(lang: "en" | "bn") {
+  return lang === "bn"
+    ? "আপনি Neora AI, একজন সহানুভূতিশীল, প্রাঞ্জল, এবং প্রসঙ্গ-সচেতন সহকারী। স্বাভাবিক মানুষের মতো কথা বলুন, প্রথমেই সরাসরি উত্তর দিন, অপ্রয়োজনীয় টেকনিক্যাল টেলিমেট্রি বা রোবোটিক স্টাইল এড়িয়ে চলুন। ভুল হলে সেটা স্পষ্ট করুন, অনুমান না করে প্রশ্ন করুন, এবং ব্যবহারকারীর লক্ষ্যকে কেন্দ্র করে সংক্ষিপ্ত কিন্তু নির্ভুল উত্তর দিন।"
+    : "You are Neora AI, an empathetic, fluent, and context-aware assistant. Speak naturally like a capable human collaborator, answer directly first, avoid robotic telemetry or filler, and ask a clarifying question instead of guessing when the request is ambiguous. Keep the response concise, accurate, and aligned to the user's goal.";
+}
+
+function persistConversationContext(userPrompt: string, assistantReply: string) {
+  appendConversationSummary(
+    userPrompt.slice(0, 80) || "Conversation",
+    assistantReply.slice(0, 200)
+  );
 }
 
 const osAgentState = {
   status: "offline" as "online" | "offline",
-  token: "NEORA-X7-AGENT",
+  token: AGENT_TOKEN,
   lastPing: null as string | null,
   currentScreenshot: null as string | null, // base64 representation
   logs: [`[${new Date().toLocaleTimeString()}] OS Automation Broker server initialized.`] as string[],
@@ -34,10 +57,112 @@ const osAgentState = {
   history: [] as OsCommandHistory[]
 };
 
+const WATCHDOG_STALE_MS = Number(process.env.NEORA_WATCHDOG_STALE_MS || 30000);
+const WATCHDOG_INTERVAL_MS = Number(process.env.NEORA_WATCHDOG_INTERVAL_MS || 5000);
+const AUTO_SAVE_INTERVAL_MS = Number(process.env.NEORA_RECOVERY_AUTOSAVE_MS || 60000);
+const RECOVERY_DIR = path.resolve(process.cwd(), "data");
+const RECOVERY_BUNDLE_FILE = path.join(RECOVERY_DIR, "recovery-bundle.json");
+const RECOVERY_SECRET = process.env.NEORA_RECOVERY_PASSPHRASE || AGENT_TOKEN;
+let watchdogTimer: NodeJS.Timeout | null = null;
+let recoveryAutoSaveTimer: NodeJS.Timeout | null = null;
+let lastRecoveryAutoSaveAt: string | null = null;
+
+function runQueueWatchdog() {
+  const now = Date.now();
+  const lastPingMs = osAgentState.lastPing ? new Date(osAgentState.lastPing).getTime() : 0;
+  const isStale = !lastPingMs || now - lastPingMs > WATCHDOG_STALE_MS;
+  if (!isStale) return;
+
+  let recovered = 0;
+  osAgentState.queue = osAgentState.queue.map((command) => {
+    if (command.status !== "running") {
+      return command;
+    }
+    recovered += 1;
+    const nextRetryCount = (command.retryCount || 0) + 1;
+    osAgentState.logs.push(`[${new Date().toLocaleTimeString()}] Watchdog requeued stale command "${command.prompt}" (retry ${nextRetryCount})`);
+    return {
+      ...command,
+      status: "pending",
+      retryCount: nextRetryCount,
+      result: `Watchdog requeued after stale run timeout (${WATCHDOG_STALE_MS}ms).`
+    };
+  });
+
+  if (recovered > 0) {
+    osAgentState.status = "offline";
+  }
+}
+
+function saveRecoveryBundleSnapshot() {
+  try {
+    fs.mkdirSync(RECOVERY_DIR, { recursive: true });
+    const store = readNeoraStore();
+    const snapshot = {
+      exportedAt: new Date().toISOString(),
+      memory: store.memories,
+      plans: store.plans,
+      conversations: store.conversationSummaries,
+      os: {
+        status: osAgentState.status,
+        lastPing: osAgentState.lastPing,
+        queue: osAgentState.queue,
+        history: osAgentState.history
+      }
+    };
+    fs.writeFileSync(RECOVERY_BUNDLE_FILE, JSON.stringify(snapshot, null, 2), "utf8");
+    lastRecoveryAutoSaveAt = snapshot.exportedAt;
+    osAgentState.logs.push(`[${new Date().toLocaleTimeString()}] Recovery bundle auto-saved to ${RECOVERY_BUNDLE_FILE}.`);
+  } catch (error) {
+    console.error("Recovery autosave failed:", error);
+  }
+}
+
+function deriveRecoveryKey(passphrase: string) {
+  return crypto.scryptSync(passphrase, "neora-recovery-salt", 32);
+}
+
+function encryptRecoveryPayload(payload: unknown, passphrase: string) {
+  const iv = crypto.randomBytes(12);
+  const key = deriveRecoveryKey(passphrase);
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const plaintext = Buffer.from(JSON.stringify(payload), "utf8");
+  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+  return {
+    format: "neora-recovery-v1",
+    iv: iv.toString("base64"),
+    tag: authTag.toString("base64"),
+    data: ciphertext.toString("base64")
+  };
+}
+
+function decryptRecoveryPayload(encrypted: any, passphrase: string) {
+  if (!encrypted || encrypted.format !== "neora-recovery-v1") {
+    throw new Error("Unsupported recovery bundle format");
+  }
+  const iv = Buffer.from(encrypted.iv, "base64");
+  const tag = Buffer.from(encrypted.tag, "base64");
+  const data = Buffer.from(encrypted.data, "base64");
+  const key = deriveRecoveryKey(passphrase);
+  const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+  decipher.setAuthTag(tag);
+  const plaintext = Buffer.concat([decipher.update(data), decipher.final()]);
+  return JSON.parse(plaintext.toString("utf8"));
+}
+
+if (!watchdogTimer) {
+  watchdogTimer = setInterval(runQueueWatchdog, WATCHDOG_INTERVAL_MS);
+}
+
+if (!recoveryAutoSaveTimer) {
+  recoveryAutoSaveTimer = setInterval(saveRecoveryBundleSnapshot, AUTO_SAVE_INTERVAL_MS);
+}
+
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT || 3000);
 
 // Enable JSON body parsing
 app.use(express.json());
@@ -64,9 +189,7 @@ app.post("/api/chat-groq", async (req, res) => {
 
     const groqModel = model || "llama-3.3-70b-versatile";
 
-    const systemInstruction = lang === "bn"
-      ? "আপনি হলেন Neora AI (নিওড়া), একজন অত্যন্ত বুদ্ধিমান, সহানুভূতিশীল এবং মানুষের মতো আচরণকারী এআই সহকারী। কোনো কৃত্রিম বা কম্পিউটারের মতো রোবোটিক উত্তরের পরিবর্তে একজন সত্যিকারের আন্তরিক বন্ধুর মতো চমৎকার এবং স্বাভাবিক বাংলায় স্পষ্ট করে সাধারণ মানুষের মতো কথা বলুন। অত্যন্ত বন্ধুত্বপূর্ণ সম্পর্ক বজায় রাখুন। ব্যবহারকারী আপনাকে যা জিজ্ঞাসা করছে প্রথমে তার সঠিক এবং সরাসরি মানুষের মতো বাস্তব উত্তর দিন। অতিরিক্ত কোনো সিস্টেমিং ডেকোরেティブ ডাটা বা অপ্রয়োজনীয় পোর্টিং কোড এবং টেকনিক্যাল শব্দাবলি ব্যবহার করবেন না।"
-      : "You are Neora AI, a highly intelligent, empathetic, and human-like personal companion and workspace agent. Provide fully helpful, accurate, warm, and direct human-like responses to any user question. Speak and reply naturally, warmly and like a supportive assistant instead of a robotic server terminal or hardcoded system. Never output random technical telemetry or dry computer-like placeholders. Speak with the user in their language (Bengali or English).";
+    const systemInstruction = buildChatSystemInstruction(lang);
 
     const formattedMessages = [
       { role: "system", content: systemInstruction },
@@ -85,7 +208,7 @@ app.post("/api/chat-groq", async (req, res) => {
       body: JSON.stringify({
         model: groqModel,
         messages: formattedMessages,
-        temperature: 0.7
+        temperature: 0.5
       })
     });
 
@@ -99,6 +222,7 @@ app.post("/api/chat-groq", async (req, res) => {
     }
 
     const result = await groqResponse.json();
+    persistConversationContext(messages[messages.length - 1]?.content || "", result?.choices?.[0]?.message?.content || "");
     return res.json({ status: "success", data: result });
   } catch (err: any) {
     console.error("Error conducting Groq API proxy request:", err);
@@ -143,9 +267,7 @@ app.post("/api/chat-gemini", async (req, res) => {
 
     const client = getGeminiClient();
 
-    const systemInstruction = lang === "bn"
-      ? "আপনি হলেন Neora AI (নিওড়া), একজন অত্যন্ত বুদ্ধিমান, সহানুভূতিশীল এবং মানুষের মতো আচরণকারী এআই সহকারী। কোনো কৃত্রিম বা কম্পিউটারের মতো রোবোটিক উত্তরের পরিবর্তে একজন সত্যিকারের আন্তরিক বন্ধুর মতো চমৎকার এবং স্বাভাবিক বাংলায় স্পষ্ট করে সাধারণ মানুষের মতো কথা বলুন। অত্যন্ত বন্ধুত্বপূর্ণ সম্পর্ক বজায় রাখুন। ব্যবহারকারী আপনাকে যা জিজ্ঞাসা করছে প্রথমে তার সঠিক এবং সরাসরি মানুষের মতো বাস্তব উত্তর দিন। অতিরিক্ত কোনো সিস্টেমিং ডেকোরেটিভ ডাটা বা অপ্রয়োজনীয় পোর্টিং কোড এবং টেকনিক্যাল শব্দাবলি ব্যবহার করবেন না।"
-      : "You are Neora AI, a highly intelligent, empathetic, and human-like personal companion and workspace agent. Provide fully helpful, accurate, warm, and direct human-like responses to any user question. Speak and reply naturally, warmly and like a supportive assistant instead of a robotic server terminal or hardcoded system. Never output random technical telemetry or dry computer-like placeholders. Speak with the user in their language (Bengali or English).";
+    const systemInstruction = buildChatSystemInstruction(lang);
 
     const formattedContents = messages.map(m => ({
       role: m.role === "assistant" ? "model" : "user",
@@ -157,10 +279,11 @@ app.post("/api/chat-gemini", async (req, res) => {
       contents: formattedContents,
       config: {
         systemInstruction: systemInstruction,
-        temperature: 0.7,
+        temperature: 0.5,
       }
     });
 
+    persistConversationContext(messages[messages.length - 1]?.content || "", response.text || "");
     return res.json({ status: "success", text: response.text });
   } catch (err: any) {
     console.error("Error conducting Gemini API request:", err);
@@ -179,7 +302,7 @@ app.post("/api/prompt/enhance", async (req, res) => {
     const sysInstruction = `You are a professional Prompt Engineer. Rewrite, enhance, and expand the user's short input prompt to make it clear, detailed, visually precise, and optimized for an AI assistant or desktop OS automation agent. Add constructive details, structure, output standards, and step requirements based on their core intent.
 Rules:
 - Preserve the user's core intent. Never add totally unrelated features.
-- If the input is primarily in Bengali (বাংলা) or the language preference is 'bn', rewrite the enhanced prompt in highly natural, professional Bengali.
+- If the input is primarily in Bengali (à¦¬à¦¾à¦‚à¦²à¦¾) or the language preference is 'bn', rewrite the enhanced prompt in highly natural, professional Bengali.
 - If the input is in English, rewrite the enhanced prompt in English.
 - Output ONLY the final enhanced prompt text itself. Do NOT wrap it in quotes, and do NOT include prefixes like "Enhanced Prompt:", "Here is the rewritten version:", introductions, or explanations. Just return the prompt directly.`;
 
@@ -223,7 +346,7 @@ Rules:
       // Local regex/simple smart pattern fallback if both offline and Gemini is missing
       const isBn = /[\u0980-\u09FF]/.test(prompt) || lang === "bn";
       const fallbackPrompt = isBn
-        ? `বিস্তারিতভাবে সম্পন্ন করুন: ${prompt} (অনুগ্রহ করে প্রতিটি পদক্ষেপের নির্ভুলতা এবং আউটপুটের মান যাচাই নিশ্চিত করুন)`
+        ? `à¦¬à¦¿à¦¸à§à¦¤à¦¾à¦°à¦¿à¦¤à¦­à¦¾à¦¬à§‡ à¦¸à¦®à§à¦ªà¦¨à§à¦¨ à¦•à¦°à§à¦¨: ${prompt} (à¦…à¦¨à§à¦—à§à¦°à¦¹ à¦•à¦°à§‡ à¦ªà§à¦°à¦¤à¦¿à¦Ÿà¦¿ à¦ªà¦¦à¦•à§à¦·à§‡à¦ªà§‡à¦° à¦¨à¦¿à¦°à§à¦­à§à¦²à¦¤à¦¾ à¦à¦¬à¦‚ à¦†à¦‰à¦Ÿà¦ªà§à¦Ÿà§‡à¦° à¦®à¦¾à¦¨ à¦¯à¦¾à¦šà¦¾à¦‡ à¦¨à¦¿à¦¶à§à¦šà¦¿à¦¤ à¦•à¦°à§à¦¨)`
         : `Execute in full detail: ${prompt} (Ensure high accuracy, structural clarity, and verify quality checkpoints at each step)`;
       return res.json({ status: "success", text: fallbackPrompt });
     }
@@ -322,15 +445,19 @@ app.get("/api/os/status", (req, res) => {
     token: osAgentState.token,
     lastPing: osAgentState.lastPing,
     currentScreenshot: osAgentState.currentScreenshot,
+    recoveryAutoSaveAt: lastRecoveryAutoSaveAt,
     logs: osAgentState.logs.slice(-50), // Send last 50 lines of log
     queue: osAgentState.queue,
-    history: osAgentState.history.slice(-30) // Historical logs
+    history: osAgentState.history.slice(-30).map((item) => ({
+      ...item,
+      classification: item.classification || classifyNeoraPrompt(item.prompt)
+    })) // Historical logs
   });
 });
 
 app.post("/api/os/ping", (req, res) => {
   const { token, client_time } = req.body;
-  if (!token || token !== osAgentState.token) {
+  if (!token || token !== AGENT_TOKEN) {
     return res.status(401).json({ error: "Unauthorized token provided" });
   }
   osAgentState.status = "online";
@@ -340,7 +467,7 @@ app.post("/api/os/ping", (req, res) => {
 
 app.get("/api/os/poll", (req, res) => {
   const { token } = req.query;
-  if (!token || token !== osAgentState.token) {
+  if (!token || token !== AGENT_TOKEN) {
     return res.status(401).json({ error: "Unauthorized token" });
   }
 
@@ -363,7 +490,7 @@ app.get("/api/os/poll", (req, res) => {
 
 app.post("/api/os/report", (req, res) => {
   const { token, commandId, status, logs, screenshot, result } = req.body;
-  if (!token || token !== osAgentState.token) {
+  if (!token || token !== AGENT_TOKEN) {
     return res.status(401).json({ error: "Unauthorized token" });
   }
 
@@ -381,22 +508,33 @@ app.post("/api/os/report", (req, res) => {
     const cmdIdx = osAgentState.queue.findIndex(c => c.id === commandId);
     if (cmdIdx !== -1) {
       const command = osAgentState.queue[cmdIdx];
-      command.status = status === "success" ? "completed" : "failed";
+      const failed = status !== "success";
+      command.status = failed ? "failed" : "completed";
       command.result = result || "Execution finalized";
 
       // Add to historical record
-      osAgentState.history.push({
-        id: command.id,
-        prompt: command.prompt,
-        timestamp: command.timestamp,
-        status: command.status,
-        actionsCount: command.actions.length,
-        result: command.result
-      });
+      if (failed && (command.retryCount || 0) < 1) {
+        command.retryCount = (command.retryCount || 0) + 1;
+        command.status = "pending";
+        command.result = `Retry scheduled: ${command.result}`;
+        osAgentState.queue[cmdIdx] = command;
+        osAgentState.logs.push(`[${new Date().toLocaleTimeString()}] Retry scheduled for command: "${command.prompt}" (attempt ${command.retryCount})`);
+      } else {
+        osAgentState.history.push({
+          id: command.id,
+          prompt: command.prompt,
+          timestamp: command.timestamp,
+          status: command.status,
+          actionsCount: command.actions.length,
+          classification: command.classification,
+          result: command.result,
+          retryCount: command.retryCount || 0
+        });
 
-      // Clear from queue
-      osAgentState.queue = osAgentState.queue.filter(c => c.id !== commandId);
-      osAgentState.logs.push(`[${new Date().toLocaleTimeString()}] Action completed for command: "${command.prompt}" (Status: ${command.status.toUpperCase()})`);
+        // Clear from queue
+        osAgentState.queue = osAgentState.queue.filter(c => c.id !== commandId);
+        osAgentState.logs.push(`[${new Date().toLocaleTimeString()}] Action completed for command: "${command.prompt}" (Status: ${command.status.toUpperCase()})`);
+      }
     }
   }
 
@@ -410,21 +548,22 @@ app.post("/api/os/command", async (req, res) => {
       return res.status(400).json({ error: "Missing prompt query string" });
     }
 
-    if (token) {
-      osAgentState.token = token;
+    if (token && token !== AGENT_TOKEN) {
+      return res.status(401).json({ error: "Unauthorized token" });
     }
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       // In-app fallback compiler
       const fallbackActions = parseLocalMockCommand(prompt);
-      const fallbackCmd: OsCommand = {
-        id: "cmd-" + Math.random().toString(36).substring(2, 9),
-        prompt,
-        actions: fallbackActions,
-        status: "pending",
-        timestamp: new Date().toLocaleTimeString()
-      };
+    const fallbackCmd: OsCommand = {
+      id: "cmd-" + Math.random().toString(36).substring(2, 9),
+      prompt,
+      actions: fallbackActions,
+      status: "pending",
+      timestamp: new Date().toLocaleTimeString(),
+      classification: classifyNeoraPrompt(prompt)
+    };
       osAgentState.queue.push(fallbackCmd);
       osAgentState.logs.push(`[${new Date().toLocaleTimeString()}] Fallback engine compiled: "${prompt}" successfully (Token verification bypass).`);
       return res.json({ status: "success", command: fallbackCmd, fallback: true });
@@ -508,7 +647,8 @@ Output ONLY the final raw JSON action plan matching the response schema!`;
       prompt,
       actions,
       status: "pending",
-      timestamp: new Date().toLocaleTimeString()
+      timestamp: new Date().toLocaleTimeString(),
+      classification: classifyNeoraPrompt(prompt)
     };
 
     osAgentState.queue.push(newCmd);
@@ -530,39 +670,159 @@ app.post("/api/os/clear", (req, res) => {
   res.json({ status: "success" });
 });
 
+app.post("/api/os/retry/:commandId", (req, res) => {
+  const { commandId } = req.params;
+  const cmdIdx = osAgentState.queue.findIndex((item) => item.id === commandId);
+  if (cmdIdx === -1) {
+    return res.status(404).json({ error: "Command not found" });
+  }
+  const command = osAgentState.queue[cmdIdx];
+  command.status = "pending";
+  command.retryCount = (command.retryCount || 0) + 1;
+  command.result = `Manual retry queued (${command.retryCount})`;
+  osAgentState.queue[cmdIdx] = command;
+  osAgentState.logs.push(`[${new Date().toLocaleTimeString()}] Manual retry queued for command: "${command.prompt}"`);
+  return res.json({ status: "success", command });
+});
+
+app.post("/api/os/cancel/:commandId", (req, res) => {
+  const { commandId } = req.params;
+  const command = osAgentState.queue.find((item) => item.id === commandId);
+  if (!command) {
+    return res.status(404).json({ error: "Command not found" });
+  }
+  osAgentState.queue = osAgentState.queue.filter((item) => item.id !== commandId);
+  osAgentState.history.push({
+    id: command.id,
+    prompt: command.prompt,
+    timestamp: command.timestamp,
+    status: "failed",
+    actionsCount: command.actions.length,
+    classification: command.classification,
+    result: "Cancelled manually by operator",
+    retryCount: command.retryCount || 0
+  });
+  osAgentState.logs.push(`[${new Date().toLocaleTimeString()}] Cancelled command: "${command.prompt}"`);
+  return res.json({ status: "success" });
+});
+
+app.post("/api/os/rerun-failed/:commandId", (req, res) => {
+  const { commandId } = req.params;
+  const historyItem = osAgentState.history.find((item) => item.id === commandId);
+  if (!historyItem) {
+    return res.status(404).json({ error: "History item not found" });
+  }
+  const actions = buildNeoraActions(historyItem.prompt);
+  const requeued: OsCommand = {
+    id: `cmd-${Math.random().toString(36).substring(2, 9)}`,
+    prompt: historyItem.prompt,
+    actions,
+    status: "pending",
+    timestamp: new Date().toLocaleTimeString(),
+    classification: historyItem.classification || classifyNeoraPrompt(historyItem.prompt),
+    retryCount: (historyItem.retryCount || 0) + 1
+  };
+  osAgentState.queue.push(requeued);
+  osAgentState.logs.push(`[${new Date().toLocaleTimeString()}] Re-run failed command queued: "${historyItem.prompt}"`);
+  return res.json({ status: "success", command: requeued });
+});
+
+app.get("/api/memory", (req, res) => {
+  const store = readNeoraStore();
+  res.json({ status: "success", memories: store.memories, summaries: store.conversationSummaries });
+});
+
+app.post("/api/memory", (req, res) => {
+  const { key, value, category, importance, id } = req.body || {};
+  if (!key || !value) {
+    return res.status(400).json({ error: "Missing key or value" });
+  }
+  const memory = upsertMemory({
+    id: id || `mem-${Math.random().toString(36).slice(2, 9)}`,
+    key: String(key),
+    value: String(value),
+    category: ["personal", "work", "preference", "skill", "session"].includes(category) ? category : "session",
+    importance: Number.isFinite(Number(importance)) ? Number(importance) : 3
+  });
+  res.json({ status: "success", memory });
+});
+
+app.delete("/api/memory/:id", (req, res) => {
+  const { id } = req.params;
+  const store = readNeoraStore();
+  const nextMemories = store.memories.filter((item) => item.id !== id);
+  if (nextMemories.length === store.memories.length) {
+    return res.status(404).json({ error: "Memory not found" });
+  }
+  store.memories = nextMemories;
+  writeNeoraStore(store);
+  appendConversationSummary("Memory deleted", `Removed memory ${id}`);
+  res.json({ status: "success" });
+});
+
+app.get("/api/recovery/bundle", (req, res) => {
+  const store = readNeoraStore();
+  const payload = {
+    status: "success",
+    exportedAt: new Date().toISOString(),
+    memory: store.memories,
+    plans: store.plans,
+    conversations: store.conversationSummaries,
+    os: {
+      status: osAgentState.status,
+      lastPing: osAgentState.lastPing,
+      queue: osAgentState.queue,
+      history: osAgentState.history
+    }
+  };
+  res.json(encryptRecoveryPayload(payload, RECOVERY_SECRET));
+});
+
+app.post("/api/recovery/bundle", (req, res) => {
+  const passphrase = String(req.body?.passphrase || req.body?.secret || "").trim() || RECOVERY_SECRET;
+  let payload = req.body;
+  if (req.body?.format === "neora-recovery-v1") {
+    payload = decryptRecoveryPayload(req.body, passphrase);
+  }
+  const { memory, plans, conversations, os } = payload || {};
+  const store = readNeoraStore();
+  store.memories = Array.isArray(memory) ? memory : store.memories;
+  store.plans = Array.isArray(plans) ? plans : store.plans;
+  store.conversationSummaries = Array.isArray(conversations) ? conversations : store.conversationSummaries;
+  writeNeoraStore(store);
+  if (os && typeof os === "object") {
+    osAgentState.queue = Array.isArray(os.queue) ? os.queue : osAgentState.queue;
+    osAgentState.history = Array.isArray(os.history) ? os.history : osAgentState.history;
+  }
+  appendConversationSummary("Recovery bundle imported", "Imported memory, plans, and execution history bundle.");
+  res.json({ status: "success" });
+});
+
+app.post("/api/plan/create", (req, res) => {
+  const { goal } = req.body || {};
+  if (!goal || typeof goal !== "string") {
+    return res.status(400).json({ error: "Missing goal" });
+  }
+  const plan = buildNeoraPlan(goal);
+  const stored = upsertPlan(plan);
+  res.json({ status: "success", plan: stored });
+});
+
+app.get("/api/plan/active", (req, res) => {
+  const store = readNeoraStore();
+  res.json({ status: "success", plans: store.plans.slice(0, 10) });
+});
+
 // Basic NLP match parser for safe offline usage
 function parseLocalMockCommand(prompt: string) {
-  const norm = prompt.toLowerCase();
-  const list: Array<{ action: string; param: string }> = [];
-
-  if (norm.includes("chrome") || norm.includes("google") || norm.includes("browser") || norm.includes("ব্রাউজার") || norm.includes("ওয়েব")) {
-    if (norm.includes("youtube") || norm.includes("ইউটিউব")) {
-      list.push({ action: "open_browser", param: "https://www.youtube.com" });
-    } else if (norm.includes("facebook") || norm.includes("ফেসবুক")) {
-      list.push({ action: "open_browser", param: "https://www.facebook.com" });
-    } else if (norm.includes("google") || norm.includes("গুগল")) {
-      list.push({ action: "open_browser", param: "https://www.google.com" });
-    } else {
-      list.push({ action: "open_browser", param: "https://www.google.com" });
-    }
+  const actions = buildNeoraActions(prompt);
+  if (!actions.length) {
+    return [{ action: "take_screenshot", param: "" }];
   }
-
-  if (norm.includes("notepad") || norm.includes("নোটপ্যাড") || norm.includes("লিখো") || norm.includes("নোট")) {
-    list.push({ action: "execute_cmd", param: "notepad" });
-    list.push({ action: "type_text", param: "Hello, boss! This note was automatically typed by Neora OS Agent running on your local machine." });
-    list.push({ action: "press_key", param: "enter" });
-  } else if (norm.includes("calc") || norm.includes("ক্যালকুলেটর") || norm.includes("হিসাব")) {
-    list.push({ action: "execute_cmd", param: "calc" });
-  } else if (norm.includes("paint") || norm.includes("পেইন্ট") || norm.includes("ছবি")) {
-    list.push({ action: "execute_cmd", param: "mspaint" });
+  if (!actions.some((item) => item.action === "take_screenshot")) {
+    actions.push({ action: "take_screenshot", param: "" });
   }
-
-  if (norm.includes("message") || norm.includes("alert") || norm.includes("সতর্ক") || norm.includes("বক্স")) {
-    list.push({ action: "alert_msg", param: "Neora Action completed successfully, boss!" });
-  }
-
-  list.push({ action: "take_screenshot", param: "" });
-  return list;
+  return actions;
 }
 
 // Ollama Local Offline AI Brain Integration Endpoints
@@ -608,9 +868,7 @@ app.post("/api/chat-ollama", async (req, res) => {
     }
 
     const ollamaModel = model || "llama3";
-    const systemInstruction = lang === "bn"
-      ? "আপনি হলেন Neora AI (নিওড়া), একজন অত্যন্ত বুদ্ধিমান, সহানুভূতিশীল এবং মানুষের মতো আচরণকারী এআই সহকারী। কোনো কৃত্রিম বা কম্পিউটারের মতো রোবোটিক উত্তরের পরিবর্তে একজন সত্যিকারের আন্তরিক বন্ধুর মতো চমৎকার এবং স্বাভাবিক বাংলায় স্পষ্ট করে সাধারণ মানুষের মতো কথা বলুন। অতিরিক্ত কোনো সিস্টেমিং ডেকোরেティブ ডাটা বা অপ্রয়োজনীয় পোর্টিং কোড এবং টেকনিক্যাল শব্দাবলি ব্যবহার করবেন না।"
-      : "You are Neora AI, a highly intelligent, empathetic, and human-like personal companion and workspace agent. Provide fully helpful, accurate, warm, and direct human-like responses to any user question. Speak and reply naturally, warmly and like a supportive assistant instead of a robotic server terminal or hardcoded system. Never output random technical telemetry or dry computer-like placeholders. Speak with the user in their language (Bengali or English).";
+    const systemInstruction = buildChatSystemInstruction(lang);
 
     const formattedMessages = [
       { role: "system", content: systemInstruction },
@@ -679,3 +937,5 @@ setupVite().then(() => {
 }).catch(err => {
   console.error("Failed to start Vite dev server wrapper:", err);
 });
+
+

@@ -7,21 +7,17 @@ This audit documents our technical inspection of Neora's structural and operatio
 ## 🧪 Structural Inspection
 
 ### 1. Unified State & Storage Bridge
-- **Status:** Integrated.
-- **Audit Findings:** State properties like Tasks, Reminders, and Notes persist smoothly inside standard browser storage. The system handles offline sync and network reconnection handshakes with full reliability.
+- **Status:** Partial.
+- **Audit Findings:** The current codebase exposes server state in memory, but there is no verified browser-storage persistence layer for tasks, reminders, or notes.
 
 ### 2. Provider API Fallback Chains
-- **Status:** Integrated & Responsive.
-- **Audit Findings:** AI conversational prompts transition gracefully across a sequence of available engines:
-  ```
-  [ Ollama Local Brain Mode ] ──► [ Groq Core Engine ] ──► [ Google Gemini Flash Hub ] ──► [ Local Regular Fallback RegExs ]
-  ```
-  If any network errors or timeouts occur, the UI responds elegantly without freezing.
+- **Status:** Partial.
+- **Audit Findings:** The broker uses Gemini for command compilation when `GEMINI_API_KEY` is present, and falls back to a local mock parser when it is not. Ollama and Groq fallback chains are documented elsewhere but not verified in the current runtime code path.
 
 ### 3. Audio & Voice Streaming
-- **Status:** Optimized.
-- **Audit Findings:** The Speech Recognition engine parses dual dialects (English & Bangla) in Google Chrome using native Web Speech APIs. The text-to-speech mechanism utilizes standard system speech synthesis, complete with an intuitive and responsive status visualization canvas.
+- **Status:** Not verified.
+- **Audit Findings:** This repository does not currently expose a verified voice recognition pipeline in the server or Python agent code. Treat voice input as future work unless a separate UI module implements it.
 
 ### 4. Code & Interface Quality
-- **Status:** Clean.
-- **Audit Findings:** Code files are modularly written inside separate React components. Linter tests check out with `0 errors`, ensuring successful production compilation.
+- **Status:** Verified.
+- **Audit Findings:** The TypeScript/Vite app builds successfully, and the Python agent compiles cleanly after the string/encoding fixes.
