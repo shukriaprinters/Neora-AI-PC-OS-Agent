@@ -1,10 +1,10 @@
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
-import NeuralOSApp from './components/NeuralOSApp.tsx';
+import PremiumNeuralOSApp from './components/PremiumNeuralOSApp.tsx';
 import './index.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <NeuralOSApp />
+    <PremiumNeuralOSApp />
   </StrictMode>,
 );
