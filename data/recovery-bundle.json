@@ -1,5 +1,5 @@
 {
-  "exportedAt": "2026-06-08T16:33:05.418Z",
+  "exportedAt": "2026-06-08T20:04:12.554Z",
   "memory": [
     {
       "id": "mem-test",
@@ -59,8 +59,8 @@
     }
   ],
   "os": {
-    "status": "online",
-    "lastPing": "2026-06-08T22:32:57.603859",
+    "status": "offline",
+    "lastPing": null,
     "queue": [],
     "history": []
   }
