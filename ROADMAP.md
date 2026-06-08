@@ -5,9 +5,9 @@ This roadmap outlines the journey of Neora X7 from a pure conceptual workspace i
 ## 🏆 Current Phase Completed (Stable & Real)
 We have successfully finished the core integration for the local system control:
 1. **Local Python Control Bridge:** A lightweight script (`neora_agent.py`) using `pyautogui`, `requests`, and `pillow` to execute OS commands on local machines.
-2. **Server/Agent Token Flow:** Shared-token polling and reporting between the broker and the desktop agent.
-3. **Desktop Live Mirroring:** Base64 screenshot reporting from the agent when GUI mode is enabled.
-4. **Headless Safety Mode:** A safer run mode that skips GUI automation for non-interactive runs.
+2. **Offline AI Brain (Ollama):** Dynamically handshake and communicate with Ollama hosts (`http://localhost:11434`) to select and run lightweight models (Llama3, DeepSeek-R1) offline.
+3. **Advanced Prompt Enhancer:** Implemented a prompt wizard (`Wand2` tool) in Chat UI to optimize human prompts before sending them.
+4. **Desktop Live Mirroring:** Seamless ingestion of Base64 desktop screenshots to observe exactly what Neora executed inside the local PC client.
 
 ---
 

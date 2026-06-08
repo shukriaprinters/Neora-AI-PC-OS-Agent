@@ -64,35 +64,31 @@ export function Sidebar({
   });
 
   return (
-    <div id="sidebar-container" className="flex flex-col h-full bg-slate-950/90 border-r border-cyan-500/10 text-slate-100 w-full md:w-80 flex-shrink-0 backdrop-blur-xl">
+    <div id="sidebar-container" className="flex flex-col h-full bg-slate-900 border-r border-slate-800 text-slate-100 w-full md:w-80 flex-shrink-0">
       {/* Header Info */}
-      <div className="p-4 border-b border-slate-800/70 bg-slate-950/70">
-        <div className="flex items-center gap-2 mb-2">
-          <div className="w-9 h-9 rounded-xl bg-cyan-500/10 flex items-center justify-center border border-cyan-500/30 shadow-[0_0_18px_rgba(6,182,212,0.12)]">
+      <div className="p-4 border-b border-slate-800">
+        <div className="flex items-center gap-2 mb-1">
+          <div className="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center border border-cyan-500/30">
             <span className="text-cyan-400 font-mono text-sm font-bold">N</span>
           </div>
           <div>
             <h1 className="text-sm font-bold font-sans tracking-wide text-white">NEORA ARCHITECT</h1>
-            <p className="text-[10px] font-mono text-slate-400">PROFESSIONAL COMMAND SUITE</p>
+            <p className="text-[10px] font-mono text-slate-400">BLUEPRINT COMPANION</p>
           </div>
-        </div>
-        <div className="flex items-center gap-2 text-[10px] font-mono text-slate-500">
-          <span className="px-2 py-0.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 text-emerald-300">ONLINE</span>
-          <span className="px-2 py-0.5 rounded-full border border-slate-800 bg-slate-900/80 text-slate-400">LVL 3</span>
         </div>
       </div>
 
       {/* Search Input */}
       <div className="p-3">
         <div className="relative">
-          <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-cyan-400/70" />
+          <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-500" />
           <input
             id="search-input"
             type="text"
             placeholder="Search specification..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-slate-950/80 border border-slate-800 rounded-xl py-2.5 pl-9 pr-4 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 transition-colors"
+            className="w-full bg-slate-950/70 border border-slate-800 rounded-md py-2 pl-9 pr-4 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 transition-colors"
           />
         </div>
       </div>
@@ -103,10 +99,10 @@ export function Sidebar({
           <button
             id="tag-all-btn"
             onClick={() => setSelectedTag(null)}
-            className={`px-2.5 py-1 rounded-full text-[10px] font-mono transition-colors border ${
+            className={`px-2 py-0.5 rounded text-[10px] font-mono transition-colors ${
               selectedTag === null
-                ? 'bg-cyan-500/15 text-cyan-300 font-bold border-cyan-500/30'
-                : 'bg-slate-900/80 text-slate-400 border-slate-800 hover:bg-slate-850'
+                ? 'bg-cyan-500 text-slate-950 font-bold'
+                : 'bg-slate-800 text-slate-400 hover:bg-slate-750'
             }`}
           >
             ALL
@@ -116,10 +112,10 @@ export function Sidebar({
               id={`tag-${tag.toLowerCase()}-btn`}
               key={tag}
               onClick={() => setSelectedTag(selectedTag === tag ? null : tag)}
-              className={`px-2.5 py-1 rounded-full text-[10px] font-mono transition-colors border ${
+              className={`px-2 py-0.5 rounded text-[10px] font-mono transition-colors ${
                 selectedTag === tag
-                  ? 'bg-cyan-500/15 text-cyan-300 font-bold border-cyan-500/30'
-                  : 'bg-slate-900/80 text-slate-400 border-slate-800 hover:bg-slate-850'
+                  ? 'bg-cyan-500 text-slate-950 font-bold'
+                  : 'bg-slate-800 text-slate-400 hover:bg-slate-750'
               }`}
             >
               {tag.toUpperCase()}
@@ -138,14 +134,14 @@ export function Sidebar({
                 id={`sec-btn-${section.id}`}
                 key={section.id}
                 onClick={() => setSelectedSectionId(section.id)}
-              className={`w-full text-left p-2.5 rounded-xl transition-all flex gap-3 group border ${
-                isSelected
-                    ? 'bg-slate-900/90 border-cyan-500/30 text-white shadow-[0_0_0_1px_rgba(6,182,212,0.08)]'
-                    : 'bg-transparent border-transparent hover:bg-slate-900/50 hover:border-slate-800/80 text-slate-300'
-              }`}
+                className={`w-full text-left p-2.5 rounded-lg transition-all flex gap-3 group border ${
+                  isSelected
+                    ? 'bg-slate-800 border-cyan-500/40 text-white'
+                    : 'bg-transparent border-transparent hover:bg-slate-800/40 hover:border-slate-800/80 text-slate-300'
+                }`}
               >
                 <div className={`mt-0.5 w-6 h-6 rounded flex items-center justify-center shrink-0 transition-colors ${
-                  isSelected ? 'bg-cyan-500/15 text-cyan-300' : 'bg-slate-950/60 text-slate-500 group-hover:text-slate-400'
+                  isSelected ? 'bg-cyan-500/20 text-cyan-400' : 'bg-slate-950/40 text-slate-500 group-hover:text-slate-400'
                 }`}>
                   {getIcon(section.iconName)}
                 </div>
@@ -173,7 +169,7 @@ export function Sidebar({
       </div>
 
       {/* Sidebar Footer */}
-      <div className="p-3 border-t border-slate-800/70 bg-slate-950/80 flex items-center justify-between text-[11px] text-slate-500 font-mono">
+      <div className="p-3 border-t border-slate-800 bg-slate-950/40 flex items-center justify-between text-[11px] text-slate-500 font-mono">
         <span>REL VERSION 2.0</span>
         <span className="text-cyan-500/60 font-bold">READY BOSS</span>
       </div>

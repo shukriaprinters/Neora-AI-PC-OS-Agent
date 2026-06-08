@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Message, Task, Reminder, Note } from '../types';
 import { TRANSLATIONS } from '../translations';
-import {
+import { 
   Send, 
   Volume2, 
   Mic, 
@@ -21,8 +21,6 @@ import {
   Settings,
   Wand2
 } from 'lucide-react';
-import { classifyNeoraInput, isLikelyOsCommand } from '../lib/neoraCommand';
-import { NeoraApiError, neoraGet, neoraPost, neoraUpload } from '../lib/neoraApi';
 
 interface ChatViewProps {
   lang: 'en' | 'bn';
@@ -57,20 +55,12 @@ export function ChatView({
       id: 'init',
       role: 'assistant',
       content: lang === 'bn' ? 'স্বাগতম, বস! নিওরা এআই ওয়ার্কস্পেস প্রস্তুত। আমি আপনাকে কোড, ইনভয়েস, টাস্ক এবং রিমাইন্ডার পরিচালনা করতে সহায়তা করতে পারি।' : 'Welcome back, boss. Neora AI is up and running. I can help you automate code reviews, generate client invoices, or manage system task logs.',
-      timestamp: new Date().toLocaleTimeString(),
-      classification: 'chat'
+      timestamp: new Date().toLocaleTimeString()
     }
   ]);
   const [inputValue, setInputValue] = useState('');
   const [isListening, setIsListening] = useState(false);
   const [speakVolumeOn, setSpeakVolumeOn] = useState(true);
-  const [showMessageBadges, setShowMessageBadges] = useState(true);
-  const [statusBanner, setStatusBanner] = useState<string | null>(null);
-  const [statusEndpoint, setStatusEndpoint] = useState<string | null>(null);
-  const [lastResult, setLastResult] = useState<string | null>(null);
-  const [recentMemories, setRecentMemories] = useState<any[]>([]);
-  const [activePlans, setActivePlans] = useState<any[]>([]);
-  const [pendingVoiceCommand, setPendingVoiceCommand] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Whisper Speech Recording refs and state
@@ -88,60 +78,31 @@ export function ChatView({
   const [ollamaStatus, setOllamaStatus] = useState<'checking' | 'available' | 'partial' | 'blocked' | 'not_installed'>('checking');
   const [ollamaModels, setOllamaModels] = useState<any[]>([]);
   const [selectedOllamaModel, setSelectedOllamaModel] = useState<string>('llama3');
-  const healthState =
-    statusEndpoint
-      ? 'offline'
-      : statusBanner
-        ? 'degraded'
-        : (ollamaStatus === 'available' ? 'healthy' : 'degraded');
-  const healthChipClass =
-    healthState === 'healthy'
-      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-      : healthState === 'degraded'
-        ? 'bg-amber-500/10 text-amber-300 border-amber-500/20'
-        : 'bg-red-500/10 text-red-400 border-red-500/20';
 
   const checkOllamaStatus = async () => {
     try {
-      const data: any = await neoraGet('/api/ollama/status');
-      setOllamaStatus(data.status);
-      setOllamaModels(data.models || []);
-      if (data.models && data.models.length > 0) {
-        const names = data.models.map((m: any) => m.name);
-        if (!names.includes(selectedOllamaModel)) {
-          setSelectedOllamaModel(names[0]);
+      const res = await fetch('/api/ollama/status');
+      if (res.ok) {
+        const data = await res.json();
+        setOllamaStatus(data.status);
+        setOllamaModels(data.models || []);
+        if (data.models && data.models.length > 0) {
+          const names = data.models.map((m: any) => m.name);
+          if (!names.includes(selectedOllamaModel)) {
+            setSelectedOllamaModel(names[0]);
+          }
         }
+      } else {
+        setOllamaStatus('not_installed');
       }
     } catch {
       setOllamaStatus('not_installed');
-      setStatusEndpoint('/api/ollama/status');
-      setStatusBanner(lang === 'bn' ? 'Endpoint unavailable' : 'Endpoint unavailable');
     }
   };
 
   useEffect(() => {
     checkOllamaStatus();
     const interval = setInterval(checkOllamaStatus, 15000); // Poll status every 15s
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    const loadWorkspaceState = async () => {
-      try {
-        const memoryData: any = await neoraGet('/api/memory');
-        setRecentMemories((memoryData.memories || []).slice(0, 4));
-      } catch {
-        setRecentMemories([]);
-      }
-      try {
-        const planData: any = await neoraGet('/api/plan/active');
-        setActivePlans((planData.plans || []).slice(0, 3));
-      } catch {
-        setActivePlans([]);
-      }
-    };
-    loadWorkspaceState();
-    const interval = setInterval(loadWorkspaceState, 15000);
     return () => clearInterval(interval);
   }, []);
 
@@ -177,91 +138,15 @@ export function ChatView({
     }
   };
 
-  const submitOsCommand = async (commandText: string) => {
-    const result: any = await neoraPost('/api/os/command', { prompt: commandText });
-    setLastResult(result?.fallback
-      ? (lang === 'bn' ? `লোকাল fallback parser: ${commandText}` : `Submitted via local fallback parser: ${commandText}`)
-      : (lang === 'bn' ? `OS command submitted: ${commandText}` : `OS command submitted: ${commandText}`));
-    setStatusBanner(null);
-    return result;
-  };
-
   const handleSpeechCommand = (rawText: string) => {
-    const { normalized: normalizedTranscript, classification, isRisky } = classifyNeoraInput(rawText);
-    const lowerText = normalizedTranscript.toLowerCase();
-    const isBangla = /[\u0980-\u09FF]/.test(normalizedTranscript);
+    const lowerText = rawText.toLowerCase().trim();
+    const isBangla = /[\u0980-\u09FF]/.test(rawText);
 
     let matchedCommand = false;
     let titleToUse = '';
     let responseText = '';
 
     const currentHandlers = handlersRef.current;
-
-    if (classification === 'os-command') {
-      if (isRisky) {
-        setPendingVoiceCommand(normalizedTranscript);
-        const warning = lang === 'bn'
-          ? `ঝুঁকিপূর্ণ ভয়েস কমান্ড শনাক্ত: "${normalizedTranscript}". চালাতে আবার "হ্যাঁ চালাও" বলুন বা টেক্সট ইনপুটে নিশ্চিত করুন।`
-          : `Risky voice command detected: "${normalizedTranscript}". Say "yes, run it" again or confirm in text to continue.`;
-        setStatusBanner(warning);
-        handleSpeak(warning);
-        return;
-      }
-      matchedCommand = true;
-      const userMsg: Message = {
-        id: Math.random().toString(),
-        role: 'user',
-        content: `🎤 [OS Command]: ${normalizedTranscript}`,
-        timestamp: new Date().toLocaleTimeString(),
-        classification: 'os-command'
-      };
-      setMessages(prev => [...prev, userMsg]);
-      submitOsCommand(normalizedTranscript).then((result) => {
-        const botReply: Message = {
-          id: Math.random().toString(),
-          role: 'assistant',
-          content: result?.fallback
-            ? (lang === 'bn' ? 'অফলাইন parser ব্যবহার করে কমান্ড পাঠানো হয়েছে।' : 'Command submitted using local fallback parser.')
-            : (lang === 'bn' ? 'কমান্ড broker-এ পাঠানো হয়েছে।' : 'Command sent to the broker successfully.'),
-          timestamp: new Date().toLocaleTimeString(),
-          classification: 'os-command'
-        };
-        setMessages(prev => [...prev, botReply]);
-        handleSpeak(botReply.content);
-      }).catch((err) => {
-        const botReply: Message = {
-          id: Math.random().toString(),
-          role: 'assistant',
-          content: lang === 'bn' ? `কমান্ড পাঠানো যায়নি: ${String(err)}` : `Failed to submit command: ${String(err)}`,
-          timestamp: new Date().toLocaleTimeString(),
-          classification: 'rejected'
-        };
-        setMessages(prev => [...prev, botReply]);
-      });
-      return;
-    }
-
-    if (normalizedTranscript) {
-      const userMsg: Message = {
-        id: Math.random().toString(),
-        role: 'user',
-        content: `🎤 [Chat]: ${normalizedTranscript}`,
-        timestamp: new Date().toLocaleTimeString(),
-        classification: 'chat'
-      };
-      setMessages(prev => [...prev, userMsg]);
-      const botReply: Message = {
-        id: Math.random().toString(),
-        role: 'assistant',
-        content: lang === 'bn'
-          ? 'এটি PC command হিসেবে শনাক্ত হয়নি, তাই সাধারণ চ্যাট হিসেবে প্রক্রিয়া করা হচ্ছে।'
-          : 'This was not recognized as a PC command, so it is being processed as a normal chat message.',
-        timestamp: new Date().toLocaleTimeString(),
-        classification: 'chat'
-      };
-      setMessages(prev => [...prev, botReply]);
-      handleSpeak(botReply.content);
-    }
 
     // Create Task keywords matching
     if (
@@ -344,22 +229,19 @@ export function ChatView({
 
     if (matchedCommand) {
       setInputValue('');
-      setPendingVoiceCommand(null);
 
       const userMsg: Message = {
         id: Math.random().toString(),
         role: 'user',
         content: `🎤 [Voice Command]: ${rawText}`,
-        timestamp: new Date().toLocaleTimeString(),
-        classification: 'chat'
+        timestamp: new Date().toLocaleTimeString()
       };
 
       const botReply: Message = {
         id: Math.random().toString(),
         role: 'assistant',
         content: responseText,
-        timestamp: new Date().toLocaleTimeString(),
-        classification: 'chat'
+        timestamp: new Date().toLocaleTimeString()
       };
 
       setMessages(prev => [...prev, userMsg, botReply]);
@@ -377,7 +259,16 @@ export function ChatView({
         formData.append("language", lang);
       }
 
-      const result: any = await neoraUpload("/api/transcribe", formData);
+      const response = await fetch("/api/transcribe", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error("Whisper transcription endpoint returned error status");
+      }
+
+      const result = await response.json();
 
       if (result.status === 'api_key_missing') {
         setWhisperStatus('fallback');
@@ -390,8 +281,7 @@ export function ChatView({
           id: Math.random().toString(),
           role: 'assistant',
           content: warningContent,
-          timestamp: new Date().toLocaleTimeString(),
-          classification: 'rejected'
+          timestamp: new Date().toLocaleTimeString()
         };
         setMessages(prev => [...prev, keyWarningMsg]);
         handleSpeak(warningContent);
@@ -411,25 +301,8 @@ export function ChatView({
     } catch (e) {
       console.error("Whisper pipeline error, triggering local fallback:", e);
       setWhisperStatus('error');
-      setStatusEndpoint(e instanceof NeoraApiError ? e.endpoint : '/api/transcribe');
-      setStatusBanner(lang === 'bn' ? 'ভয়েস ট্রান্সক্রিপশন ব্যর্থ হয়েছে' : 'Voice transcription failed');
       runLocalSpeechRecognition();
     }
-  };
-
-  const confirmPendingVoiceCommand = async () => {
-    if (!pendingVoiceCommand) return;
-    const command = pendingVoiceCommand;
-    setPendingVoiceCommand(null);
-    setStatusBanner(null);
-    await submitOsCommand(command);
-    setMessages(prev => [...prev, {
-      id: Math.random().toString(),
-      role: 'assistant',
-      content: lang === 'bn' ? 'ঝুঁকিপূর্ণ কমান্ড নিশ্চিত করা হয়েছে এবং পাঠানো হয়েছে।' : 'Risky command confirmed and submitted.',
-      timestamp: new Date().toLocaleTimeString(),
-      classification: 'os-command'
-    }]);
   };
 
   // Run local web SpeechRecognition fallback
@@ -525,20 +398,27 @@ export function ChatView({
 
     setIsEnhancing(true);
     try {
-      const resData: any = await neoraPost('/api/prompt/enhance', {
-        prompt: inputValue,
-        lang: lang,
-        useOllama: useOllama,
-        selectedOllamaModel: selectedOllamaModel
+      const response = await fetch('/api/prompt/enhance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: inputValue,
+          lang: lang,
+          useOllama: useOllama,
+          selectedOllamaModel: selectedOllamaModel
+        })
       });
+
+      if (!response.ok) {
+        throw new Error('Failed to enhance prompt');
+      }
+
+      const resData = await response.json();
       if (resData.status === 'success' && resData.text) {
         setInputValue(resData.text);
       }
     } catch (err) {
       console.error('Enhance prompt error:', err);
-      const endpointLabel = err instanceof NeoraApiError ? err.endpoint : '/api/prompt/enhance';
-      setStatusEndpoint(endpointLabel);
-      setStatusBanner(lang === 'bn' ? 'প্রম্পট উন্নত করতে সমস্যা হয়েছে' : 'Failed to enhance prompt');
     } finally {
       setIsEnhancing(false);
     }
@@ -548,19 +428,11 @@ export function ChatView({
     if (!inputValue.trim() || isGenerating) return;
 
     const userText = inputValue.trim();
-    const route = classifyNeoraInput(userText);
-    const confirmText = /^(yes|confirm|run it|yes run it|হ্যাঁ|চালাও|চলুক)$/i.test(userText);
-    if (pendingVoiceCommand && confirmText) {
-      setInputValue('');
-      await confirmPendingVoiceCommand();
-      return;
-    }
     const newMsg: Message = {
       id: Math.random().toString(),
       role: 'user',
-      content: route.normalized,
-      timestamp: new Date().toLocaleTimeString(),
-      classification: route.classification
+      content: userText,
+      timestamp: new Date().toLocaleTimeString()
     };
 
     setMessages(prev => [...prev, newMsg]);
@@ -569,42 +441,6 @@ export function ChatView({
     const lowerText = userText.toLowerCase();
     const isBangla = /[\u0980-\u09FF]/.test(userText);
     const currentHandlers = handlersRef?.current;
-
-    if (route.classification === 'os-command') {
-      setIsGenerating(true);
-      try {
-        const result = await submitOsCommand(userText);
-        const botReply: Message = {
-          id: Math.random().toString(),
-          role: 'assistant',
-          content: result?.fallback
-            ? (lang === 'bn' ? 'অফলাইন parser দিয়ে কমান্ড চালু করা হয়েছে।' : 'Command launched using the local fallback parser.')
-            : (lang === 'bn' ? 'কমান্ড broker-এ সফলভাবে পাঠানো হয়েছে।' : 'Command sent to the broker successfully.'),
-          timestamp: new Date().toLocaleTimeString(),
-          classification: 'os-command'
-        };
-        setMessages(prev => [...prev, botReply]);
-        handleSpeak(botReply.content);
-        setStatusEndpoint(null);
-        setStatusBanner(null);
-        setPendingVoiceCommand(null);
-      } catch (err) {
-        const botReply: Message = {
-          id: Math.random().toString(),
-          role: 'assistant',
-          content: lang === 'bn' ? 'OS command পাঠানো যায়নি।' : 'Failed to send OS command.',
-          timestamp: new Date().toLocaleTimeString(),
-          classification: 'rejected'
-        };
-        setMessages(prev => [...prev, botReply]);
-        const endpointLabel = err instanceof NeoraApiError ? err.endpoint : '/api/os/command';
-        setStatusEndpoint(endpointLabel);
-        setStatusBanner(lang === 'bn' ? 'OS command পাঠাতে ব্যর্থ হয়েছে' : 'OS command submission failed');
-      } finally {
-        setIsGenerating(false);
-      }
-      return;
-    }
 
     // 1. Process local workspace triggers (instant scheduling)
     if (lowerText.includes('remind') || lowerText.includes('মনে করিয়ে') || lowerText.includes('রিমাইন্ডার')) {
@@ -637,13 +473,12 @@ export function ChatView({
       setIsGenerating(true);
       
       const loadingMsgId = Math.random().toString();
-        const loadingMsg: Message = {
-          id: loadingMsgId,
-          role: 'assistant',
-          content: lang === 'bn' ? `নিওরা অফলাইন ব্রেইন চিন্তাভাবনা করছে (Ollama: ${selectedOllamaModel} সক্রিয়)...` : `Neora offline brain is thinking (Ollama: ${selectedOllamaModel} Active)...`,
-          timestamp: new Date().toLocaleTimeString(),
-          classification: 'chat'
-        };
+      const loadingMsg: Message = {
+        id: loadingMsgId,
+        role: 'assistant',
+        content: lang === 'bn' ? `নিওরা অফলাইন ব্রেইন চিন্তাভাবনা করছে (Ollama: ${selectedOllamaModel} সক্রিয়)...` : `Neora offline brain is thinking (Ollama: ${selectedOllamaModel} Active)...`,
+        timestamp: new Date().toLocaleTimeString()
+      };
       setMessages(prev => [...prev, loadingMsg]);
 
       // Define local fallback helper for Ollama errors
@@ -682,11 +517,23 @@ export function ChatView({
       try {
         const recentHistory = [...messages, newMsg].slice(-8);
         
-        const resData: any = await neoraPost('/api/chat-ollama', {
-          messages: recentHistory,
-          model: selectedOllamaModel,
-          lang: lang
+        const response = await fetch('/api/chat-ollama', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            messages: recentHistory,
+            model: selectedOllamaModel,
+            lang: lang
+          })
         });
+
+        if (!response.ok) {
+          throw new Error('Ollama API request failed');
+        }
+
+        const resData = await response.json();
         
         if (resData.status === 'success' && resData.text) {
           const contentText = resData.text;
@@ -764,12 +611,24 @@ export function ChatView({
       try {
         const recentHistory = [...messages, newMsg].slice(-8);
         
-        const resData: any = await neoraPost('/api/chat-groq', {
-          messages: recentHistory,
-          model: groqModel,
-          key: groqKey,
-          lang: lang
+        const response = await fetch('/api/chat-groq', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            messages: recentHistory,
+            model: groqModel,
+            key: groqKey,
+            lang: lang
+          })
         });
+
+        if (!response.ok) {
+          throw new Error('Groq connection error');
+        }
+
+        const resData = await response.json();
         
         if (resData.status === 'api_key_missing') {
           setMessages(prev => prev.filter(m => m.id !== loadingMsgId));
@@ -791,17 +650,11 @@ export function ChatView({
             timestamp: new Date().toLocaleTimeString()
           }));
           handleSpeak(contentText);
-          setLastResult(contentText);
-          setStatusEndpoint(null);
-          setStatusBanner(null);
         } else {
           throw new Error('Invalid response payload from Groq');
         }
       } catch (err) {
         console.error('Groq live engine error, fallback triggered:', err);
-        const endpointLabel = err instanceof NeoraApiError ? err.endpoint : '/api/chat-groq';
-        setStatusEndpoint(endpointLabel);
-        setStatusBanner(lang === 'bn' ? 'Groq সংযোগ ব্যর্থ' : 'Groq connection failed');
         runLocalPresetFallback();
       } finally {
         setIsGenerating(false);
@@ -877,10 +730,22 @@ export function ChatView({
 
       try {
         const recentHistory = [...messages, newMsg].slice(-8);
-        const resData: any = await neoraPost('/api/chat-gemini', {
-          messages: recentHistory,
-          lang: lang
+        const response = await fetch('/api/chat-gemini', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            messages: recentHistory,
+            lang: lang
+          })
         });
+
+        if (!response.ok) {
+          throw new Error('Gemini connection error');
+        }
+
+        const resData = await response.json();
         
         if (resData.status === 'api_key_missing') {
           runLocalPresetFallback();
@@ -897,17 +762,11 @@ export function ChatView({
             timestamp: new Date().toLocaleTimeString()
           }));
           handleSpeak(resData.text);
-          setLastResult(resData.text);
-          setStatusEndpoint(null);
-          setStatusBanner(null);
         } else {
           throw new Error('Invalid response payload');
         }
       } catch (err) {
         console.error('Gemini live engine error, fallback triggered:', err);
-        const endpointLabel = err instanceof NeoraApiError ? err.endpoint : '/api/chat-gemini';
-        setStatusEndpoint(endpointLabel);
-        setStatusBanner(lang === 'bn' ? 'Gemini সংযোগ ব্যর্থ' : 'Gemini connection failed');
         runLocalPresetFallback();
       } finally {
         setIsGenerating(false);
@@ -928,7 +787,7 @@ export function ChatView({
   };
 
   return (
-    <div id="chat-section" className="flex-1 flex flex-col h-full bg-slate-950 text-slate-100 border-r border-slate-900 overflow-hidden relative panel-surface">
+    <div id="chat-section" className="flex-1 flex flex-col h-full bg-slate-950 text-slate-100 border-r border-slate-900 overflow-hidden relative">
       {/* Immersive Holographic Speech Active Overlay */}
       {isListening && (
         <div id="speech-overlay-portal" className="absolute inset-0 bg-slate-950/90 backdrop-blur-md z-40 flex flex-col items-center justify-center text-center p-6 animate-fade-in select-none">
@@ -1036,7 +895,7 @@ export function ChatView({
 
       {/* Groq Settings panel */}
       {showSettings && (
-      <div className="p-4 bg-slate-900/80 border-b border-indigo-950/45 space-y-3 animate-fade-in text-xs font-mono transition-all panel-surface-strong">
+        <div className="p-4 bg-slate-900 border-b border-indigo-950/45 space-y-3 animate-fade-in text-xs font-mono transition-all">
           <div className="flex items-center justify-between">
             <span className="text-white font-bold uppercase text-[10px] tracking-wider text-indigo-400 flex items-center gap-1.5">
               <Cpu className="w-4 h-4 text-indigo-400" />
@@ -1324,13 +1183,6 @@ export function ChatView({
           <div className="max-w-3xl mx-auto space-y-6">
             {messages.map((m) => {
               const isBot = m.role === 'assistant';
-              const classificationLabel = m.classification || (m.content.includes('[OS Command]') ? 'os-command' : 'chat');
-              const classificationClass =
-                classificationLabel === 'os-command'
-                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                  : classificationLabel === 'rejected'
-                    ? 'bg-red-500/10 text-red-400 border-red-500/20'
-                    : 'bg-slate-500/10 text-slate-400 border-slate-500/20';
               return (
                 <div
                   key={m.id}
@@ -1354,11 +1206,6 @@ export function ChatView({
                         ? (useGroq ? `Neora AI (${groqModel.split('-')[0].toUpperCase()} - Groq Client)` : 'Neora AI (Gemini Core)') 
                         : (lang === 'bn' ? 'আপনি (শুকরিয়া প্রিন্টার্স)' : 'You (Shukria Printers)')}
                     </span>
-                    {showMessageBadges && (
-                      <span className={`inline-flex px-2 py-0.5 rounded text-[8px] font-mono font-bold uppercase border mb-2 ${classificationClass}`}>
-                        {classificationLabel}
-                      </span>
-                    )}
                     
                     <div className={`p-4 rounded-2xl text-xs sm:text-sm leading-relaxed whitespace-pre-line shadow-sm border ${
                       isBot 
@@ -1413,17 +1260,8 @@ export function ChatView({
 
       {/* Gemini Floating Pill Input bar */}
       <div className="p-4 bg-slate-950 border-t border-slate-900 shrink-0">
-          <div className="max-w-3xl mx-auto">
-            <div className="flex justify-end mb-2">
-              <button
-                type="button"
-                onClick={() => setShowMessageBadges(prev => !prev)}
-                className="text-[9px] px-2.5 py-1 rounded-full border border-slate-800 bg-slate-900/70 text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition"
-              >
-                {showMessageBadges ? 'Hide badges' : 'Show badges'}
-              </button>
-            </div>
-            {(isListening || whisperStatus === 'transcribing') && (
+        <div className="max-w-3xl mx-auto">
+          {(isListening || whisperStatus === 'transcribing') && (
             <div id="mic-active-badge" className={`mb-3.5 flex items-center justify-between border p-2.5 rounded-xl text-xs animate-pulse select-none ${
               whisperStatus === 'transcribing'
                 ? 'bg-indigo-950/40 border-indigo-500/30 text-indigo-400'
@@ -1458,93 +1296,6 @@ export function ChatView({
           )}
           
           {/* Beautiful Outer Glow Floating Pill Container */}
-          {(statusBanner || lastResult) && (
-            <div className="mb-3 space-y-2">
-              {statusBanner && (
-                <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[10px] text-amber-200 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span>{statusBanner}</span>
-                    {statusEndpoint && (
-                      <span className="px-2 py-0.5 rounded text-[8px] font-mono font-bold uppercase border border-amber-400/30 bg-slate-950/40 text-amber-100">
-                        {statusEndpoint}
-                      </span>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setStatusBanner(null)}
-                    className="text-[9px] font-mono uppercase text-amber-100/80 hover:text-white"
-                  >
-                    dismiss
-                  </button>
-                </div>
-              )}
-              {lastResult && (
-                <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 px-3 py-2 text-[10px] text-cyan-100">
-                  <span className="font-mono uppercase text-cyan-300 mr-2">Last Result</span>
-                  <span>{lastResult}</span>
-                </div>
-              )}
-            </div>
-          )}
-
-          {(pendingVoiceCommand || recentMemories.length > 0 || activePlans.length > 0) && (
-            <div className="mb-3 grid grid-cols-1 lg:grid-cols-3 gap-2 text-[10px]">
-              {pendingVoiceCommand && (
-                <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-amber-100">
-                  <div className="font-mono uppercase text-amber-300 mb-1">Voice Confirm</div>
-                  <div className="mb-2">{pendingVoiceCommand}</div>
-                  <button
-                    type="button"
-                    onClick={confirmPendingVoiceCommand}
-                    className="px-2 py-1 rounded bg-amber-500/20 border border-amber-400/30 text-amber-100 font-bold uppercase"
-                  >
-                    {lang === 'bn' ? 'হ্যাঁ, চালাও' : 'Yes, run it'}
-                  </button>
-                </div>
-              )}
-              {recentMemories.length > 0 && (
-                <div className="rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-2 text-slate-200">
-                  <div className="font-mono uppercase text-cyan-300 mb-1">Recent Memories</div>
-                  <div className="space-y-1">
-                    {recentMemories.map((memory) => (
-                      <div key={memory.id} className="flex items-start justify-between gap-2">
-                        <span className="text-slate-300">{memory.key}</span>
-                        <span className="text-slate-500 text-[9px]">{memory.category}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {activePlans.length > 0 && (
-                <div className="rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-2 text-slate-200">
-                  <div className="font-mono uppercase text-cyan-300 mb-1">Active Plans</div>
-                  <div className="space-y-1">
-                    {activePlans.map((plan) => (
-                      <div key={plan.id} className="flex items-start justify-between gap-2">
-                        <span className="text-slate-300 truncate">{plan.goal}</span>
-                        <span className="text-slate-500 text-[9px]">{plan.status}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="flex items-center justify-between mb-2">
-            <span className={`px-2 py-0.5 rounded text-[8px] font-mono font-bold uppercase border ${healthChipClass}`}>
-              {healthState === 'healthy'
-                ? 'healthy /api/health'
-                : healthState === 'degraded'
-                  ? `degraded ${statusEndpoint || '/api/health'}`
-                  : `offline ${statusEndpoint || '/api/health'}`}
-            </span>
-            <span className="text-[9px] font-mono text-slate-500">
-              {healthState === 'healthy' ? '/api/health' : (statusEndpoint || '/api/health')}
-            </span>
-          </div>
-
           <div className="flex items-center gap-2 bg-slate-900/70 border border-slate-800/90 rounded-full py-1.5 pl-4 pr-1.5 focus-within:border-cyan-500/50 shadow-[0_4px_24px_rgba(0,0,0,0.5)] focus-within:shadow-[0_0_24px_rgba(6,182,212,0.1)] transition-all">
             <input
               id="chat-input"

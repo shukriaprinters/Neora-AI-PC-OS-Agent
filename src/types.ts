@@ -75,7 +75,6 @@ export interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: string;
-  classification?: 'chat' | 'os-command' | 'rejected';
 }
 
 export interface PlanStep {

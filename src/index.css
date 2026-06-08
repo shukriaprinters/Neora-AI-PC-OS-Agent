@@ -6,17 +6,6 @@
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 }
 
-:root {
-  color-scheme: dark;
-  --neora-bg: #030305;
-  --neora-surface: rgba(2, 6, 23, 0.72);
-  --neora-surface-strong: rgba(2, 6, 23, 0.88);
-  --neora-text: #ffffff;
-  --neora-text-secondary: rgba(255, 255, 255, 0.6);
-  --neora-accent: #8b5cf6;
-  --neora-accent-2: #06b6d4;
-}
-
 /* Custom Scrollbars global overrides */
 ::-webkit-scrollbar {
   width: 7px;
@@ -48,8 +37,8 @@
 /* Custom Print Configuration Stylesheet for invoice exporting */
 @media print {
   body {
-  background-color: white !important;
-  color: black !important;
+    background-color: white !important;
+    color: black !important;
   }
   
   /* Hide every single layout item except the printed paper target */
@@ -90,21 +79,6 @@
     background-color: transparent !important;
     color: black !important;
   }
-}
-
-body {
-  background:
-    radial-gradient(circle at top left, rgba(6,182,212,0.12), transparent 28%),
-    radial-gradient(circle at top right, rgba(168,85,247,0.08), transparent 24%),
-    linear-gradient(180deg, #020617 0%, #020617 40%, #0f172a 100%);
-  color: #e2e8f0;
-  background-color: #020617;
-}
-
-body, #root {
-  min-height: 100vh;
-  background-color: var(--neora-bg);
-  color: var(--neora-text);
 }
 
 /* --- Global Holographic & Tech-Architect Aesthetic Layers --- */
@@ -166,28 +140,11 @@ body, #root {
 
 /* Glassmorphism blur styling class of professional precision */
 .glass-architect {
-  background: rgba(2, 6, 23, 0.72) !important;
-  backdrop-filter: blur(18px) saturate(145%) !important;
-  -webkit-backdrop-filter: blur(18px) saturate(145%) !important;
+  background: rgba(15, 23, 42, 0.6) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
   border: 1px solid rgba(6, 182, 212, 0.12) !important;
-  box-shadow:
-    0 20px 60px rgba(0, 0, 0, 0.35),
-    inset 0 1px 0 rgba(255, 255, 255, 0.02) !important;
-}
-
-.panel-surface {
-  background: rgba(2, 6, 23, 0.66);
-  border: 1px solid rgba(148, 163, 184, 0.12);
-  backdrop-filter: blur(16px) saturate(140%);
-  -webkit-backdrop-filter: blur(16px) saturate(140%);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.24);
-}
-
-.panel-surface-strong {
-  background: linear-gradient(180deg, rgba(2, 6, 23, 0.88), rgba(15, 23, 42, 0.72));
-  border: 1px solid rgba(6, 182, 212, 0.10);
-  backdrop-filter: blur(18px) saturate(145%);
-  -webkit-backdrop-filter: blur(18px) saturate(145%);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3) !important;
 }
 
 /* Active audio visualizer styling elements for speech dictated feedback */

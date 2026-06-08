@@ -1,11 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Laptop, Play, Terminal, Power, RefreshCw, Copy, Check, Download, 
-  HelpCircle, Volume2, Mic, AlertCircle, Eye, Settings, FileText, Activity, RotateCcw, XCircle
+  HelpCircle, Volume2, Mic, AlertCircle, Eye, Settings, FileText, Activity
 } from 'lucide-react';
 import { copyToClipboardFailsafe } from '../utils/clipboard';
-import { classifyNeoraInput } from '../lib/neoraCommand';
-import { NeoraApiError, neoraGet, neoraPost } from '../lib/neoraApi';
 
 interface OsAgentViewProps {
   lang: 'en' | 'bn';
@@ -22,9 +20,7 @@ interface CommandItem {
   actions: CommandAction[];
   status: 'pending' | 'running' | 'completed' | 'failed';
   timestamp: string;
-  classification?: 'chat' | 'os-command' | 'rejected';
   result?: string;
-  retryCount?: number;
 }
 
 interface HistoryItem {
@@ -33,9 +29,7 @@ interface HistoryItem {
   timestamp: string;
   status: 'completed' | 'failed';
   actionsCount: number;
-  classification?: 'chat' | 'os-command' | 'rejected';
   result?: string;
-  retryCount?: number;
 }
 
 export function OsAgentView({ lang }: OsAgentViewProps) {
@@ -43,17 +37,9 @@ export function OsAgentView({ lang }: OsAgentViewProps) {
   const [token, setToken] = useState<string>('NEORA-X7-AGENT');
   const [lastPing, setLastPing] = useState<string | null>(null);
   const [currentScreenshot, setCurrentScreenshot] = useState<string | null>(null);
-  const [recoveryAutoSaveAt, setRecoveryAutoSaveAt] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [queue, setQueue] = useState<CommandItem[]>([]);
   const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [recentMemories, setRecentMemories] = useState<any[]>([]);
-  const [activePlans, setActivePlans] = useState<any[]>([]);
-  const [statusBanner, setStatusBanner] = useState<string | null>(null);
-  const [statusEndpoint, setStatusEndpoint] = useState<string | null>(null);
-  const [lastResult, setLastResult] = useState<string | null>(null);
-  const [watchdogNote, setWatchdogNote] = useState<string | null>(null);
-  const [selectedItem, setSelectedItem] = useState<CommandItem | HistoryItem | null>(null);
   
   const [prompt, setPrompt] = useState<string>('');
   const [isCompiling, setIsCompiling] = useState<boolean>(false);
@@ -64,71 +50,31 @@ export function OsAgentView({ lang }: OsAgentViewProps) {
   
   const consoleEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
-  const getClassificationLabel = (value?: string) => value || 'chat';
-  const healthState = status === 'online'
-    ? 'healthy'
-    : statusEndpoint
-      ? 'offline'
-      : statusBanner
-        ? 'degraded'
-        : 'degraded';
-  const healthChipClass =
-    healthState === 'healthy'
-      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-      : healthState === 'degraded'
-        ? 'bg-amber-500/10 text-amber-300 border-amber-500/20'
-        : 'bg-red-500/10 text-red-400 border-red-500/20';
 
   // Fetch agent status from the Express backend
   const fetchAgentStatus = async () => {
     try {
-      const data: any = await neoraGet('/api/os/status');
+      const res = await fetch('/api/os/status');
+      if (!res.ok) throw new Error('Failed to fetch status');
+      const data = await res.json();
       
       setStatus(data.status);
       setToken(data.token);
       setLastPing(data.lastPing);
       setCurrentScreenshot(data.currentScreenshot);
-      setRecoveryAutoSaveAt(data.recoveryAutoSaveAt || null);
       setLogs(data.logs || []);
       setQueue(data.queue || []);
       setHistory(data.history || []);
-      const staleRunning = (data.queue || []).some((item: CommandItem) => item.status === 'running');
-      setWatchdogNote(staleRunning ? (lang === 'bn' ? 'ওয়াচডগ সক্রিয়: চলমান কমান্ড পর্যবেক্ষণ করছে' : 'Watchdog active: monitoring running commands') : null);
     } catch (err) {
       console.error('Error fetching OS Agent status:', err);
-      const endpointLabel = err instanceof NeoraApiError ? err.endpoint : '/api/os/status';
-      setStatusEndpoint(endpointLabel);
-      setStatusBanner(lang === 'bn'
-        ? `ব্রোকার সমস্যা: ${endpointLabel}`
-        : `Broker issue: ${endpointLabel}`);
-    }
-  };
-
-  const fetchWorkspaceState = async () => {
-    try {
-      const memoryData: any = await neoraGet('/api/memory');
-      setRecentMemories((memoryData.memories || []).slice(0, 4));
-    } catch {
-      setRecentMemories([]);
-    }
-    try {
-      const planData: any = await neoraGet('/api/plan/active');
-      setActivePlans((planData.plans || []).slice(0, 3));
-    } catch {
-      setActivePlans([]);
     }
   };
 
   // Poll status every 3 seconds to keep UI completely synchronized
   useEffect(() => {
     fetchAgentStatus();
-    fetchWorkspaceState();
     const interval = setInterval(fetchAgentStatus, 3000);
-    const workspaceInterval = setInterval(fetchWorkspaceState, 15000);
-    return () => {
-      clearInterval(interval);
-      clearInterval(workspaceInterval);
-    };
+    return () => clearInterval(interval);
   }, []);
 
   // Auto scroll terminal logs to bottom when they update
@@ -139,52 +85,37 @@ export function OsAgentView({ lang }: OsAgentViewProps) {
   }, [logs]);
 
   // Submit human voice/text command to server
-  const handleSendCommand = async (e?: React.FormEvent, overridePrompt?: string) => {
+  const handleSendCommand = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    const route = classifyNeoraInput(overridePrompt ?? prompt);
-    const effectivePrompt = route.normalized;
-    if (!effectivePrompt || isCompiling) return;
-
-    if (overridePrompt && route.classification !== 'os-command') {
-      setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Voice input was treated as a normal chat phrase, not an OS command.`]);
-      setStatusBanner(lang === 'bn' ? 'ভয়েস ইনপুটটি OS command নয়; chat হিসেবে রাখা হয়েছে।' : 'Voice input was not an OS command; it was kept as chat.');
-      setStatusEndpoint(null);
-      return;
-    }
-
-    if (overridePrompt && route.isRisky) {
-      setStatusBanner(lang === 'bn'
-        ? `ঝুঁকিপূর্ণ কমান্ড: "${effectivePrompt}"। টেক্সট দিয়ে নিশ্চিত করুন।`
-        : `Risky command: "${effectivePrompt}". Confirm in text to continue.`);
-      setStatusEndpoint(null);
-      return;
-    }
+    if (!prompt.trim() || isCompiling) return;
 
     setIsCompiling(true);
     // Add temporary local log preview
-    setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Submitting control request: "${effectivePrompt}"...`]);
+    setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Submitting control request: "${prompt}"...`]);
 
     try {
-      const resData: any = await neoraPost('/api/os/command', { prompt: effectivePrompt, token });
+      const response = await fetch('/api/os/command', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ prompt, token })
+      });
+
+      if (!response.ok) {
+        throw new Error('Broker connection failed');
+      }
+
+      const resData = await response.json();
       if (resData.status === 'success') {
         setPrompt('');
         fetchAgentStatus();
-        setLastResult(resData?.command?.prompt ? `Submitted: ${resData.command.prompt}` : `Submitted: ${effectivePrompt}`);
-        setStatusEndpoint(null);
-        setStatusBanner(null);
       } else {
         setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Error: ${resData.error || 'Compilation abort'}`]);
-        setStatusEndpoint('/api/os/command');
-        setStatusBanner(lang === 'bn' ? 'কমান্ড কম্পাইল হয়নি' : 'Command compilation failed');
       }
     } catch (err) {
       console.error('Error submitting OS command:', err);
       setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Connection error: Unable to connect to broker server.`]);
-      const endpointLabel = err instanceof NeoraApiError ? err.endpoint : '/api/os/command';
-      setStatusEndpoint(endpointLabel);
-      setStatusBanner(lang === 'bn'
-        ? 'ব্রোকারের সাথে সংযোগ ব্যর্থ হয়েছে'
-        : 'Could not connect to broker');
     } finally {
       setIsCompiling(false);
     }
@@ -203,46 +134,10 @@ export function OsAgentView({ lang }: OsAgentViewProps) {
   // Clear system console log queue
   const handleClearTerminal = async () => {
     try {
-      await neoraPost('/api/os/clear', {});
-      setStatusBanner(null);
-      setStatusEndpoint(null);
-      setLastResult(null);
+      await fetch('/api/os/clear', { method: 'POST' });
       fetchAgentStatus();
     } catch (err) {
       console.error(err);
-    }
-  };
-
-  const handleRetryCommand = async (commandId: string) => {
-    try {
-      await neoraPost(`/api/os/retry/${commandId}`, {});
-      await fetchAgentStatus();
-    } catch (err) {
-      setStatusBanner(lang === 'bn' ? 'রিট্রাই পাঠানো যায়নি' : 'Failed to queue retry');
-    }
-  };
-
-  const handleCancelCommand = async (commandId: string) => {
-    try {
-      await neoraPost(`/api/os/cancel/${commandId}`, {});
-      await fetchAgentStatus();
-    } catch (err) {
-      setStatusBanner(lang === 'bn' ? 'কমান্ড বাতিল করা যায়নি' : 'Failed to cancel command');
-    }
-  };
-
-  const handleRerunLastFailed = async () => {
-    const lastFailed = history.slice().reverse().find((item) => item.status === 'failed');
-    if (!lastFailed) {
-      setStatusBanner(lang === 'bn' ? 'কোনো failed history পাওয়া যায়নি' : 'No failed history found');
-      return;
-    }
-    try {
-      await neoraPost(`/api/os/rerun-failed/${lastFailed.id}`, {});
-      await fetchAgentStatus();
-      setStatusBanner(lang === 'bn' ? 'শেষ failed command পুনরায় queue করা হয়েছে' : 'Last failed command re-queued');
-    } catch {
-      setStatusBanner(lang === 'bn' ? 'পুনরায় চালাতে ব্যর্থ' : 'Failed to rerun failed command');
     }
   };
 
@@ -287,7 +182,6 @@ export function OsAgentView({ lang }: OsAgentViewProps) {
       const transcript = event.results[0][0].transcript;
       if (transcript) {
         setPrompt(transcript);
-        handleSendCommand(undefined, transcript);
       }
     };
 
@@ -649,9 +543,9 @@ while True:
   };
 
   return (
-    <div id="os-agent-root" className="flex-1 flex flex-col h-full overflow-hidden bg-slate-950 panel-surface">
+    <div id="os-agent-root" className="flex-1 flex flex-col h-full overflow-hidden bg-slate-950">
       {/* View Header Bar */}
-      <div className="border-b border-slate-900 bg-slate-950/90 px-6 py-4 flex items-center justify-between shrink-0 panel-surface-strong">
+      <div className="border-b border-slate-900 bg-slate-950 px-6 py-4 flex items-center justify-between shrink-0">
         <div>
           <div className="flex items-center gap-2">
             <Laptop className="w-5 h-5 text-cyan-400" />
@@ -669,27 +563,6 @@ while True:
                 {lang === 'bn' ? 'অফলাইন' : 'OFFLINE'}
               </span>
             )}
-            <span className={`ml-1 px-2 py-0.5 rounded text-[8px] font-mono font-bold uppercase border ${
-              healthState === 'healthy' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : healthState === 'degraded' ? 'bg-amber-500/10 text-amber-300 border-amber-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'
-            }`}>
-              {healthState === 'healthy'
-                ? 'healthy /api/os/status'
-                : healthState === 'degraded'
-                  ? `degraded ${statusEndpoint || '/api/os/status'}`
-                  : `offline ${statusEndpoint || '/api/os/status'}`}
-            </span>
-            {watchdogNote && (
-              <span className="ml-1 px-2 py-0.5 rounded text-[8px] font-mono font-bold uppercase border bg-cyan-500/10 text-cyan-300 border-cyan-500/20">
-                {watchdogNote}
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={handleRerunLastFailed}
-              className="ml-2 px-2 py-0.5 rounded text-[8px] font-mono font-bold uppercase border bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800"
-            >
-              {lang === 'bn' ? 'শেষ failed পুনরায় চালাও' : 'Rerun last failed'}
-            </button>
           </div>
           <p className="text-xs text-slate-400 mt-1">
             {lang === 'bn' 
@@ -756,12 +629,6 @@ while True:
               <div className="mt-3 text-[10px] font-mono text-slate-500 flex justify-between">
                 <span>{lang === 'bn' ? 'শেষ খোঁজ পাওয়া গেছে:' : 'Last Ping Received:'}</span>
                 <span className="text-cyan-500/80">{new Date(lastPing).toLocaleTimeString()}</span>
-              </div>
-            )}
-            {recoveryAutoSaveAt && (
-              <div className="mt-1 text-[10px] font-mono text-emerald-500 flex justify-between">
-                <span>{lang === 'bn' ? 'শেষ অটো-সেভ:' : 'Last Auto-save:'}</span>
-                <span className="text-emerald-400">{new Date(recoveryAutoSaveAt).toLocaleTimeString()}</span>
               </div>
             )}
           </div>
@@ -855,46 +722,16 @@ while True:
                   </div>
                 ) : (
                   queue.map((q) => (
-                      <div key={q.id} onClick={() => setSelectedItem(q)} className={`bg-slate-900/60 border rounded-lg p-2.5 flex items-center justify-between cursor-pointer ${selectedItem?.id === q.id ? 'border-cyan-500/40' : 'border-slate-850'}`}>
-                        <div className="truncate pr-2">
-                          <p className="text-xs text-white truncate max-w-[260px]">{q.prompt}</p>
-                          <p className="text-[9px] text-slate-400 mt-0.5 font-mono">{q.timestamp} | {q.actions?.length || 0} Actions</p>
-                          {q.retryCount ? <p className="text-[9px] text-amber-400 mt-0.5 font-mono">retry #{q.retryCount}</p> : null}
-                        </div>
-                      <div className="flex flex-col items-end gap-1 shrink-0">
-                        <span className={`px-2 py-0.5 text-[8px] font-mono font-bold rounded uppercase select-none border ${
-                          q.status === 'running' ? 'bg-cyan-500/15 text-cyan-400 border-cyan-500/20 animate-pulse' : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                        }`}>
-                          {q.status}
-                        </span>
-                        <span className={`px-2 py-0.5 text-[8px] font-mono font-bold rounded uppercase select-none border ${
-                          getClassificationLabel(q.classification) === 'os-command'
-                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                            : getClassificationLabel(q.classification) === 'rejected'
-                              ? 'bg-red-500/10 text-red-400 border-red-500/20'
-                              : 'bg-slate-500/10 text-slate-400 border-slate-500/20'
-                        }`}>
-                          {getClassificationLabel(q.classification)}
-                        </span>
-                        <div className="mt-1 flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => handleRetryCommand(q.id)}
-                            className="px-1.5 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 text-[8px] font-bold uppercase"
-                          >
-                            <RotateCcw className="w-3 h-3 inline mr-1" />
-                            retry
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleCancelCommand(q.id)}
-                            className="px-1.5 py-0.5 rounded bg-rose-500/10 border border-rose-500/20 text-rose-300 text-[8px] font-bold uppercase"
-                          >
-                            <XCircle className="w-3 h-3 inline mr-1" />
-                            cancel
-                          </button>
-                        </div>
+                    <div key={q.id} className="bg-slate-900/60 border border-slate-850 rounded-lg p-2.5 flex items-center justify-between">
+                      <div className="truncate pr-2">
+                        <p className="text-xs text-white truncate max-w-[260px]">{q.prompt}</p>
+                        <p className="text-[9px] text-slate-400 mt-0.5 font-mono">{q.timestamp} | {q.actions?.length || 0} Actions</p>
                       </div>
+                      <span className={`px-2 py-0.5 text-[8px] font-mono font-bold rounded shrink-0 uppercase select-none ${
+                        q.status === 'running' ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/20 animate-pulse' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                      }`}>
+                        {q.status}
+                      </span>
                     </div>
                   ))
                 )}
@@ -906,35 +743,6 @@ while True:
 
         {/* Right Main Viewing Area - Context Switching */}
         <div className="flex-1 flex flex-col min-h-0 lg:overflow-hidden bg-slate-950">
-          {(statusBanner || lastResult) && (
-            <div className="px-6 pt-5">
-              {statusBanner && (
-                <div className="mb-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[10px] text-amber-200 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span>{statusBanner}</span>
-                    {(statusBanner.includes('/api/') || statusBanner.includes('endpoint')) && (
-                      <span className="px-2 py-0.5 rounded text-[8px] font-mono font-bold uppercase border border-amber-400/30 bg-slate-950/40 text-amber-100">
-                        {statusBanner.includes('/api/') ? statusBanner.match(/\/api\/[A-Za-z0-9\-\/]+/)?.[0] || 'endpoint' : 'endpoint'}
-                      </span>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setStatusBanner(null)}
-                    className="text-[9px] font-mono uppercase text-amber-100/80 hover:text-white"
-                  >
-                    dismiss
-                  </button>
-                </div>
-              )}
-              {lastResult && (
-                <div className="mb-3 rounded-xl border border-cyan-500/20 bg-cyan-500/10 px-3 py-2 text-[10px] text-cyan-100">
-                  <span className="font-mono uppercase text-cyan-300 mr-2">Last Result</span>
-                  <span>{lastResult}</span>
-                </div>
-              )}
-            </div>
-          )}
           
           {/* VIEW: Agent Monitor (Screenshots scaled view) */}
           {viewMode === 'monitor' && (
@@ -1003,42 +811,25 @@ while True:
                 <h3 className="text-xs font-bold text-slate-300 uppercase tracking-widest mb-3">
                   {lang === 'bn' ? 'সম্পন্ন কাজের ইতিহাস' : 'Recent Operations Run'}
                 </h3>
-                <div className="flex items-center gap-1.5 mb-3 flex-wrap">
-                  <span className="px-2 py-0.5 rounded text-[8px] font-mono font-bold uppercase border bg-emerald-500/10 text-emerald-400 border-emerald-500/20">os-command</span>
-                  <span className="px-2 py-0.5 rounded text-[8px] font-mono font-bold uppercase border bg-slate-500/10 text-slate-400 border-slate-500/20">chat</span>
-                  <span className="px-2 py-0.5 rounded text-[8px] font-mono font-bold uppercase border bg-red-500/10 text-red-400 border-red-500/20">rejected</span>
-                </div>
-              <div className="flex-1 overflow-y-auto space-y-2.5 max-h-[460px] pr-1">
+                <div className="flex-1 overflow-y-auto space-y-2.5 max-h-[460px] pr-1">
                   {history.length === 0 ? (
                     <div className="border border-dashed border-slate-900 rounded-xl h-[120px] flex items-center justify-center text-center p-4">
                       <p className="text-xs text-slate-600 font-bold">{lang === 'bn' ? 'কোনো পূর্ববর্তী ইতিহাস নেই' : 'No execution history yet'}</p>
                     </div>
                   ) : (
                     history.slice().reverse().map((h) => (
-                      <div key={h.id} onClick={() => setSelectedItem(h)} className={`bg-slate-900/40 border rounded-xl p-3 flex flex-col justify-between cursor-pointer ${selectedItem?.id === h.id ? 'border-cyan-500/40' : 'border-slate-900'}`}>
+                      <div key={h.id} className="bg-slate-900/40 border border-slate-900 rounded-xl p-3 flex flex-col justify-between">
                         <div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-[9px] font-mono text-slate-500 uppercase">{h.id}</span>
-                            <div className="flex items-center gap-1.5">
-                              <span className={`px-1.5 py-0.2 rounded text-[8px] font-mono font-bold uppercase ${
-                                h.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
-                              }`}>
-                                {h.status}
-                              </span>
-                              <span className={`px-1.5 py-0.2 rounded text-[8px] font-mono font-bold uppercase border ${
-                                getClassificationLabel(h.classification) === 'os-command'
-                                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                                  : getClassificationLabel(h.classification) === 'rejected'
-                                    ? 'bg-red-500/10 text-red-400 border-red-500/20'
-                                    : 'bg-slate-500/10 text-slate-400 border-slate-500/20'
-                              }`}>
-                                {getClassificationLabel(h.classification)}
-                              </span>
-                            </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[9px] font-mono text-slate-500 uppercase">{h.id}</span>
+                            <span className={`px-1.5 py-0.2 rounded text-[8px] font-mono font-bold uppercase ${
+                              h.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
+                            }`}>
+                              {h.status}
+                            </span>
                           </div>
                           <p className="text-xs text-slate-200 font-bold mt-1.5 line-clamp-2">{h.prompt}</p>
                           <p className="text-[10px] text-slate-400 font-mono mt-1 pr-1">{h.result}</p>
-                          {h.retryCount ? <p className="text-[9px] text-amber-400 mt-1 font-mono">retry #{h.retryCount}</p> : null}
                         </div>
                         <div className="border-t border-slate-900/50 mt-2 pt-2 text-[8px] font-mono text-slate-500 flex justify-between">
                           <span>{h.actionsCount} OS actions</span>
@@ -1049,68 +840,6 @@ while True:
                   )}
                 </div>
               </div>
-
-              {(recentMemories.length > 0 || activePlans.length > 0) && (
-                <div className="mt-4 grid grid-cols-1 gap-3">
-                  {recentMemories.length > 0 && (
-                    <div className="rounded-xl border border-slate-900 bg-slate-900/40 p-3">
-                      <h4 className="text-[10px] font-bold uppercase tracking-widest text-cyan-300 mb-2">Recent Memories</h4>
-                      <div className="space-y-2 text-[10px]">
-                        {recentMemories.map((memory) => (
-                          <div key={memory.id} className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <div className="text-slate-200 font-semibold truncate">{memory.key}</div>
-                              <div className="text-slate-400 truncate">{memory.value}</div>
-                            </div>
-                            <span className="text-slate-500 uppercase shrink-0">{memory.category}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {activePlans.length > 0 && (
-                    <div className="rounded-xl border border-slate-900 bg-slate-900/40 p-3">
-                      <h4 className="text-[10px] font-bold uppercase tracking-widest text-cyan-300 mb-2">Active Plans</h4>
-                      <div className="space-y-2 text-[10px]">
-                        {activePlans.map((plan) => (
-                          <div key={plan.id} className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <div className="text-slate-200 font-semibold truncate">{plan.goal}</div>
-                              <div className="text-slate-400">{Array.isArray(plan.steps) ? `${plan.steps.length} steps` : 'plan'}</div>
-                            </div>
-                            <span className="text-slate-500 uppercase shrink-0">{plan.status}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {selectedItem && (
-                <div className="mt-4 rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4 text-xs">
-                  <div className="flex items-center justify-between gap-2 mb-2">
-                    <h4 className="font-bold text-cyan-300 uppercase tracking-widest">
-                      {lang === 'bn' ? 'কমান্ড বিস্তারিত' : 'Command Detail'}
-                    </h4>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedItem(null)}
-                      className="text-[10px] font-mono uppercase text-slate-400 hover:text-white"
-                    >
-                      close
-                    </button>
-                  </div>
-                  <div className="space-y-1 text-slate-300">
-                    <div><span className="text-slate-500">ID:</span> {selectedItem.id}</div>
-                    <div><span className="text-slate-500">Prompt:</span> {selectedItem.prompt}</div>
-                    <div><span className="text-slate-500">Status:</span> {selectedItem.status}</div>
-                    <div><span className="text-slate-500">Classification:</span> {getClassificationLabel(selectedItem.classification)}</div>
-                    <div><span className="text-slate-500">Retry:</span> {(selectedItem as any).retryCount || 0}</div>
-                    <div><span className="text-slate-500">Result:</span> {(selectedItem as any).result || '—'}</div>
-                  </div>
-                </div>
-              )}
 
             </div>
           )}
