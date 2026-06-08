@@ -456,7 +456,7 @@ export default function App() {
           persisted={showDebugBanner}
         />
       )}
-    <div id="app-wrapper" className={`flex flex-col h-screen bg-slate-950 font-sans text-slate-200 overflow-hidden print:bg-white print:text-black relative ${clickInspectorMode ? 'cursor-crosshair' : ''}`}>
+    <div id="app-wrapper" className={`flex flex-col h-screen font-sans overflow-hidden print:bg-white print:text-black relative ${clickInspectorMode ? 'cursor-crosshair' : ''}`} style={{ background: '#000814', color: '#cce8ff' }}>
       {clickInspectorMode && (
         <div className="pointer-events-none fixed right-4 top-16 z-[70] rounded-2xl border border-fuchsia-500/20 bg-fuchsia-500/10 px-3 py-2 text-xs text-fuchsia-100 backdrop-blur-xl space-y-1">
           <div>Click Inspector: ON</div>
@@ -471,251 +471,267 @@ export default function App() {
         <div className="holo-scanline-bar"></div>
       </div>
 
-      {/* Upper Status Panel Header (Unified workspace styling with glassmorphism) */}
-      <header id="main-header" className="glass-architect border-b border-slate-800/80 px-5 py-3.5 flex items-center justify-between shrink-0 print:hidden select-none">
-        
-        {/* Logo and online markers */}
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-cyan-500/10 flex items-center justify-center border border-cyan-500/30 shadow-[0_0_15px_rgba(6,182,212,0.15)] shrink-0">
-            <Cpu className="w-5 h-5 text-cyan-400" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-sm font-bold text-white tracking-wide uppercase font-sans">
-                {t.title}
-              </h1>
-              <div className="flex items-center gap-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded px-1.5 py-0.2 text-[8px] font-bold font-mono">
-                <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping shrink-0"></span>
-                <span>{t.statusOnline}</span>
-              </div>
-              
-              {/* Connection Status Indicators */}
-              <div className="hidden sm:flex items-center gap-2 bg-slate-900/60 border border-slate-800/80 rounded px-2 py-0.5 text-[8px] font-mono text-slate-400">
-                <span className="w-1 h-1 bg-cyan-400 rounded-full animate-pulse"></span>
-                <span>LATENCY: <strong className="text-cyan-300 font-mono">{latency}ms</strong></span>
-                <span className="text-slate-700">|</span>
-                <span>API HEALTH: <strong className="text-emerald-400 font-mono">{apiHealth}%</strong></span>
-              </div>
+      {/* ===== JARVIS HEADER ===== */}
+      <header id="main-header" className="shrink-0 print:hidden select-none" style={{
+        background: "rgba(0,6,18,0.92)",
+        borderBottom: "1px solid rgba(0,212,255,0.12)",
+        backdropFilter: "blur(24px)",
+        boxShadow: "0 4px 30px rgba(0,0,0,0.5), inset 0 -1px 0 rgba(0,212,255,0.06)",
+      }}>
+        {/* Top scan line accent */}
+        <div style={{ height: 1, background: "linear-gradient(90deg, transparent, rgba(0,212,255,0.4) 30%, rgba(26,159,255,0.4) 70%, transparent)", marginBottom: 0 }} />
+
+        <div className="px-4 py-2.5 flex items-center justify-between gap-3">
+          {/* Left: Identity */}
+          <div className="flex items-center gap-3">
+            {/* Arc Reactor Icon */}
+            <div className="relative w-9 h-9 shrink-0 arc-reactor rounded-full flex items-center justify-center" style={{
+              background: "radial-gradient(circle at 40% 40%, rgba(0,212,255,0.25), rgba(0,60,120,0.15) 50%, rgba(0,8,20,0.95))",
+              border: "1px solid rgba(0,212,255,0.4)",
+            }}>
+              <div className="absolute inset-[4px] rounded-full" style={{ border: "1px solid rgba(0,212,255,0.2)", animation: "arc-reactor-ring 5s linear infinite" }} />
+              <Cpu className="w-4 h-4 relative z-10" style={{ color: "#00d4ff", filter: "drop-shadow(0 0 4px rgba(0,212,255,0.8))" }} />
             </div>
-            <p className="text-[10px] text-slate-400">{t.subtitle}</p>
-          </div>
-        </div>
 
-        {/* Global Toolbar and Language controllers */}
-        <div className="flex items-center gap-2">
-          
-          {/* Global Search CMD+K Trigger button */}
-          <button
-            onClick={() => setIsSearchOpen(true)}
-            className="flex items-center gap-2 bg-slate-900 border border-slate-800 hover:border-cyan-500/30 hover:bg-slate-800/80 text-slate-400 hover:text-slate-200 px-2 py-1.5 rounded text-[10px] cursor-pointer font-mono transition-all"
-            title="Search Workspace (CMD+K / CTRL+K)"
-          >
-            <Search className="w-3 h-3 text-cyan-400" />
-            <span className="hidden md:inline">CMD + K</span>
-          </button>
-
-          {/* Download JSON Report Backups button */}
-          <button
-            onClick={handleDownloadReport}
-            className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 hover:bg-slate-800 hover:border-slate-700 text-slate-300 hover:text-white px-2.5 py-1.5 rounded text-[10px] font-bold cursor-pointer font-mono transition-all"
-            title={lang === 'bn' ? 'ডাটা রিপোর্ট ব্যাকআপ ডাউনলোড করুন' : 'Export and save neora report JSON'}
-          >
-            <Download className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="hidden md:inline">{lang === 'bn' ? 'ব্যাকআপ' : 'EXPORT REPORT'}</span>
-          </button>
-
-          <button
-            onClick={handleExportRecoveryBundle}
-            className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 hover:bg-slate-800 hover:border-slate-700 text-slate-300 hover:text-white px-2.5 py-1.5 rounded text-[10px] font-bold cursor-pointer font-mono transition-all"
-            title="Export full recovery bundle"
-          >
-            <Download className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="hidden md:inline">RECOVERY</span>
-          </button>
-
-          <button
-            onClick={() => recoveryImportRef.current?.click()}
-            className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 hover:bg-slate-800 hover:border-slate-700 text-slate-300 hover:text-white px-2.5 py-1.5 rounded text-[10px] font-bold cursor-pointer font-mono transition-all"
-            title="Import full recovery bundle"
-          >
-            <Upload className="w-3.5 h-3.5 text-amber-400" />
-            <span className="hidden md:inline">IMPORT</span>
-          </button>
-          <input
-            ref={recoveryImportRef}
-            type="file"
-            accept="application/json"
-            className="hidden"
-            onChange={async (e) => {
-              const file = e.target.files?.[0];
-              if (file) {
-                await handleImportRecoveryBundle(file);
-              }
-              e.target.value = '';
-            }}
-          />
-
-          {/* Autonomy Badge representation state */}
-          <div className="hidden lg:flex items-center gap-2 bg-slate-950/70 border border-slate-800 rounded py-1 px-2 text-[10px] font-mono text-slate-400">
-            <span>🛡 {t.autonomyLevel}:</span>
-            <span className="text-cyan-400 font-bold">LVL {autonomyLevel}</span>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="font-jarvis text-sm font-bold tracking-[0.2em] uppercase" style={{ color: "#00d4ff", textShadow: "0 0 15px rgba(0,212,255,0.5)" }}>
+                  {t.title}
+                </h1>
+                {/* Online status */}
+                <div className="hidden sm:flex items-center gap-1.5 rounded px-2 py-0.5 text-[9px] font-mono font-bold sys-online">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#00ff88]" style={{ boxShadow: "0 0 4px #00ff88", animation: "glow-pulse 1.5s infinite" }} />
+                  {t.statusOnline}
+                </div>
+                {/* Latency readout */}
+                <div className="hidden lg:flex items-center gap-2 rounded px-2 py-0.5 text-[9px] font-mono" style={{ background: "rgba(0,212,255,0.05)", border: "1px solid rgba(0,212,255,0.1)", color: "rgba(0,212,255,0.7)" }}>
+                  <span className="w-1 h-1 rounded-full bg-[#00d4ff] animate-pulse" />
+                  <span>LATENCY: <strong style={{ color: "#00d4ff" }}>{latency}ms</strong></span>
+                  <span style={{ color: "rgba(0,212,255,0.2)" }}>│</span>
+                  <span>HEALTH: <strong style={{ color: "#00ff88" }}>{apiHealth}%</strong></span>
+                </div>
+              </div>
+              <p className="text-[9px] font-mono mt-0.5" style={{ color: "rgba(0,212,255,0.35)", letterSpacing: "0.15em" }}>{t.subtitle}</p>
+            </div>
           </div>
 
-          <button
-            id="lang-toggle-btn"
-            onClick={() => setLang(lang === 'en' ? 'bn' : 'en')}
-            className="flex items-center gap-1 bg-slate-800 border border-slate-700/80 hover:bg-slate-700 px-2.5 py-1.5 rounded text-[10px] font-bold cursor-pointer font-sans transition-all text-slate-100"
-          >
-            <Languages className="w-3.5 h-3.5 text-cyan-400" />
-            <span>{t.langToggle}</span>
-          </button>
+          {/* Right: Controls */}
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setIsSearchOpen(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[10px] cursor-pointer font-mono transition-all jarvis-nav-btn"
+              style={{ border: "1px solid rgba(0,212,255,0.12)", background: "rgba(0,212,255,0.04)", color: "rgba(0,212,255,0.7)" }}
+              title="Search Workspace (CMD+K)"
+            >
+              <Search className="w-3 h-3" />
+              <span className="hidden md:inline">CMD+K</span>
+            </button>
+
+            <button
+              onClick={handleDownloadReport}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[10px] font-mono cursor-pointer transition-all jarvis-nav-btn"
+              style={{ border: "1px solid rgba(0,212,255,0.1)", background: "rgba(0,212,255,0.03)", color: "rgba(0,212,255,0.6)" }}
+              title="Export report JSON"
+            >
+              <Download className="w-3 h-3" />
+              <span className="hidden md:inline">EXPORT</span>
+            </button>
+
+            <button
+              onClick={handleExportRecoveryBundle}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[10px] font-mono cursor-pointer transition-all jarvis-nav-btn"
+              style={{ border: "1px solid rgba(0,255,136,0.12)", background: "rgba(0,255,136,0.03)", color: "rgba(0,255,136,0.6)" }}
+              title="Export recovery bundle"
+            >
+              <Download className="w-3 h-3" />
+              <span className="hidden lg:inline">RECOVERY</span>
+            </button>
+
+            <button
+              onClick={() => recoveryImportRef.current?.click()}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[10px] font-mono cursor-pointer transition-all jarvis-nav-btn"
+              style={{ border: "1px solid rgba(245,166,35,0.15)", background: "rgba(245,166,35,0.04)", color: "rgba(245,166,35,0.7)" }}
+              title="Import recovery bundle"
+            >
+              <Upload className="w-3 h-3" />
+              <span className="hidden lg:inline">IMPORT</span>
+            </button>
+            <input
+              ref={recoveryImportRef}
+              type="file"
+              accept="application/json"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (file) await handleImportRecoveryBundle(file);
+                e.target.value = '';
+              }}
+            />
+
+            <div className="hidden xl:flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[10px] font-mono" style={{ background: "rgba(124,58,237,0.08)", border: "1px solid rgba(124,58,237,0.2)", color: "rgba(167,139,250,0.9)" }}>
+              <Activity className="w-3 h-3" />
+              <span>{t.autonomyLevel}:</span>
+              <span className="font-bold" style={{ color: "#a78bfa", textShadow: "0 0 6px rgba(167,139,250,0.5)" }}>LVL {autonomyLevel}</span>
+            </div>
+
+            <button
+              id="lang-toggle-btn"
+              onClick={() => setLang(lang === 'en' ? 'bn' : 'en')}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[10px] font-mono font-bold cursor-pointer transition-all"
+              style={{ background: "rgba(0,212,255,0.08)", border: "1px solid rgba(0,212,255,0.2)", color: "#00d4ff" }}
+            >
+              <Languages className="w-3 h-3" />
+              <span>{t.langToggle}</span>
+            </button>
+          </div>
         </div>
       </header>
 
-      {/* Primary Tab Navigation links */}
-      <nav id="primary-tabs" className="glass-architect border-b border-slate-850 px-5 py-2 shrink-0 flex items-center overflow-x-auto gap-1 text-[11px] font-bold uppercase select-none print:hidden !bg-slate-950/40">
-        <button
-          id="navtab-chat"
-          onClick={() => setActiveTab('chat')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded transition-all cursor-pointer ${
-            activeTab === 'chat' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/15 font-bold shadow-[0_1px_3px_rgba(0,0,0,0.3)]' : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <MessageSquare className="w-3.5 h-3.5" />
-          <span>{t.navChat}</span>
-        </button>
-        <button
-          id="navtab-autonomy"
-          onClick={() => setActiveTab('autonomy')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded transition-all cursor-pointer ${
-            activeTab === 'autonomy' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/15 font-bold shadow-[0_1px_3px_rgba(0,0,0,0.3)]' : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Sliders className="w-3.5 h-3.5" />
-          <span>{t.navAutonomy}</span>
-        </button>
-        <button
-          id="navtab-productivity"
-          onClick={() => setActiveTab('productivity')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded transition-all cursor-pointer ${
-            activeTab === 'productivity' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/15 font-bold shadow-[0_1px_3px_rgba(0,0,0,0.3)]' : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Clipboard className="w-3.5 h-3.5" />
-          <span>{t.navProductivity}</span>
-        </button>
-        <button
-          id="navtab-invoice"
-          onClick={() => setActiveTab('invoice')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded transition-all cursor-pointer ${
-            activeTab === 'invoice' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/15 font-bold shadow-[0_1px_3px_rgba(0,0,0,0.3)]' : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <DollarSign className="w-3.5 h-3.5" />
-          <span>{t.navInvoice}</span>
-        </button>
-        <button
-          id="navtab-dev"
-          onClick={() => setActiveTab('dev')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded transition-all cursor-pointer ${
-            activeTab === 'dev' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/15 font-bold shadow-[0_1px_3px_rgba(0,0,0,0.3)]' : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Terminal className="w-3.5 h-3.5" />
-          <span>{t.navDev}</span>
-        </button>
-        <button
-          id="navtab-osAgent"
-          onClick={() => setActiveTab('osAgent')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded transition-all cursor-pointer ${
-            activeTab === 'osAgent' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/15 font-bold shadow-[0_1px_3px_rgba(0,0,0,0.3)]' : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Laptop className="w-3.5 h-3.5" />
-          <span>{t.navOsAgent}</span>
-        </button>
-        <button
-          id="navtab-filterLab"
-          onClick={() => setActiveTab('filterLab')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded transition-all cursor-pointer ${
-            activeTab === 'filterLab' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/15 font-bold shadow-[0_1px_3px_rgba(0,0,0,0.3)]' : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Filter className="w-3.5 h-3.5" />
-          <span>{t.navFilterLab}</span>
-        </button>
-        <button
-          id="navtab-roadmap"
-          onClick={() => setActiveTab('roadmap')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded transition-all cursor-pointer ${
-            activeTab === 'roadmap' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/15 font-bold shadow-[0_1px_3px_rgba(0,0,0,0.3)]' : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Milestone className="w-3.5 h-3.5" />
-          <span>{t.navRoadmap}</span>
-        </button>
-<button
-           id="navtab-blueprint"
-           onClick={() => setActiveTab('blueprint')}
-           className={`flex items-center gap-1.5 px-3 py-2 rounded transition-all cursor-pointer ${
-             activeTab === 'blueprint' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/15 font-bold shadow-[0_1px_3px_rgba(0,0,0,0.3)]' : 'text-slate-400 hover:text-slate-200'
-           }`}
-         >
-           <BookOpen className="w-3.5 h-3.5" />
-           <span>{t.navSpecs}</span>
-         </button>
-         <button
-           id="navtab-vscode"
-           onClick={() => setActiveTab('vscode')}
-           className={`flex items-center gap-1.5 px-3 py-2 rounded transition-all cursor-pointer ${
-             activeTab === 'vscode' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/15 font-bold shadow-[0_1px_3px_rgba(0,0,0,0.3)]' : 'text-slate-400 hover:text-slate-200'
-           }`}
-         >
-           <Terminal className="w-3.5 h-3.5" />
-           <span>VS Code</span>
-         </button>
-       </nav>
+      {/* ===== JARVIS NAV BAR ===== */}
+      <nav id="primary-tabs" className="shrink-0 flex items-center overflow-x-auto gap-0.5 px-4 py-1.5 select-none print:hidden" style={{
+        background: "rgba(0,4,12,0.85)",
+        borderBottom: "1px solid rgba(0,212,255,0.08)",
+        backdropFilter: "blur(16px)",
+      }}>
+        {([
+          { id: 'chat', label: t.navChat, icon: MessageSquare, color: '#00d4ff' },
+          { id: 'autonomy', label: t.navAutonomy, icon: Sliders, color: '#1a9fff' },
+          { id: 'productivity', label: t.navProductivity, icon: Clipboard, color: '#7c3aed' },
+          { id: 'invoice', label: t.navInvoice, icon: DollarSign, color: '#f5a623' },
+          { id: 'dev', label: t.navDev, icon: Terminal, color: '#f5a623' },
+          { id: 'osAgent', label: t.navOsAgent, icon: Laptop, color: '#00ff88' },
+          { id: 'filterLab', label: t.navFilterLab, icon: Filter, color: '#00d4ff' },
+          { id: 'roadmap', label: t.navRoadmap, icon: Milestone, color: '#1a9fff' },
+          { id: 'blueprint', label: t.navSpecs, icon: BookOpen, color: '#00d4ff' },
+          { id: 'vscode', label: 'VS Code', icon: Terminal, color: '#00d4ff' },
+        ] as { id: any; label: string; icon: any; color: string }[]).map(({ id, label, icon: Icon, color }) => {
+          const isActive = activeTab === id;
+          return (
+            <button
+              key={id}
+              id={`navtab-${id}`}
+              onClick={() => setActiveTab(id)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded text-[10px] font-mono font-bold uppercase cursor-pointer transition-all whitespace-nowrap shrink-0"
+              style={isActive ? {
+                background: `rgba(0,212,255,0.08)`,
+                border: `1px solid rgba(0,212,255,0.22)`,
+                color: color,
+                textShadow: `0 0 8px ${color}80`,
+                boxShadow: `0 0 10px rgba(0,212,255,0.08), inset 0 1px 0 rgba(0,212,255,0.1)`,
+              } : {
+                border: '1px solid transparent',
+                color: 'rgba(100,116,139,0.7)',
+              }}
+            >
+              <Icon className="w-3 h-3 shrink-0" style={isActive ? { filter: `drop-shadow(0 0 3px ${color})` } : {}} />
+              <span>{label}</span>
+            </button>
+          );
+        })}
+      </nav>
 
-      {/* Command Center Summary */}
-      <section className="px-5 py-3 print:hidden">
-        <div className="grid grid-cols-1 xl:grid-cols-4 gap-3">
-          <div className="xl:col-span-2 rounded-3xl border border-slate-800/80 bg-slate-950/70 backdrop-blur-xl px-4 py-4 shadow-[0_10px_40px_rgba(0,0,0,0.2)]">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="text-[10px] uppercase tracking-[0.3em] text-cyan-400 font-mono">Workspace Command Center</div>
-                <h2 className="mt-1 text-xl font-semibold text-white">
-                  {lang === 'bn' ? 'এক নজরে Neora workspace' : 'Neora workspace at a glance'}
-                </h2>
-                <p className="mt-1 text-sm text-slate-400 max-w-2xl">
-                  {lang === 'bn'
-                    ? 'চ্যাট, অটোমেশন, মেমরি, রিপোর্ট, এবং OS agent সব এক স্ক্রিনে; professional users-এর জন্য অপারেশনাল visibility, দ্রুত execution, এবং recovery control।'
-                    : 'Chat, automation, memory, reports, and the OS agent in one view with operational visibility, fast execution, and recovery controls.'}
-                </p>
-              </div>
-              <div className="hidden md:flex flex-wrap gap-2 justify-end">
-                <button onClick={() => setActiveTab('chat')} className="px-3 py-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 text-xs font-semibold uppercase">Chat</button>
-                <button onClick={() => setActiveTab('osAgent')} className="px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs font-semibold uppercase">OS Agent</button>
-                <button onClick={() => setActiveTab('autonomy')} className="px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-slate-200 text-xs font-semibold uppercase">Planner</button>
-                <button onClick={() => setActiveTab('roadmap')} className="px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-slate-200 text-xs font-semibold uppercase">Roadmap</button>
+      {/* ===== JARVIS COMMAND CENTER OVERVIEW ===== */}
+      <section className="px-4 py-3 print:hidden shrink-0">
+        <div className="grid grid-cols-2 xl:grid-cols-5 gap-2">
+
+          {/* Main workspace card */}
+          <div className="col-span-2 xl:col-span-2 relative rounded-xl overflow-hidden" style={{
+            background: "linear-gradient(135deg, rgba(0,15,40,0.9) 0%, rgba(0,8,22,0.85) 100%)",
+            border: "1px solid rgba(0,212,255,0.18)",
+            boxShadow: "0 0 0 1px rgba(0,212,255,0.05), 0 8px 32px rgba(0,0,0,0.5), inset 0 0 40px rgba(0,212,255,0.03)",
+            backdropFilter: "blur(20px)",
+          }}>
+            {/* Corner accent lines */}
+            <div className="absolute top-0 left-0 w-8 h-px" style={{ background: "rgba(0,212,255,0.6)" }} />
+            <div className="absolute top-0 left-0 w-px h-8" style={{ background: "rgba(0,212,255,0.6)" }} />
+            <div className="absolute bottom-0 right-0 w-8 h-px" style={{ background: "rgba(0,212,255,0.3)" }} />
+            <div className="absolute bottom-0 right-0 w-px h-8" style={{ background: "rgba(0,212,255,0.3)" }} />
+            {/* Top glow bar */}
+            <div className="absolute top-0 left-0 right-0 h-px" style={{ background: "linear-gradient(90deg, transparent, rgba(0,212,255,0.5), transparent)" }} />
+
+            <div className="p-4">
+              <div className="jarvis-label mb-2">WORKSPACE COMMAND CENTER</div>
+              <h2 className="font-jarvis text-base font-bold mb-1" style={{ color: "#00d4ff", textShadow: "0 0 15px rgba(0,212,255,0.4)" }}>
+                {lang === 'bn' ? 'এক নজরে Neora workspace' : 'NEORA AI SYSTEM'}
+              </h2>
+              <p className="text-[11px] text-slate-400 mb-3 leading-relaxed">
+                {lang === 'bn'
+                  ? 'চ্যাট, অটোমেশন, মেমরি, এবং OS agent এক স্ক্রিনে।'
+                  : 'Neural interface · Autonomous operations · Memory persistence · OS control'}
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {([
+                  { label: 'CHAT', tab: 'chat', color: '#00d4ff' },
+                  { label: 'OS AGENT', tab: 'osAgent', color: '#00ff88' },
+                  { label: 'PLANNER', tab: 'autonomy', color: '#1a9fff' },
+                  { label: 'ROADMAP', tab: 'roadmap', color: '#7c3aed' },
+                ] as { label: string; tab: any; color: string }[]).map(({ label, tab, color }) => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className="px-2.5 py-1 rounded text-[10px] font-mono font-bold uppercase transition-all"
+                    style={{
+                      background: `${color}12`,
+                      border: `1px solid ${color}30`,
+                      color: color,
+                      textShadow: `0 0 6px ${color}60`,
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
             </div>
           </div>
 
-          <div className="rounded-3xl border border-slate-800/80 bg-slate-950/70 backdrop-blur-xl px-4 py-4">
-            <div className="text-[10px] uppercase tracking-[0.25em] text-slate-500 font-mono">Tasks</div>
-            <div className="mt-2 text-2xl font-semibold text-white">{tasks.length}</div>
-            <div className="text-sm text-slate-400">{tasks.filter(t => !t.completed).length} active</div>
+          {/* Tasks metric */}
+          <div className="relative rounded-xl overflow-hidden p-3" style={{
+            background: "linear-gradient(135deg, rgba(0,15,35,0.9), rgba(0,8,20,0.8))",
+            border: "1px solid rgba(0,212,255,0.15)",
+            boxShadow: "inset 0 0 20px rgba(0,212,255,0.03)",
+            backdropFilter: "blur(20px)",
+          }}>
+            <div className="absolute top-0 left-0 right-0 h-px" style={{ background: "linear-gradient(90deg, transparent, rgba(0,212,255,0.4), transparent)" }} />
+            <div className="jarvis-label mb-2">TASKS</div>
+            <div className="font-jarvis text-3xl font-bold" style={{ color: "#00d4ff", textShadow: "0 0 20px rgba(0,212,255,0.5)" }}>{tasks.length}</div>
+            <div className="text-[11px] text-slate-400 mt-1">{tasks.filter(x => !x.completed).length} active</div>
+            <div className="mt-2 jarvis-progress h-0.5">
+              <div className="jarvis-progress-bar" style={{ width: `${tasks.length > 0 ? (tasks.filter(x => x.completed).length / tasks.length) * 100 : 0}%` }} />
+            </div>
           </div>
-          <div className="rounded-3xl border border-slate-800/80 bg-slate-950/70 backdrop-blur-xl px-4 py-4">
-            <div className="text-[10px] uppercase tracking-[0.25em] text-slate-500 font-mono">Memory</div>
-            <div className="mt-2 text-2xl font-semibold text-white">{memories.length}</div>
-            <div className="text-sm text-slate-400">Persistent entries</div>
+
+          {/* Memory metric */}
+          <div className="relative rounded-xl overflow-hidden p-3" style={{
+            background: "linear-gradient(135deg, rgba(10,5,35,0.9), rgba(5,0,20,0.8))",
+            border: "1px solid rgba(124,58,237,0.2)",
+            boxShadow: "inset 0 0 20px rgba(124,58,237,0.04)",
+            backdropFilter: "blur(20px)",
+          }}>
+            <div className="absolute top-0 left-0 right-0 h-px" style={{ background: "linear-gradient(90deg, transparent, rgba(124,58,237,0.5), transparent)" }} />
+            <div className="jarvis-label mb-2" style={{ color: "rgba(167,139,250,0.7)" }}>MEMORY</div>
+            <div className="font-jarvis text-3xl font-bold" style={{ color: "#a78bfa", textShadow: "0 0 20px rgba(124,58,237,0.5)" }}>{memories.length}</div>
+            <div className="text-[11px] text-slate-400 mt-1">Persistent entries</div>
+            <div className="mt-2 h-0.5 rounded" style={{ background: "rgba(124,58,237,0.12)" }}>
+              <div className="h-full rounded" style={{ width: `${Math.min(memories.length * 20, 100)}%`, background: "linear-gradient(90deg, rgba(124,58,237,0.6), rgba(167,139,250,0.9))", boxShadow: "0 0 6px rgba(124,58,237,0.5)" }} />
+            </div>
           </div>
-          <div className="rounded-3xl border border-slate-800/80 bg-slate-950/70 backdrop-blur-xl px-4 py-4">
-            <div className="text-[10px] uppercase tracking-[0.25em] text-slate-500 font-mono">Agent</div>
-            <div className="mt-2 text-2xl font-semibold text-white">{latency}ms</div>
-            <div className="text-sm text-slate-400">{apiHealth}% health</div>
+
+          {/* Agent metric */}
+          <div className="relative rounded-xl overflow-hidden p-3" style={{
+            background: "linear-gradient(135deg, rgba(0,20,10,0.9), rgba(0,10,5,0.8))",
+            border: "1px solid rgba(0,255,136,0.15)",
+            boxShadow: "inset 0 0 20px rgba(0,255,136,0.03)",
+            backdropFilter: "blur(20px)",
+          }}>
+            <div className="absolute top-0 left-0 right-0 h-px" style={{ background: "linear-gradient(90deg, transparent, rgba(0,255,136,0.4), transparent)" }} />
+            <div className="jarvis-label mb-2" style={{ color: "rgba(0,255,136,0.6)" }}>AGENT</div>
+            <div className="font-jarvis text-3xl font-bold" style={{ color: "#00ff88", textShadow: "0 0 20px rgba(0,255,136,0.5)" }}>{latency}ms</div>
+            <div className="text-[11px] text-slate-400 mt-1">{apiHealth}% health</div>
+            <div className="mt-2 h-0.5 rounded" style={{ background: "rgba(0,255,136,0.1)" }}>
+              <div className="h-full rounded" style={{ width: `${apiHealth}%`, background: "linear-gradient(90deg, rgba(0,255,136,0.6), rgba(0,255,136,0.9))", boxShadow: "0 0 6px rgba(0,255,136,0.5)" }} />
+            </div>
           </div>
+
         </div>
       </section>
 
@@ -830,24 +846,31 @@ export default function App() {
             initial={{ opacity: 0, y: 50, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            className="fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-slate-900/95 border border-cyan-500/30 text-white rounded-lg px-4 py-3 shadow-[0_4px_30px_rgba(0,0,0,0.5)] backdrop-blur-md"
+            className="fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-xl px-4 py-3 backdrop-blur-xl"
+            style={{
+              background: "rgba(0,10,25,0.95)",
+              border: "1px solid rgba(0,212,255,0.3)",
+              boxShadow: "0 0 0 1px rgba(0,212,255,0.08), 0 8px 40px rgba(0,0,0,0.6), 0 0 20px rgba(0,212,255,0.08)",
+            }}
           >
             <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 bg-cyan-400 rounded-full animate-ping"></span>
-              <span className="text-xs font-medium font-mono text-slate-300">
-                {lang === 'bn' ? 'আইটেম মুছে ফেলা হয়েছে।' : 'Item deleted.'}
+              <span className="w-2 h-2 rounded-full" style={{ background: "#00d4ff", boxShadow: "0 0 6px #00d4ff", animation: "glow-pulse 1s infinite" }} />
+              <span className="text-xs font-mono" style={{ color: "rgba(0,212,255,0.8)" }}>
+                {lang === 'bn' ? 'আইটেম মুছে ফেলা হয়েছে।' : 'ITEM DELETED'}
               </span>
             </div>
             <button
               onClick={handleUndo}
-              className="flex items-center gap-1 bg-cyan-500 text-slate-950 hover:bg-cyan-400 text-[10px] font-bold font-mono px-2.5 py-1.2 rounded uppercase transition-colors"
+              className="flex items-center gap-1 text-[10px] font-bold font-mono px-3 py-1.5 rounded uppercase transition-all"
+              style={{ background: "rgba(0,212,255,0.15)", border: "1px solid rgba(0,212,255,0.35)", color: "#00d4ff", textShadow: "0 0 6px rgba(0,212,255,0.5)" }}
             >
               <Undo className="w-3 h-3" />
-              <span>{lang === 'bn' ? 'পূর্বাবস্থায় ফেরান' : 'UNDO'}</span>
+              <span>{lang === 'bn' ? 'পূর্বাবস্থায়' : 'UNDO'}</span>
             </button>
             <button
               onClick={() => setShowUndo(false)}
-              className="p-1 text-slate-500 hover:text-slate-300 transition-colors"
+              className="p-1 transition-colors"
+              style={{ color: "rgba(0,212,255,0.4)" }}
             >
               <X className="w-3 h-3" />
             </button>
@@ -862,7 +885,8 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-start justify-center p-4 sm:p-10 pt-20"
+            className="fixed inset-0 backdrop-blur-md z-50 flex items-start justify-center p-4 sm:p-10 pt-20"
+            style={{ background: "rgba(0,4,12,0.85)" }}
             onClick={() => setIsSearchOpen(false)}
           >
             <motion.div
@@ -870,7 +894,13 @@ export default function App() {
               animate={{ y: 0, scale: 1 }}
               exit={{ y: -30, scale: 0.95 }}
               transition={{ type: "spring", duration: 0.4 }}
-              className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-[0_25px_50px_-12px_rgba(0,0,0,0.7)] flex flex-col"
+              className="w-full max-w-2xl rounded-xl overflow-hidden flex flex-col"
+              style={{
+                background: "rgba(0,8,22,0.97)",
+                border: "1px solid rgba(0,212,255,0.25)",
+                boxShadow: "0 0 0 1px rgba(0,212,255,0.08), 0 30px 80px rgba(0,0,0,0.8), 0 0 40px rgba(0,212,255,0.08)",
+                backdropFilter: "blur(24px)",
+              }}
               onClick={e => e.stopPropagation()}
             >
               {/* Search input header */}

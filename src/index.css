@@ -1,170 +1,231 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;600;700&family=Orbitron:wght@400;500;600;700;800;900&display=swap');
 @import "tailwindcss";
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-orbitron: "Orbitron", sans-serif;
 }
 
 :root {
   color-scheme: dark;
-  --neora-bg: #030305;
-  --neora-surface: rgba(2, 6, 23, 0.72);
-  --neora-surface-strong: rgba(2, 6, 23, 0.88);
-  --neora-text: #ffffff;
-  --neora-text-secondary: rgba(255, 255, 255, 0.6);
-  --neora-accent: #8b5cf6;
-  --neora-accent-2: #06b6d4;
+  --jarvis-bg: #000814;
+  --jarvis-bg2: #000d1a;
+  --jarvis-surface: rgba(0, 18, 40, 0.75);
+  --jarvis-surface-strong: rgba(0, 12, 30, 0.92);
+  --jarvis-cyan: #00d4ff;
+  --jarvis-cyan-dim: rgba(0, 212, 255, 0.15);
+  --jarvis-gold: #f5a623;
+  --jarvis-gold-dim: rgba(245, 166, 35, 0.15);
+  --jarvis-blue: #1a9fff;
+  --jarvis-blue-dim: rgba(26, 159, 255, 0.12);
+  --jarvis-red: #ff4757;
+  --jarvis-green: #00ff88;
+  --jarvis-green-dim: rgba(0, 255, 136, 0.12);
+  --neora-bg: #000814;
+  --neora-accent: #00d4ff;
+  --neora-accent-2: #1a9fff;
 }
 
-/* Custom Scrollbars global overrides */
-::-webkit-scrollbar {
-  width: 7px;
-  height: 7px;
-}
-
-::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.4);
-}
-
+/* Custom Scrollbars */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: rgba(0, 8, 20, 0.8); }
 ::-webkit-scrollbar-thumb {
-  background: rgba(6, 182, 212, 0.25);
+  background: rgba(0, 212, 255, 0.3);
   border-radius: 99px;
-  border: 1px solid rgba(15, 23, 42, 0.6);
-  transition: all 0.25s ease-in-out;
 }
-
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(6, 182, 212, 0.5);
-  box-shadow: 0 0 8px rgba(6, 182, 212, 0.4);
+  background: rgba(0, 212, 255, 0.6);
+  box-shadow: 0 0 8px rgba(0, 212, 255, 0.5);
 }
 
-/* Hardware accelerated smooth scrolling */
 .overflow-y-auto, .overflow-x-auto, select, textarea, pre {
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
 }
 
-/* Custom Print Configuration Stylesheet for invoice exporting */
+/* Print styles */
 @media print {
-  body {
-  background-color: white !important;
-  color: black !important;
-  }
-  
-  /* Hide every single layout item except the printed paper target */
+  body { background-color: white !important; color: black !important; }
   #root > div > div:not(#earning-studio-container),
   #earning-studio-container > div:not(#invoice-preview-area),
   #invoice-preview-area > div:not(#print-sheet-paper),
-  header,
-  nav,
-  aside,
-  button,
-  footer {
-    display: none !important;
-  }
-
-  /* Make sure container occupies absolute maximum width */
+  header, nav, aside, button, footer { display: none !important; }
   #invoice-preview-area {
-    padding: 0 !important;
-    margin: 0 !important;
-    border: none !important;
-    background: white !important;
-    width: 100% !important;
-    max-width: 100% !important;
+    padding: 0 !important; margin: 0 !important;
+    border: none !important; background: white !important;
+    width: 100% !important; max-width: 100% !important;
   }
-
   #print-sheet-paper {
-    border: none !important;
-    box-shadow: none !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    background-color: white !important;
-    color: black !important;
+    border: none !important; box-shadow: none !important;
+    padding: 0 !important; margin: 0 !important;
+    width: 100% !important; max-width: 100% !important;
+    background-color: white !important; color: black !important;
   }
-
-  input, textarea {
-    border: none !important;
-    background-color: transparent !important;
-    color: black !important;
-  }
+  input, textarea { border: none !important; background-color: transparent !important; color: black !important; }
 }
 
+/* Body */
 body {
-  background:
-    radial-gradient(circle at top left, rgba(6,182,212,0.12), transparent 28%),
-    radial-gradient(circle at top right, rgba(168,85,247,0.08), transparent 24%),
-    linear-gradient(180deg, #020617 0%, #020617 40%, #0f172a 100%);
-  color: #e2e8f0;
-  background-color: #020617;
+  background: var(--jarvis-bg);
+  background-image:
+    radial-gradient(ellipse 80% 50% at 20% -10%, rgba(0, 212, 255, 0.08) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 110%, rgba(26, 159, 255, 0.06) 0%, transparent 55%),
+    radial-gradient(ellipse 40% 30% at 50% 50%, rgba(0, 60, 120, 0.04) 0%, transparent 70%);
+  color: #cce8ff;
+  background-color: var(--jarvis-bg);
 }
 
 body, #root {
   min-height: 100vh;
-  background-color: var(--neora-bg);
-  color: var(--neora-text);
+  background-color: var(--jarvis-bg);
+  color: #cce8ff;
 }
 
-/* --- Global Holographic & Tech-Architect Aesthetic Layers --- */
+/* ===== JARVIS ANIMATIONS ===== */
 
 @keyframes scanline-anim {
-  0% {
-    transform: translateY(-100%);
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
+
+@keyframes arc-reactor-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 0 0 rgba(0, 212, 255, 0),
+      0 0 20px rgba(0, 212, 255, 0.4),
+      inset 0 0 20px rgba(0, 212, 255, 0.1);
   }
-  100% {
-    transform: translateY(100vh);
+  50% {
+    box-shadow:
+      0 0 0 8px rgba(0, 212, 255, 0.05),
+      0 0 40px rgba(0, 212, 255, 0.6),
+      inset 0 0 30px rgba(0, 212, 255, 0.2);
   }
 }
 
-/* Base holographic screen effects layer */
+@keyframes arc-reactor-ring {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes arc-reactor-ring-reverse {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(-360deg); }
+}
+
+@keyframes holographic-flicker {
+  0%, 92%, 100% { opacity: 1; }
+  93% { opacity: 0.85; }
+  94% { opacity: 1; }
+  96% { opacity: 0.9; }
+  97% { opacity: 1; }
+}
+
+@keyframes data-stream {
+  0% { transform: translateY(0); opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { transform: translateY(-100px); opacity: 0; }
+}
+
+@keyframes hex-rotate {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+@keyframes status-tick {
+  0% { transform: scaleX(0); }
+  100% { transform: scaleX(1); }
+}
+
+@keyframes equalizer-height {
+  0%, 100% { height: 4px; }
+  50% { height: 24px; }
+}
+
+@keyframes orbit {
+  0% { transform: rotate(0deg) translateX(28px) rotate(0deg); }
+  100% { transform: rotate(360deg) translateX(28px) rotate(-360deg); }
+}
+
+@keyframes voice-ripple {
+  0% { transform: scale(1); opacity: 0.8; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
+
+@keyframes float-particle {
+  0%, 100% { transform: translateY(0px) translateX(0px); opacity: 0.3; }
+  33% { transform: translateY(-8px) translateX(4px); opacity: 0.8; }
+  66% { transform: translateY(-4px) translateX(-4px); opacity: 0.5; }
+}
+
+@keyframes border-trace {
+  0% { stroke-dashoffset: 100; }
+  100% { stroke-dashoffset: 0; }
+}
+
+@keyframes slide-in-right {
+  0% { transform: translateX(20px); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes count-up {
+  0% { opacity: 0; transform: translateY(4px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+/* ===== HOLOGRAPHIC SCANLINE ===== */
 .holo-scanline-container {
   pointer-events: none;
   position: fixed;
   inset: 0;
   z-index: 50;
   overflow: hidden;
-  opacity: 0.45;
+  opacity: 0.3;
 }
 
 .holo-scanline-bar {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 4px;
+  top: 0; left: 0; right: 0;
+  height: 3px;
   background: linear-gradient(
     to bottom,
-    rgba(6, 182, 212, 0) 0%,
-    rgba(6, 182, 212, 0.4) 50%,
-    rgba(6, 182, 212, 0) 100%
+    rgba(0, 212, 255, 0) 0%,
+    rgba(0, 212, 255, 0.5) 50%,
+    rgba(0, 212, 255, 0) 100%
   );
-  box-shadow: 0 0 12px rgba(6, 182, 212, 0.5);
-  animation: scanline-anim 12s linear infinite;
+  box-shadow: 0 0 15px rgba(0, 212, 255, 0.6);
+  animation: scanline-anim 10s linear infinite;
 }
 
-/* Subtle overlay grid lines on the app core visual */
+/* App wrapper CRT grid */
 #app-wrapper {
   position: relative;
 }
 
 #app-wrapper::after {
-  content: " ";
+  content: "";
   display: block;
   position: absolute;
   top: 0; left: 0; bottom: 0; right: 0;
-  background: linear-gradient(
-    rgba(18, 16, 16, 0) 50%, 
-    rgba(0, 0, 0, 0.15) 50%
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 212, 255, 0.012) 2px,
+    rgba(0, 212, 255, 0.012) 4px
   );
-  background-size: 100% 4px;
   z-index: 40;
   pointer-events: none;
-  opacity: 0.15;
+  opacity: 1;
 }
 
-/* Keep only true interactive surfaces clickable; decorative overlays must stay inert */
 .pointer-events-none,
 .holo-scanline-container,
 #app-wrapper::after,
@@ -172,62 +233,324 @@ body, #root {
   pointer-events: none;
 }
 
-/* Ensure the main app content remains interactive */
-#root,
-#app-wrapper,
-#app-wrapper * {
+#root, #app-wrapper, #app-wrapper * {
   pointer-events: auto;
 }
 
-/* Glassmorphism blur styling class of professional precision */
+/* ===== JARVIS GLASSMORPHISM ===== */
+
 .glass-architect {
-  background: rgba(2, 6, 23, 0.72) !important;
-  backdrop-filter: blur(18px) saturate(145%) !important;
-  -webkit-backdrop-filter: blur(18px) saturate(145%) !important;
-  border: 1px solid rgba(6, 182, 212, 0.12) !important;
+  background: rgba(0, 10, 25, 0.80) !important;
+  backdrop-filter: blur(20px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(160%) !important;
+  border: 1px solid rgba(0, 212, 255, 0.15) !important;
   box-shadow:
-    0 20px 60px rgba(0, 0, 0, 0.35),
-    inset 0 1px 0 rgba(255, 255, 255, 0.02) !important;
+    0 0 0 1px rgba(0, 212, 255, 0.05),
+    0 20px 60px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(0, 212, 255, 0.08) !important;
 }
 
 .panel-surface {
-  background: rgba(2, 6, 23, 0.66);
-  border: 1px solid rgba(148, 163, 184, 0.12);
-  backdrop-filter: blur(16px) saturate(140%);
-  -webkit-backdrop-filter: blur(16px) saturate(140%);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.24);
+  background: rgba(0, 12, 28, 0.72);
+  border: 1px solid rgba(0, 212, 255, 0.12);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  box-shadow:
+    0 0 0 1px rgba(0, 212, 255, 0.04),
+    0 16px 48px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(0, 212, 255, 0.06);
 }
 
 .panel-surface-strong {
-  background: linear-gradient(180deg, rgba(2, 6, 23, 0.88), rgba(15, 23, 42, 0.72));
-  border: 1px solid rgba(6, 182, 212, 0.10);
-  backdrop-filter: blur(18px) saturate(145%);
-  -webkit-backdrop-filter: blur(18px) saturate(145%);
+  background: linear-gradient(180deg, rgba(0, 15, 35, 0.92) 0%, rgba(0, 8, 20, 0.88) 100%);
+  border: 1px solid rgba(0, 212, 255, 0.15);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  box-shadow:
+    0 0 0 1px rgba(0, 212, 255, 0.06),
+    inset 0 1px 0 rgba(0, 212, 255, 0.1);
 }
 
-/* Active audio visualizer styling elements for speech dictated feedback */
-@keyframes equalizer-height {
-  0%, 100% { height: 4px; }
-  50% { height: 24px; }
+/* Jarvis-style widget card */
+.jarvis-card {
+  background: linear-gradient(135deg, rgba(0, 15, 35, 0.85) 0%, rgba(0, 8, 20, 0.75) 100%);
+  border: 1px solid rgba(0, 212, 255, 0.18);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow:
+    0 0 0 1px rgba(0, 212, 255, 0.06),
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(0, 212, 255, 0.1),
+    inset 0 0 40px rgba(0, 212, 255, 0.02);
+  border-radius: 12px;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
+.jarvis-card::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(0, 212, 255, 0.4), transparent);
+}
+
+.jarvis-card:hover {
+  border-color: rgba(0, 212, 255, 0.3);
+  box-shadow:
+    0 0 0 1px rgba(0, 212, 255, 0.1),
+    0 12px 40px rgba(0, 0, 0, 0.5),
+    0 0 20px rgba(0, 212, 255, 0.06),
+    inset 0 1px 0 rgba(0, 212, 255, 0.15);
+}
+
+/* Jarvis nav button active state */
+.jarvis-nav-active {
+  background: rgba(0, 212, 255, 0.08) !important;
+  border: 1px solid rgba(0, 212, 255, 0.25) !important;
+  color: #00d4ff !important;
+  box-shadow:
+    0 0 12px rgba(0, 212, 255, 0.15),
+    inset 0 1px 0 rgba(0, 212, 255, 0.1) !important;
+  text-shadow: 0 0 8px rgba(0, 212, 255, 0.5);
+}
+
+.jarvis-nav-btn {
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+}
+
+.jarvis-nav-btn:hover {
+  background: rgba(0, 212, 255, 0.05) !important;
+  border-color: rgba(0, 212, 255, 0.12) !important;
+  color: rgba(0, 212, 255, 0.8) !important;
+}
+
+/* Jarvis sidebar nav item */
+.jarvis-sidebar-item {
+  position: relative;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+  border-radius: 8px;
+}
+
+.jarvis-sidebar-item.active {
+  background: rgba(0, 212, 255, 0.08);
+  border-color: rgba(0, 212, 255, 0.2);
+  color: #00d4ff;
+}
+
+.jarvis-sidebar-item.active::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 20%; bottom: 20%;
+  width: 2px;
+  background: linear-gradient(180deg, transparent, #00d4ff, transparent);
+  border-radius: 2px;
+  box-shadow: 0 0 8px rgba(0, 212, 255, 0.8);
+}
+
+.jarvis-sidebar-item:hover:not(.active) {
+  background: rgba(0, 212, 255, 0.04);
+  border-color: rgba(0, 212, 255, 0.08);
+  color: rgba(0, 212, 255, 0.7);
+}
+
+/* Arc reactor glow button */
+.jarvis-btn-primary {
+  background: linear-gradient(135deg, rgba(0, 212, 255, 0.15) 0%, rgba(26, 159, 255, 0.1) 100%);
+  border: 1px solid rgba(0, 212, 255, 0.35);
+  color: #00d4ff;
+  box-shadow:
+    0 0 12px rgba(0, 212, 255, 0.2),
+    inset 0 1px 0 rgba(0, 212, 255, 0.15);
+  transition: all 0.2s ease;
+  text-shadow: 0 0 8px rgba(0, 212, 255, 0.5);
+}
+
+.jarvis-btn-primary:hover {
+  background: linear-gradient(135deg, rgba(0, 212, 255, 0.25) 0%, rgba(26, 159, 255, 0.18) 100%);
+  border-color: rgba(0, 212, 255, 0.55);
+  box-shadow: 0 0 20px rgba(0, 212, 255, 0.35), inset 0 1px 0 rgba(0, 212, 255, 0.2);
+}
+
+/* Metric value glow */
+.jarvis-metric-value {
+  font-family: "Orbitron", "JetBrains Mono", monospace;
+  color: #00d4ff;
+  text-shadow: 0 0 12px rgba(0, 212, 255, 0.6), 0 0 30px rgba(0, 212, 255, 0.2);
+  letter-spacing: 0.05em;
+}
+
+.jarvis-metric-value.gold {
+  color: #f5a623;
+  text-shadow: 0 0 12px rgba(245, 166, 35, 0.6), 0 0 30px rgba(245, 166, 35, 0.2);
+}
+
+.jarvis-metric-value.green {
+  color: #00ff88;
+  text-shadow: 0 0 12px rgba(0, 255, 136, 0.6), 0 0 30px rgba(0, 255, 136, 0.2);
+}
+
+/* Section label */
+.jarvis-label {
+  font-family: "Orbitron", "JetBrains Mono", monospace;
+  font-size: 9px;
+  letter-spacing: 0.35em;
+  color: rgba(0, 212, 255, 0.6);
+  text-transform: uppercase;
+}
+
+/* Status dot ping */
+.jarvis-ping {
+  position: relative;
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+}
+
+.jarvis-ping::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: #00ff88;
+  animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+.jarvis-ping::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: 50%;
+  background: #00ff88;
+}
+
+@keyframes ping {
+  75%, 100% { transform: scale(2); opacity: 0; }
+}
+
+/* Voice orb animations */
+.voice-orb-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 212, 255, 0.3);
+  animation: voice-ripple 2s ease-out infinite;
+}
+
+.voice-orb-ring:nth-child(2) { animation-delay: 0.5s; }
+.voice-orb-ring:nth-child(3) { animation-delay: 1s; }
+
+/* Arc reactor orb */
+.arc-reactor {
+  animation: arc-reactor-pulse 3s ease-in-out infinite;
+}
+
+/* Equalizer bars */
 .eq-bar {
   width: 3px;
-  background-color: #06b6d4; /* cyan-500 */
+  background: linear-gradient(180deg, #00d4ff, #1a9fff);
   border-radius: 9999px;
   display: inline-block;
-  height: 4px; /* default static state */
+  height: 4px;
   transition: all 0.3s ease-in-out;
+  box-shadow: 0 0 4px rgba(0, 212, 255, 0.5);
 }
 
 .eq-bar.pulsing {
-  animation: equalizer-height 1s ease-in-out infinite;
+  animation: equalizer-height 0.8s ease-in-out infinite;
 }
 
-.eq-bar.pulsing:nth-child(2) { animation-delay: 0.15s; }
-.eq-bar.pulsing:nth-child(3) { animation-delay: 0.3s; }
-.eq-bar.pulsing:nth-child(4) { animation-delay: 0.45s; }
-.eq-bar.pulsing:nth-child(5) { animation-delay: 0.1s; }
-.eq-bar.pulsing:nth-child(6) { animation-delay: 0.25s; }
-.eq-bar.pulsing:nth-child(7) { animation-delay: 0.4s; }
+.eq-bar.pulsing:nth-child(2) { animation-delay: 0.1s; }
+.eq-bar.pulsing:nth-child(3) { animation-delay: 0.2s; }
+.eq-bar.pulsing:nth-child(4) { animation-delay: 0.3s; }
+.eq-bar.pulsing:nth-child(5) { animation-delay: 0.08s; }
+.eq-bar.pulsing:nth-child(6) { animation-delay: 0.18s; }
+.eq-bar.pulsing:nth-child(7) { animation-delay: 0.28s; }
 
+/* Hex grid overlay */
+.hex-grid {
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='100'%3E%3Cpolygon points='28,2 54,17 54,47 28,62 2,47 2,17' fill='none' stroke='rgba(0,212,255,0.04)' stroke-width='1'/%3E%3Cpolygon points='28,52 54,67 54,97 28,112 2,97 2,67' fill='none' stroke='rgba(0,212,255,0.04)' stroke-width='1'/%3E%3C/svg%3E");
+  background-size: 56px 100px;
+}
+
+/* Holographic flicker */
+.holo-flicker {
+  animation: holographic-flicker 8s ease-in-out infinite;
+}
+
+/* Data readout text style */
+.data-readout {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  color: rgba(0, 212, 255, 0.7);
+  letter-spacing: 0.1em;
+}
+
+/* Corner decoration */
+.corner-tl::before,
+.corner-tl::after {
+  content: "";
+  position: absolute;
+  background: rgba(0, 212, 255, 0.6);
+}
+.corner-tl::before {
+  top: 0; left: 0;
+  width: 12px; height: 1px;
+}
+.corner-tl::after {
+  top: 0; left: 0;
+  width: 1px; height: 12px;
+}
+
+/* Progress bar Jarvis style */
+.jarvis-progress {
+  background: rgba(0, 212, 255, 0.08);
+  border-radius: 2px;
+  overflow: hidden;
+  position: relative;
+}
+
+.jarvis-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, rgba(0, 212, 255, 0.6), rgba(26, 159, 255, 0.9));
+  border-radius: 2px;
+  box-shadow: 0 0 8px rgba(0, 212, 255, 0.5);
+  transition: width 1s ease;
+}
+
+/* JARVIS title font */
+.font-jarvis {
+  font-family: "Orbitron", "JetBrains Mono", monospace;
+  letter-spacing: 0.15em;
+}
+
+/* System online indicator */
+.sys-online {
+  background: rgba(0, 255, 136, 0.1);
+  border: 1px solid rgba(0, 255, 136, 0.25);
+  color: #00ff88;
+  text-shadow: 0 0 6px rgba(0, 255, 136, 0.5);
+}
+
+/* Warning / alert state */
+.sys-alert {
+  background: rgba(245, 166, 35, 0.1);
+  border: 1px solid rgba(245, 166, 35, 0.25);
+  color: #f5a623;
+}
+
+/* Danger state */
+.sys-danger {
+  background: rgba(255, 71, 87, 0.1);
+  border: 1px solid rgba(255, 71, 87, 0.25);
+  color: #ff4757;
+}
+
+/* Separator line with glow */
+.jarvis-separator {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(0, 212, 255, 0.3), transparent);
+}
