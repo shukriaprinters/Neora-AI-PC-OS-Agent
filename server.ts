@@ -174,7 +174,7 @@ if (!recoveryAutoSaveTimer) {
 dotenv.config();
 
 const app = express();
-const PORT = Number(process.env.PORT || 3000);
+const PORT = Number(process.env.PORT || 5000);
 
 // Enable JSON body parsing
 app.use(express.json());
