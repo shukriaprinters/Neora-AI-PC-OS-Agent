@@ -1,0 +1,1 @@
+- [CSS pointer-events specificity trap](css-pointer-events-specificity.md) — `#id * { pointer-events: auto }` overrides overlay `pointer-events: none`, silently blocking all clicks.

@@ -3,6 +3,7 @@ import { AppShell } from './components/layout/AppShell';
 import { Sidebar } from './components/Sidebar';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { DebugBanner } from './components/ui/DebugBanner';
+import { LiveJournalWidget } from './components/LiveJournalWidget';
 const SectionViewer = React.lazy(() => import('./components/SectionViewer').then((m) => ({ default: m.SectionViewer })));
 const ChatView = React.lazy(() => import('./components/ChatView').then((m) => ({ default: m.ChatView })));
 const PlannerView = React.lazy(() => import('./components/PlannerView').then((m) => ({ default: m.PlannerView })));
@@ -163,7 +164,7 @@ export default function App() {
   const [serverOnline, setServerOnline] = useState(false);
   const [overlayBlocked, setOverlayBlocked] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
-  const [showDebugBanner, setShowDebugBanner] = useState(() => localStorage.getItem('neora_show_debug_banner') !== 'false');
+  const [showDebugBanner, setShowDebugBanner] = useState(false);
   const [clickInspectorMode, setClickInspectorMode] = useState(false);
   const [inspectorLog, setInspectorLog] = useState<string | null>(null);
 
@@ -733,6 +734,9 @@ export default function App() {
           </div>
 
         </div>
+
+        {/* ===== REAL-TIME SYSTEM JOURNAL ===== */}
+        <LiveJournalWidget className="mt-2" />
       </section>
 
       {/* Main Content Workspace Layout Rendering Section */}

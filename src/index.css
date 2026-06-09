@@ -228,12 +228,13 @@ body, #root {
 
 .pointer-events-none,
 .holo-scanline-container,
+.holo-scanline-bar,
 #app-wrapper::after,
 [data-neora-overlay="decorative"] {
-  pointer-events: none;
+  pointer-events: none !important;
 }
 
-#root, #app-wrapper, #app-wrapper * {
+#root, #app-wrapper {
   pointer-events: auto;
 }
 
