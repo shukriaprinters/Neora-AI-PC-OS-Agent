@@ -20,10 +20,11 @@ type ActiveTab = typeof navItems[number]["id"];
 interface AppShellProps {
   activeTab: ActiveTab;
   onChangeTab: (tab: ActiveTab) => void;
+  onVoiceOpen?: () => void;
   children: React.ReactNode;
 }
 
-export function AppShell({ activeTab, onChangeTab, children }: AppShellProps) {
+export function AppShell({ activeTab, onChangeTab, onVoiceOpen, children }: AppShellProps) {
   const [time, setTime] = useState(new Date());
   const [sysLoad, setSysLoad] = useState(42);
   const [isListening, setIsListening] = useState(false);
@@ -70,7 +71,7 @@ export function AppShell({ activeTab, onChangeTab, children }: AppShellProps) {
             <VoiceOrb
               size="md"
               isListening={isListening}
-              onClick={() => setIsListening(v => !v)}
+              onClick={() => { setIsListening(v => !v); onVoiceOpen?.(); }}
               className="mb-3"
             />
             <div className="text-center">

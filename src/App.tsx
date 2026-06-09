@@ -4,6 +4,7 @@ import { Sidebar } from './components/Sidebar';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { DebugBanner } from './components/ui/DebugBanner';
 import { LiveJournalWidget } from './components/LiveJournalWidget';
+import { VoiceCommandPanel } from './components/VoiceCommandPanel';
 const SectionViewer = React.lazy(() => import('./components/SectionViewer').then((m) => ({ default: m.SectionViewer })));
 const ChatView = React.lazy(() => import('./components/ChatView').then((m) => ({ default: m.ChatView })));
 const PlannerView = React.lazy(() => import('./components/PlannerView').then((m) => ({ default: m.PlannerView })));
@@ -165,6 +166,7 @@ export default function App() {
   const [overlayBlocked, setOverlayBlocked] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [showDebugBanner, setShowDebugBanner] = useState(false);
+  const [voicePanelOpen, setVoicePanelOpen] = useState(false);
   const [clickInspectorMode, setClickInspectorMode] = useState(false);
   const [inspectorLog, setInspectorLog] = useState<string | null>(null);
 
@@ -445,7 +447,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-    <AppShell activeTab={activeTab as any} onChangeTab={setActiveTab as any}>
+    <AppShell activeTab={activeTab as any} onChangeTab={setActiveTab as any} onVoiceOpen={() => setVoicePanelOpen(true)}>
       {showDebugBanner && (
         <DebugBanner
           apiHealthy={apiHealth > 0}
@@ -631,8 +633,8 @@ export default function App() {
         })}
       </nav>
 
-      {/* ===== JARVIS COMMAND CENTER OVERVIEW ===== */}
-      <section className="px-4 py-3 print:hidden shrink-0">
+      {/* ===== JARVIS COMMAND CENTER OVERVIEW — only on home/chat tab ===== */}
+      {activeTab === 'chat' && <section className="px-4 py-3 print:hidden shrink-0">
         <div className="grid grid-cols-2 xl:grid-cols-5 gap-2">
 
           {/* Main workspace card */}
@@ -737,7 +739,7 @@ export default function App() {
 
         {/* ===== REAL-TIME SYSTEM JOURNAL ===== */}
         <LiveJournalWidget className="mt-2" />
-      </section>
+      </section>}
 
       {/* Main Content Workspace Layout Rendering Section */}
       <main id="main-content" className="flex-1 flex min-h-0 overflow-hidden">
@@ -1033,6 +1035,17 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+      {/* ===== VOICE COMMAND PANEL ===== */}
+      {voicePanelOpen && (
+        <VoiceCommandPanel
+          lang={lang}
+          onAddTask={handleAddTask}
+          onAddNote={handleAddNote}
+          onAddReminder={handleAddReminder}
+          onNavigate={(tab) => { setActiveTab(tab as any); setVoicePanelOpen(false); }}
+          onClose={() => setVoicePanelOpen(false)}
+        />
+      )}
       </Suspense>
     </div>
     </AppShell>
