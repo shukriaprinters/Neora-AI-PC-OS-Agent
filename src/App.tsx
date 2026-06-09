@@ -69,6 +69,13 @@ export default function App() {
   const [groqModel, setGroqModel] = useState<string>(() => {
     return localStorage.getItem('neora_groq_model') || 'llama-3.3-70b-versatile';
   });
+  const [geminiKey, setGeminiKey] = useState<string>(() => {
+    return localStorage.getItem('neora_gemini_key') || '';
+  });
+
+  React.useEffect(() => {
+    localStorage.setItem('neora_gemini_key', geminiKey);
+  }, [geminiKey]);
 
   // Save activeTab state to LocalStorage
   React.useEffect(() => {
@@ -807,6 +814,8 @@ export default function App() {
             setGroqKey={setGroqKey}
             groqModel={groqModel}
             setGroqModel={setGroqModel}
+            geminiKey={geminiKey}
+            setGeminiKey={setGeminiKey}
           />
         )}
 

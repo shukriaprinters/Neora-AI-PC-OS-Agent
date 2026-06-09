@@ -36,6 +36,8 @@ interface ChatViewProps {
   setGroqKey: (val: string) => void;
   groqModel: string;
   setGroqModel: (val: string) => void;
+  geminiKey: string;
+  setGeminiKey: (val: string) => void;
 }
 
 export function ChatView({ 
@@ -49,7 +51,9 @@ export function ChatView({
   groqKey,
   setGroqKey,
   groqModel,
-  setGroqModel
+  setGroqModel,
+  geminiKey,
+  setGeminiKey
 }: ChatViewProps) {
   const t = TRANSLATIONS[lang];
   const [messages, setMessages] = useState<Message[]>([
@@ -183,7 +187,7 @@ export function ChatView({
   };
 
   const submitOsCommand = async (commandText: string) => {
-    const result: any = await neoraPost('/api/os/command', { prompt: commandText });
+    const result: any = await neoraPost('/api/os/command', { prompt: commandText, geminiKey: geminiKey });
     setLastResult(result?.fallback
       ? (lang === 'bn' ? `লোকাল fallback parser: ${commandText}` : `Submitted via local fallback parser: ${commandText}`)
       : (lang === 'bn' ? `OS command submitted: ${commandText}` : `OS command submitted: ${commandText}`));
@@ -534,7 +538,8 @@ export function ChatView({
         prompt: inputValue,
         lang: lang,
         useOllama: useOllama,
-        selectedOllamaModel: selectedOllamaModel
+        selectedOllamaModel: selectedOllamaModel,
+        geminiKey: geminiKey
       });
       if (resData.status === 'success' && resData.text) {
         setInputValue(resData.text);
@@ -884,7 +889,8 @@ export function ChatView({
         const recentHistory = [...messages, newMsg].slice(-8);
         const resData: any = await neoraPost('/api/chat-gemini', {
           messages: recentHistory,
-          lang: lang
+          lang: lang,
+          geminiKey: geminiKey
         });
         
         if (resData.status === 'api_key_missing') {
@@ -1102,6 +1108,55 @@ export function ChatView({
                   ? '✦ মেমরি এবং লজিক্যাল অ্যাকশনের জন্য 70B মডেলটি রিকমেন্ডেড।' 
                   : '✦ Ultra-fast open weight models powered by Groq LPUs.'}
               </span>
+            </div>
+          </div>
+
+          {/* Gemini API Settings Panel */}
+          <div className="border-t border-slate-800/80 pt-3.5 mt-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-white font-bold uppercase text-[10px] tracking-wider text-rose-400 flex items-center gap-1.5 font-mono">
+                <Sparkles className="w-4 h-4 text-rose-400" />
+                <span>{lang === 'bn' ? 'ব্যক্তিগত Gemini এপিআই সেটিংস' : 'PERSONAL GEMINI API SETTINGS'}</span>
+              </span>
+            </div>
+            
+            <p className="text-[10px] text-slate-400 leading-relaxed font-sans">
+              {lang === 'bn' 
+                ? 'গুগল জেমিনি এআই সচল করতে বা লোকাল পিসি-তে অফলাইনে ব্যবহারের জন্য আপনার এপিআই কি দিন। এটি উন্নত স্পীড ও সম্পূর্ণ বাংলা ও ইংরেজি অটোমেশন প্রম্পট প্রসেস করতে সাহায্য করে।' 
+                : 'Configure Google Gemini API Client to enable state-of-the-art native intelligence. Runs with zero latencies on both local setups and AI studio cloud hosts.'}
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1.5">
+              <div className="space-y-1.5 col-span-2 md:col-span-1">
+                <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wide block">
+                  {lang === 'bn' ? 'ব্যক্তিগত Gemini এপিআই কি:' : 'Personal Gemini API Key:'}
+                </label>
+                <input
+                  type="password"
+                  placeholder="AIzaSy..."
+                  value={geminiKey}
+                  onChange={(e) => setGeminiKey(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-205 placeholder-slate-705 outline-none focus:border-rose-500/50"
+                />
+                <span className="text-[8px] text-slate-500 block leading-tight">
+                  {lang === 'bn' 
+                    ? '✦ আপনার ব্রাউজারের ক্যাশে নিরাপদে সংরক্ষিত থাকবে।' 
+                    : '✦ Saved securely in your browser cache. Extends offline setup instantly.'}
+                </span>
+              </div>
+              <div className="space-y-1.5 col-span-2 md:col-span-1">
+                <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wide block">
+                  {lang === 'bn' ? 'সক্রিয় জেমিনি মডেল:' : 'Active Gemini Model:'}
+                </label>
+                <div className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-rose-400 font-bold font-mono">
+                  gemini-3.5-flash (Standard)
+                </div>
+                <span className="text-[8px] text-slate-500 block leading-tight">
+                  {lang === 'bn' 
+                    ? '✦ Neora স্বয়ংক্রিয়ভাবে জেমিনি ৩.৫ ফ্ল্যাশ ব্যবহার করে।' 
+                    : '✦ Fully optimized version for low-level automation compilers.'}
+                </span>
+              </div>
             </div>
           </div>
 

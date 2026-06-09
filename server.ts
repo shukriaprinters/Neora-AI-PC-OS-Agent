@@ -296,7 +296,7 @@ if (!recoveryAutoSaveTimer) {
 dotenv.config();
 
 const app = express();
-const PORT = Number(process.env.PORT || 5000);
+const PORT = Number(process.env.PORT || 3000);
 
 // Enable JSON body parsing
 app.use(express.json());
@@ -365,33 +365,30 @@ app.post("/api/chat-groq", async (req, res) => {
 });
 
 let geminiAi: GoogleGenAI | null = null;
-function getGeminiClient() {
-  if (!geminiAi) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error("GEMINI_API_KEY is not defined");
-    }
-    geminiAi = new GoogleGenAI({
-      apiKey: apiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        }
-      }
-    });
+function getGeminiClient(customApiKey?: string) {
+  const apiKey = customApiKey || process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY is not defined");
   }
-  return geminiAi;
+  return new GoogleGenAI({
+    apiKey: apiKey,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      }
+    }
+  });
 }
 
 // Define Gemini Chat Completion route
 app.post("/api/chat-gemini", async (req, res) => {
   try {
-    const { messages, lang } = req.body;
+    const { messages, lang, geminiKey } = req.body;
     if (!messages || !Array.isArray(messages)) {
       return res.status(400).json({ error: "Missing messages array in request body" });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = geminiKey || process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return res.json({
         status: "api_key_missing",
@@ -399,7 +396,7 @@ app.post("/api/chat-gemini", async (req, res) => {
       });
     }
 
-    const client = getGeminiClient();
+    const client = getGeminiClient(apiKey);
 
     const systemInstruction = buildChatSystemInstruction(lang);
 
@@ -409,7 +406,7 @@ app.post("/api/chat-gemini", async (req, res) => {
     }));
 
     const response = await client.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-3.5-flash",
       contents: formattedContents,
       config: {
         systemInstruction: systemInstruction,
@@ -428,7 +425,7 @@ app.post("/api/chat-gemini", async (req, res) => {
 // Prompt Enhancer AI endpoint for optimizer buttons inside the Chat UI
 app.post("/api/prompt/enhance", async (req, res) => {
   try {
-    const { prompt, lang, useOllama, selectedOllamaModel } = req.body;
+    const { prompt, lang, useOllama, selectedOllamaModel, geminiKey } = req.body;
     if (!prompt || typeof prompt !== "string") {
       return res.status(400).json({ error: "Missing or invalid prompt parameter" });
     }
@@ -485,9 +482,9 @@ Rules:
       return res.json({ status: "success", text: fallbackPrompt });
     }
 
-    const client = getGeminiClient();
+    const client = getGeminiClient(geminiKey);
     const response = await client.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-3.5-flash",
       contents: `Please enhance this prompt: "${prompt}"`,
       config: {
         systemInstruction: sysInstruction,
@@ -677,7 +674,7 @@ app.post("/api/os/report", (req, res) => {
 
 app.post("/api/os/command", async (req, res) => {
   try {
-    const { prompt, token } = req.body;
+    const { prompt, token, geminiKey } = req.body;
     if (!prompt) {
       return res.status(400).json({ error: "Missing prompt query string" });
     }
@@ -686,7 +683,7 @@ app.post("/api/os/command", async (req, res) => {
       return res.status(401).json({ error: "Unauthorized token" });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = geminiKey || process.env.GEMINI_API_KEY;
     if (!apiKey) {
       // In-app fallback compiler
       const fallbackActions = parseLocalMockCommand(prompt);
@@ -704,7 +701,7 @@ app.post("/api/os/command", async (req, res) => {
       return res.json({ status: "success", command: fallbackCmd, fallback: true });
     }
 
-    const client = getGeminiClient();
+    const client = getGeminiClient(apiKey);
 
     const systemInstruction = `You are Neora OS compiler. Translate the human's desktop control request into a detailed sequence of low-level JSON action operations.
 Supported low-level operations are:
@@ -737,7 +734,7 @@ Always add a "take_screenshot" action at the end/mid of the sequence so that the
 Output ONLY the final raw JSON action plan matching the response schema!`;
 
     const response = await client.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-3.5-flash",
       contents: prompt,
       config: {
         systemInstruction: systemInstruction,
@@ -1063,8 +1060,20 @@ async function setupVite() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
+    // Serve static files with no-cache headers to prevent cached old UI designs
+    app.use(express.static(distPath, {
+      setHeaders: (res) => {
+        res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+        res.setHeader("Pragma", "no-cache");
+        res.setHeader("Expires", "0");
+        res.setHeader("Surrogate-Control", "no-store");
+      }
+    }));
     app.get("*", (req, res) => {
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
+      res.setHeader("Surrogate-Control", "no-store");
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
