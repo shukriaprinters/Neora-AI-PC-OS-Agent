@@ -1,18 +1,19 @@
 import React, { useState, useEffect } from "react";
 import {
   Brain, LayoutDashboard, MessageSquare, Monitor,
-  Settings, Workflow, Activity, Zap, Shield, ChevronRight
+  Settings, Workflow, Activity, Zap, Shield, ChevronRight, LayoutGrid
 } from "lucide-react";
 import { NebulaBackground } from "../NebulaBackground";
 import { VoiceOrb } from "../VoiceOrb";
 
 const navItems = [
-  { id: "chat", label: "Neural Chat", icon: MessageSquare, color: "#00d4ff" },
-  { id: "autonomy", label: "Automation", icon: Workflow, color: "#1a9fff" },
-  { id: "productivity", label: "Memory", icon: Brain, color: "#7c3aed" },
-  { id: "osAgent", label: "OS Agent", icon: Monitor, color: "#00ff88" },
-  { id: "dev", label: "Settings", icon: Settings, color: "#f5a623" },
-  { id: "vscode", label: "Workspace", icon: LayoutDashboard, color: "#00d4ff" },
+  { id: "home",       label: "Dashboard",   icon: LayoutGrid,    color: "#00d4ff" },
+  { id: "chat",       label: "Neural Chat", icon: MessageSquare, color: "#00d4ff" },
+  { id: "autonomy",   label: "Automation",  icon: Workflow,      color: "#1a9fff" },
+  { id: "productivity", label: "Memory",    icon: Brain,         color: "#7c3aed" },
+  { id: "osAgent",    label: "OS Agent",    icon: Monitor,       color: "#00ff88" },
+  { id: "dev",        label: "Settings",    icon: Settings,      color: "#f5a623" },
+  { id: "vscode",     label: "Workspace",   icon: LayoutDashboard, color: "#00d4ff" },
 ] as const;
 
 type ActiveTab = typeof navItems[number]["id"];

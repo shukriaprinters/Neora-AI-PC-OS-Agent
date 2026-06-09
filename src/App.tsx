@@ -5,6 +5,7 @@ import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { DebugBanner } from './components/ui/DebugBanner';
 import { LiveJournalWidget } from './components/LiveJournalWidget';
 import { VoiceCommandPanel } from './components/VoiceCommandPanel';
+import { NeoraNotifications } from './components/NeoraNotifications';
 const SectionViewer = React.lazy(() => import('./components/SectionViewer').then((m) => ({ default: m.SectionViewer })));
 const ChatView = React.lazy(() => import('./components/ChatView').then((m) => ({ default: m.ChatView })));
 const PlannerView = React.lazy(() => import('./components/PlannerView').then((m) => ({ default: m.PlannerView })));
@@ -30,8 +31,8 @@ export default function App() {
   const [lang, setLang] = useState<'en' | 'bn'>('en');
 
   // Persist activeTab to localStorage
-  const [activeTab, setActiveTab] = useState<'chat' | 'autonomy' | 'productivity' | 'invoice' | 'dev' | 'blueprint' | 'filterLab' | 'roadmap' | 'osAgent' | 'vscode'>(() => {
-    return (localStorage.getItem('neora_active_tab') || 'chat') as any;
+  const [activeTab, setActiveTab] = useState<'home' | 'chat' | 'autonomy' | 'productivity' | 'invoice' | 'dev' | 'blueprint' | 'filterLab' | 'roadmap' | 'osAgent' | 'vscode'>(() => {
+    return (localStorage.getItem('neora_active_tab') || 'home') as any;
   });
   
   // Dynamic collections
@@ -597,6 +598,7 @@ export default function App() {
         backdropFilter: "blur(16px)",
       }}>
         {([
+          { id: 'home', label: lang === 'bn' ? 'ড্যাশবোর্ড' : 'DASHBOARD', icon: Activity, color: '#00d4ff' },
           { id: 'chat', label: t.navChat, icon: MessageSquare, color: '#00d4ff' },
           { id: 'autonomy', label: t.navAutonomy, icon: Sliders, color: '#1a9fff' },
           { id: 'productivity', label: t.navProductivity, icon: Clipboard, color: '#7c3aed' },
@@ -633,8 +635,8 @@ export default function App() {
         })}
       </nav>
 
-      {/* ===== JARVIS COMMAND CENTER OVERVIEW — only on home/chat tab ===== */}
-      {activeTab === 'chat' && <section className="px-4 py-3 print:hidden shrink-0">
+      {/* ===== JARVIS COMMAND CENTER — Dashboard tab only (fills remaining height) ===== */}
+      {activeTab === 'home' && <section className="px-4 py-3 print:hidden flex-1 overflow-y-auto min-h-0">
         <div className="grid grid-cols-2 xl:grid-cols-5 gap-2">
 
           {/* Main workspace card */}
@@ -741,8 +743,8 @@ export default function App() {
         <LiveJournalWidget className="mt-2" />
       </section>}
 
-      {/* Main Content Workspace Layout Rendering Section */}
-      <main id="main-content" className="flex-1 flex min-h-0 overflow-hidden">
+      {/* Main Content — hidden on Dashboard tab */}
+      {activeTab !== 'home' && <main id="main-content" className="flex-1 flex min-h-0 overflow-hidden">
         {activeTab === 'chat' && (
           <ChatView
             lang={lang}
@@ -843,7 +845,7 @@ export default function App() {
          {activeTab === 'vscode' && (
            <VSCodeView />
          )}
-       </main>
+       </main>}
 
       {/* --- UNDO TOAST NOTIFICATION SYSTEM (5-SECOND DISMISS) --- */}
       <AnimatePresence>
@@ -1035,6 +1037,9 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+      {/* ===== HOLOGRAPHIC NOTIFICATION SYSTEM ===== */}
+      <NeoraNotifications reminders={reminders} apiHealth={apiHealth} />
+
       {/* ===== VOICE COMMAND PANEL ===== */}
       {voicePanelOpen && (
         <VoiceCommandPanel

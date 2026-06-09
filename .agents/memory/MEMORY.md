@@ -1,1 +1,2 @@
-- [CSS pointer-events specificity trap](css-pointer-events-specificity.md) — `#id * { pointer-events: auto }` overrides overlay `pointer-events: none`, silently blocking all clicks.
+- [CSS pointer-events specificity](css-pointer-events-specificity.md) — scanline overlay z-index:50 blocked all clicks; fixed with targeted `#root` rule + `!important`
+- [Chat tab layout architecture](chat-tab-layout.md) — command center section must NOT live above ChatView; it lives on the 'home' dashboard tab
