@@ -56,7 +56,7 @@ export function ChatView({
     {
       id: 'init',
       role: 'assistant',
-      content: lang === 'bn' ? 'স্বাগতম, বস! নিওরা এআই ওয়ার্কস্পেস প্রস্তুত। আমি আপনাকে কোড, ইনভয়েস, টাস্ক এবং রিমাইন্ডার পরিচালনা করতে সহায়তা করতে পারি।' : 'Welcome back, boss. Neora AI is up and running. I can help you automate code reviews, generate client invoices, or manage system task logs.',
+      content: lang === 'bn' ? 'হ্যাঁ, বলো — কী দরকার? আমি রেডি।' : "Hey, I'm online. What do you need?",
       timestamp: new Date().toLocaleTimeString(),
       classification: 'chat'
     }
@@ -165,16 +165,21 @@ export function ChatView({
 
   const handleSpeak = (text: string) => {
     if (!speakVolumeOn) return;
-    const cleanText = text.replace(/[`*#_]/g, '');
+    const cleanText = text.replace(/[`*#_\[\]]/g, '').replace(/\*\*/g, '').slice(0, 600);
     const synth = window.speechSynthesis;
-    if (synth) {
-      synth.cancel(); // Stop playing previous streams
-      const utterance = new SpeechSynthesisUtterance(cleanText);
-      utterance.lang = lang === 'bn' ? 'bn-BD' : 'en-US';
-      utterance.rate = 1.0;
-      utterance.pitch = 1.0;
-      synth.speak(utterance);
-    }
+    if (!synth) return;
+    synth.cancel();
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.lang = lang === 'bn' ? 'bn-BD' : 'en-US';
+    utterance.rate = 1.05;
+    utterance.pitch = 0.92;
+    const voices = synth.getVoices();
+    const preferred = voices.find(v =>
+      v.lang.startsWith(lang === 'bn' ? 'bn' : 'en') &&
+      (v.name.includes('Google') || v.name.includes('Neural') || v.name.includes('Premium') || v.name.includes('Natural'))
+    ) || voices.find(v => v.lang.startsWith(lang === 'bn' ? 'bn' : 'en'));
+    if (preferred) utterance.voice = preferred;
+    synth.speak(utterance);
   };
 
   const submitOsCommand = async (commandText: string) => {

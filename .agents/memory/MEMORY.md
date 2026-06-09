@@ -1,2 +1,4 @@
 - [CSS pointer-events specificity](css-pointer-events-specificity.md) — scanline overlay z-index:50 blocked all clicks; fixed with targeted `#root` rule + `!important`
-- [Chat tab layout architecture](chat-tab-layout.md) — command center section must NOT live above ChatView; it lives on the 'home' dashboard tab
+- [Chat tab layout architecture](chat-tab-layout.md) — command center section must NOT live above ChatView; lives on the 'home' dashboard tab
+- [Neora AI persona](neora-ai-persona.md) — system prompt is rich multi-paragraph Jarvis-style; Bengali text requires Python for file edits (tool edit fails on multi-byte chars)
+- [OS Agent execution flow](os-agent-execution.md) — executeOsCommandDirectly runs server-side after every command; PC-specific actions (xdotool) gracefully fall back with warning messages

@@ -94,6 +94,23 @@ export function VoiceCommandPanel({ onAddTask, onAddNote, onAddReminder, onNavig
   const recognitionRef = useRef<any>(null);
   const barsTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  const speakFeedback = useCallback((text: string) => {
+    const synth = window.speechSynthesis;
+    if (!synth) return;
+    synth.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = lang === 'bn' ? 'bn-BD' : 'en-US';
+    utterance.rate = 1.05;
+    utterance.pitch = 0.9;
+    const voices = synth.getVoices();
+    const preferred = voices.find(v =>
+      v.lang.startsWith(lang === 'bn' ? 'bn' : 'en') &&
+      (v.name.includes('Google') || v.name.includes('Neural') || v.name.includes('Natural'))
+    ) || voices.find(v => v.lang.startsWith(lang === 'bn' ? 'bn' : 'en'));
+    if (preferred) utterance.voice = preferred;
+    synth.speak(utterance);
+  }, [lang]);
+
   useEffect(() => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { setSupported(false); return; }
@@ -172,6 +189,8 @@ export function VoiceCommandPanel({ onAddTask, onAddNote, onAddReminder, onNavig
           actionLabel = 'Command failed';
         }
         setFeedback({ msg: actionLabel, ok });
+        if (ok) speakFeedback(actionLabel);
+        else speakFeedback(lang === 'bn' ? 'কমান্ড ব্যর্থ হয়েছে' : 'Command failed');
         setRecent(prev => [{
           id: Date.now().toString(),
           transcript,
@@ -182,7 +201,9 @@ export function VoiceCommandPanel({ onAddTask, onAddNote, onAddReminder, onNavig
         setTranscript('');
         setTimeout(() => setFeedback(null), 3500);
       } else {
-        setFeedback({ msg: `Unknown command: "${transcript}"`, ok: false });
+        const unknownMsg = lang === 'bn' ? `কমান্ড বোঝা যায়নি: "${transcript}"` : `Unknown command: "${transcript}"`;
+        setFeedback({ msg: unknownMsg, ok: false });
+        speakFeedback(lang === 'bn' ? 'কমান্ড বোঝা যায়নি' : 'Command not recognized. Try saying task, note, or remind me to.');
         setTimeout(() => setFeedback(null), 3000);
       }
     }

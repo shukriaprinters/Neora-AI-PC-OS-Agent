@@ -29,16 +29,28 @@ export function DevStudioView({
   const [aiTesting, setAiTesting] = useState(false);
   const [aiTestResult, setAiTestResult] = useState<string>('');
 
-  const handleTestAiConnection = () => {
+  const handleTestAiConnection = async () => {
     setAiTesting(true);
     setAiTestResult('');
-    setTimeout(() => {
+    const t0 = Date.now();
+    try {
+      const res = await fetch('/api/health');
+      const latency = Date.now() - t0;
+      if (res.ok) {
+        const d = await res.json();
+        setAiTestResult(
+          useGroq
+            ? `ONLINE — Groq endpoint active. Model: ${groqModel || 'llama-3.3-70b-versatile'}. Latency: ${latency}ms. Status: ${d.status || 'ready'}`
+            : `ONLINE — Gemini API active. Agent interface ready. Latency: ${latency}ms. Status: ${d.status || 'ready'}`
+        );
+      } else {
+        setAiTestResult(`Server responded ${res.status} — check API key configuration`);
+      }
+    } catch (err: any) {
+      setAiTestResult(`Connection failed: ${err.message}`);
+    } finally {
       setAiTesting(false);
-      setAiTestResult(useGroq 
-        ? (lang === 'bn' ? 'সফল: Groq ক্লাউড LPU নোড টেস্ট সম্পন্ন হয়েছে। মডেলসমূহ সক্রিয়: Llama 3.3, Gemma 2 (লেটেন্সি: ১১৪ms)' : 'SUCCESS: Groq Cloud LPU endpoint connection active. Verified models: Llama 3.3, Gemma 2 (Latency: 114ms).')
-        : (lang === 'bn' ? 'সফল: জেমিনি এপিআই ক্লাউড কোর ভেলিডেটেড। এজেন্ট ক্যাপাবিলিটি সক্রিয় (লেটেন্সি: ১৯৪ms)' : 'SUCCESS: Gemini API Cloud Core validated. Enterprise multi-agent capabilities fully online (Latency: 194ms).')
-      );
-    }, 1100);
+    }
   };
 
   // CODING STUDIO STATE

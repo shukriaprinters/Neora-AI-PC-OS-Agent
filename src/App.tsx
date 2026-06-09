@@ -739,6 +739,52 @@ export default function App() {
 
         </div>
 
+        {/* ===== OS QUICK LAUNCHER ===== */}
+        <div className="mt-3 relative rounded-xl overflow-hidden" style={{
+          background: 'linear-gradient(135deg, rgba(0,20,10,0.92) 0%, rgba(0,10,5,0.88) 100%)',
+          border: '1px solid rgba(0,255,136,0.2)',
+          boxShadow: '0 0 0 1px rgba(0,255,136,0.04), inset 0 0 20px rgba(0,255,136,0.03)',
+          backdropFilter: 'blur(20px)',
+        }}>
+          <div className="absolute top-0 left-0 right-0 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(0,255,136,0.5), transparent)' }} />
+          <div className="p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#00ff88', boxShadow: '0 0 4px #00ff88' }} />
+              <span className="jarvis-label" style={{ color: 'rgba(0,255,136,0.7)' }}>OS QUICK COMMAND</span>
+            </div>
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              const input = (e.currentTarget.elements.namedItem('qcmd') as HTMLInputElement);
+              const val = input?.value?.trim();
+              if (!val) return;
+              input.value = '';
+              try {
+                await neoraPost('/api/os/command', { prompt: val });
+                setActiveTab('osAgent');
+              } catch { /* ignore */ }
+            }} className="flex gap-2">
+              <input
+                name="qcmd"
+                type="text"
+                placeholder={lang === 'bn' ? 'যেমন: নোটপ্যাড খোলো, ফাইল লিখো...' : 'e.g. open notepad, write file hello.txt: Hi'}
+                className="flex-1 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none"
+                style={{
+                  background: 'rgba(0,255,136,0.05)',
+                  border: '1px solid rgba(0,255,136,0.2)',
+                  color: 'rgba(186,240,210,0.85)',
+                }}
+                onFocus={e => e.currentTarget.style.borderColor = 'rgba(0,255,136,0.5)'}
+                onBlur={e => e.currentTarget.style.borderColor = 'rgba(0,255,136,0.2)'}
+              />
+              <button type="submit" className="px-3 py-2 rounded-lg text-xs font-mono font-bold transition-all" style={{
+                background: 'rgba(0,255,136,0.12)',
+                border: '1px solid rgba(0,255,136,0.3)',
+                color: '#00ff88',
+              }}>RUN</button>
+            </form>
+          </div>
+        </div>
+
         {/* ===== REAL-TIME SYSTEM JOURNAL ===== */}
         <LiveJournalWidget className="mt-2" />
       </section>}

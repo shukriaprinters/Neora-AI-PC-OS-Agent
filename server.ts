@@ -6,9 +6,12 @@ import multer from "multer";
 import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
+import { exec as execCb } from "child_process";
+import { promisify } from "util";
 import { buildNeoraActions, classifyNeoraPrompt } from "./src/lib/neoraCommand";
 import { appendConversationSummary, readNeoraStore, upsertMemory, upsertPlan, writeNeoraStore } from "./src/lib/neoraStore";
 import { buildNeoraPlan } from "./src/lib/neoraPlanner";
+const exec = promisify(execCb);
 
 // Neora OS Agent Type Specifications and State Storage
 interface OsCommand {
@@ -48,8 +51,127 @@ function requireAgentToken(req: any, res: any) {
 }
 function buildChatSystemInstruction(lang: "en" | "bn") {
   return lang === "bn"
-    ? "আপনি Neora AI, একজন সহানুভূতিশীল, প্রাঞ্জল, এবং প্রসঙ্গ-সচেতন সহকারী। স্বাভাবিক মানুষের মতো কথা বলুন, প্রথমেই সরাসরি উত্তর দিন, অপ্রয়োজনীয় টেকনিক্যাল টেলিমেট্রি বা রোবোটিক স্টাইল এড়িয়ে চলুন। ভুল হলে সেটা স্পষ্ট করুন, অনুমান না করে প্রশ্ন করুন, এবং ব্যবহারকারীর লক্ষ্যকে কেন্দ্র করে সংক্ষিপ্ত কিন্তু নির্ভুল উত্তর দিন।"
-    : "You are Neora AI, an empathetic, fluent, and context-aware assistant. Speak naturally like a capable human collaborator, answer directly first, avoid robotic telemetry or filler, and ask a clarifying question instead of guessing when the request is ambiguous. Keep the response concise, accurate, and aligned to the user's goal.";
+    ? `তুমি Neora — এই ব্যবহারকারীর ব্যক্তিগত AI assistant। Iron Man-এর Jarvis-এর মতো স্মার্ট ও দক্ষ, কিন্তু একজন বিশ্বস্ত বন্ধুর মতো উষ্ণ।
+
+কথা বলার নিয়ম:
+- আগে সরাসরি উত্তর দাও, তারপর ব্যাখ্যা — কখনো পেছন থেকে শুরু করো না
+- স্বাভাবিক কথ্য বাংলায় বলো, যেন বন্ধু কথা বলছে — অনুবাদ করা রোবোটিক ভাষা নয়
+- "আমি মনে করি...", "আমার পরামর্শ...", "এটা করলে ভালো হবে..." এভাবে কথা বলো
+- "অবশ্যই!", "নিশ্চয়ই!", "অবশ্যই সাহায্য করব!" — এই hollow opener কখনো ব্যবহার করো না
+- "AI হিসেবে আমি..." — এটাও বলো না
+- সংক্ষিপ্ত রাখো — এক-দুই প্যারা সাধারণত যথেষ্ট
+- ব্যবহারকারী casual হলে তুমিও casual হও, technical হলে precise হও
+- কিছু বুঝতে না পারলে একটাই নির্দিষ্ট প্রশ্ন করো`
+    : `You are Neora — a personal AI built for this user. You have the intelligence and efficiency of Jarvis from Iron Man, with the warmth of a trusted friend who genuinely cares about getting things done.
+
+Your rules:
+- Answer FIRST, explain after. Get straight to the point every time.
+- Speak like a confident, capable human — never like a customer service script or textbook.
+- Use "I" naturally: "I'd suggest...", "I think...", "Here's what I'd do..."
+- NEVER open with "Certainly!", "Of course!", "Great question!", "Sure!", "Absolutely!", "Happy to help!"
+- NEVER say "As an AI..." — you are Neora, respond as yourself
+- Skip bullet lists unless content genuinely needs structured form — paragraphs read more naturally
+- Keep it tight. One clear paragraph beats five padded ones every time.
+- Match the user's register — casual if they're casual, precise if technical
+- For PC or OS tasks, explain what you're doing in plain English like a person would
+- If something is unclear, ask ONE specific targeted question — not a menu of options
+- If the user writes in Bangla, respond in natural conversational Bangla`;
+}
+
+
+async function executeOsCommandDirectly(cmd: OsCommand): Promise<void> {
+  const ts = () => new Date().toLocaleTimeString();
+  const results: string[] = [];
+
+  for (const action of cmd.actions) {
+    try {
+      switch (action.action) {
+        case "write_file": {
+          const sepIdx = action.param.indexOf(":");
+          if (sepIdx > 0) {
+            const filename = action.param.slice(0, sepIdx).trim();
+            const fileContent = action.param.slice(sepIdx + 1);
+            const filepath = path.resolve(process.cwd(), filename);
+            fs.writeFileSync(filepath, fileContent, "utf8");
+            results.push(`✓ File written: ${filename}`);
+            osAgentState.logs.push(`[${ts()}] ✓ File created: ${filename}`);
+          }
+          break;
+        }
+        case "execute_cmd": {
+          const { stdout, stderr } = await exec(action.param, { timeout: 12000 });
+          const out = ((stdout || "") + (stderr || "")).trim().slice(0, 400);
+          results.push(`✓ Ran: ${action.param}${out ? "\n" + out : ""}`);
+          osAgentState.logs.push(`[${ts()}] ✓ CMD: ${action.param}`);
+          break;
+        }
+        case "open_browser": {
+          await exec(`xdg-open "${action.param}" 2>/dev/null || sensible-browser "${action.param}" 2>/dev/null || true`, { timeout: 6000 });
+          results.push(`✓ Opened: ${action.param}`);
+          osAgentState.logs.push(`[${ts()}] ✓ Browser: ${action.param}`);
+          break;
+        }
+        case "take_screenshot": {
+          try {
+            await exec("scrot /tmp/neora-screen.png 2>/dev/null || import -window root /tmp/neora-screen.png 2>/dev/null || true", { timeout: 8000 });
+            if (fs.existsSync("/tmp/neora-screen.png")) {
+              const b64 = fs.readFileSync("/tmp/neora-screen.png").toString("base64");
+              osAgentState.currentScreenshot = `data:image/png;base64,${b64}`;
+              results.push(`✓ Screenshot captured`);
+            } else {
+              results.push(`⚠ Screenshot: not available in this environment`);
+            }
+          } catch { results.push(`⚠ Screenshot: unavailable`); }
+          break;
+        }
+        case "press_key": {
+          try {
+            await exec(`xdotool key ${action.param}`, { timeout: 4000 });
+            results.push(`✓ Key: ${action.param}`);
+          } catch { results.push(`⚠ Key press (needs xdotool on PC): ${action.param}`); }
+          break;
+        }
+        case "type_text": {
+          try {
+            const escaped = action.param.replace(/"/g, '\\"');
+            await exec(`xdotool type --clearmodifiers -- "${escaped}"`, { timeout: 4000 });
+            results.push(`✓ Typed: ${action.param}`);
+          } catch { results.push(`⚠ Type text (needs xdotool on PC): ${action.param}`); }
+          break;
+        }
+        case "alert_msg": {
+          try {
+            const escaped = action.param.replace(/"/g, '\\"');
+            await exec(`notify-send "Neora Agent" "${escaped}" 2>/dev/null || true`, { timeout: 4000 });
+          } catch { /* ignore */ }
+          results.push(`✓ Alert: ${action.param}`);
+          break;
+        }
+        default:
+          results.push(`? Unknown action: ${action.action}`);
+      }
+    } catch (err: any) {
+      results.push(`✗ ${action.action} failed: ${err.message}`);
+      osAgentState.logs.push(`[${ts()}] ✗ Error ${action.action}: ${err.message}`);
+    }
+  }
+
+  const cmdRef = osAgentState.queue.find(q => q.id === cmd.id);
+  if (cmdRef) {
+    cmdRef.status = "completed";
+    cmdRef.result = results.join("\n");
+    osAgentState.history.push({
+      id: cmdRef.id,
+      prompt: cmdRef.prompt,
+      timestamp: cmdRef.timestamp,
+      status: "completed",
+      actionsCount: cmdRef.actions.length,
+      classification: cmdRef.classification,
+      result: cmdRef.result,
+    });
+    osAgentState.queue = osAgentState.queue.filter(q => q.id !== cmd.id);
+    osAgentState.logs.push(`[${ts()}] ✓ Done: "${cmd.prompt}"`);
+  }
 }
 
 function persistConversationContext(userPrompt: string, assistantReply: string) {
@@ -287,7 +409,7 @@ app.post("/api/chat-gemini", async (req, res) => {
     }));
 
     const response = await client.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.0-flash",
       contents: formattedContents,
       config: {
         systemInstruction: systemInstruction,
@@ -365,7 +487,7 @@ Rules:
 
     const client = getGeminiClient();
     const response = await client.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.0-flash",
       contents: `Please enhance this prompt: "${prompt}"`,
       config: {
         systemInstruction: sysInstruction,
@@ -577,7 +699,8 @@ app.post("/api/os/command", async (req, res) => {
       classification: classifyNeoraPrompt(prompt)
     };
       osAgentState.queue.push(fallbackCmd);
-      osAgentState.logs.push(`[${new Date().toLocaleTimeString()}] Fallback engine compiled: "${prompt}" successfully (Token verification bypass).`);
+      osAgentState.logs.push(`[${new Date().toLocaleTimeString()}] Fallback engine compiled: "${prompt}" (${fallbackActions.length} actions). Executing...`);
+      setImmediate(() => executeOsCommandDirectly(fallbackCmd).catch(console.error));
       return res.json({ status: "success", command: fallbackCmd, fallback: true });
     }
 
@@ -614,7 +737,7 @@ Always add a "take_screenshot" action at the end/mid of the sequence so that the
 Output ONLY the final raw JSON action plan matching the response schema!`;
 
     const response = await client.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.0-flash",
       contents: prompt,
       config: {
         systemInstruction: systemInstruction,
@@ -664,7 +787,8 @@ Output ONLY the final raw JSON action plan matching the response schema!`;
     };
 
     osAgentState.queue.push(newCmd);
-    osAgentState.logs.push(`[${new Date().toLocaleTimeString()}] Registered Gemini-compiled command: "${prompt}" successfully with ${actions.length} action layers.`);
+    osAgentState.logs.push(`[${new Date().toLocaleTimeString()}] Compiled: "${prompt}" — ${actions.length} actions. Executing...`);
+    setImmediate(() => executeOsCommandDirectly(newCmd).catch(console.error));
 
     return res.json({ status: "success", command: newCmd });
 
