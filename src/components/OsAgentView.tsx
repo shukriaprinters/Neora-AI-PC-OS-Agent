@@ -9,6 +9,8 @@ import { NeoraApiError, neoraGet, neoraPost } from '../lib/neoraApi';
 
 interface OsAgentViewProps {
   lang: 'en' | 'bn';
+  geminiKey: string;
+  setGeminiKey: (val: string) => void;
 }
 
 interface CommandAction {
@@ -38,7 +40,7 @@ interface HistoryItem {
   retryCount?: number;
 }
 
-export function OsAgentView({ lang }: OsAgentViewProps) {
+export function OsAgentView({ lang, geminiKey, setGeminiKey }: OsAgentViewProps) {
   const [status, setStatus] = useState<'online' | 'offline'>('offline');
   const [token, setToken] = useState<string>('NEORA-X7-AGENT');
   const [lastPing, setLastPing] = useState<string | null>(null);
@@ -54,6 +56,115 @@ export function OsAgentView({ lang }: OsAgentViewProps) {
   const [lastResult, setLastResult] = useState<string | null>(null);
   const [watchdogNote, setWatchdogNote] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<CommandItem | HistoryItem | null>(null);
+  
+  // Custom Quick Launch application paths loaded from local storage
+  const [quickLaunchPaths, setQuickLaunchPaths] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('neora_quick_launch_paths');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch (e) {
+          // fallback to defaults
+        }
+      }
+    }
+    return {
+      photoshop: 'photoshop',
+      illustrator: 'illustrator',
+      word: 'winword',
+      excel: 'excel',
+      chrome: 'chrome',
+      vscode: 'code',
+      notepad: 'notepad'
+    };
+  });
+  const [showEditPaths, setShowEditPaths] = useState<boolean>(false);
+  const [gitSyncStrategy, setGitSyncStrategy] = useState<'stash' | 'force'>('stash');
+  const [isGitSyncing, setIsGitSyncing] = useState<boolean>(false);
+
+  const handleSavePaths = (newPaths: typeof quickLaunchPaths) => {
+    setQuickLaunchPaths(newPaths);
+    localStorage.setItem('neora_quick_launch_paths', JSON.stringify(newPaths));
+  };
+
+  const handleQuickLaunch = async (appName: keyof typeof quickLaunchPaths) => {
+    const pathValue = quickLaunchPaths[appName];
+    if (!pathValue) return;
+
+    const appNameStr = String(appName);
+    setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Triggering Quick Launch for ${appNameStr} with path: "${pathValue}"...`]);
+
+    try {
+      const resData: any = await neoraPost('/api/os/execute-path', { path: pathValue, token });
+      if (resData.status === 'success') {
+        setStatusBanner(lang === 'bn' ? `${appNameStr} চালু করা হচ্ছে...` : `Launching ${appNameStr}...`);
+        fetchAgentStatus();
+        setLastResult(`Quick launched: ${appNameStr}`);
+      } else {
+        setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Quick launch failed: ${resData.error || 'Server rejected request'}`]);
+      }
+    } catch (err) {
+      console.error(err);
+      setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Connection error triggering Quick Launch.`]);
+    }
+  };
+
+  const handleGitSync = async () => {
+    setIsGitSyncing(true);
+    setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Queuing Git Sync action layer (${gitSyncStrategy.toUpperCase()})...`]);
+    try {
+      const resData: any = await neoraPost('/api/os/git-sync', { strategy: gitSyncStrategy, token });
+      if (resData.status === 'success') {
+        setStatusBanner(lang === 'bn' ? 'গিট সুসংগতি করার অনুরোধ পাঠানো হয়েছে' : `Git Sync request dispatched...`);
+        fetchAgentStatus();
+        setLastResult(`Git Sync queued (${gitSyncStrategy})`);
+      } else {
+        setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Git Sync failed: ${resData.error || 'Server rejected request'}`]);
+      }
+    } catch (err) {
+      console.error(err);
+      setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Connection error running Git Sync.`]);
+    } finally {
+      setIsGitSyncing(false);
+    }
+  };
+
+  const getActiveAppStatus = () => {
+    // Check pending operations first for running status
+    const runningCmd = queue.find(q => q.status === 'running') || queue.find(q => q.status === 'pending');
+    if (runningCmd) {
+      const p = runningCmd.prompt.toLowerCase();
+      if (p.includes('photoshop')) return 'photoshop';
+      if (p.includes('illustrator')) return 'illustrator';
+      if (p.includes('notepad') || p.includes('memo') || p.includes('নোটপ্যাড')) return 'notepad';
+      if (p.includes('code') || p.includes('vscode') || p.includes('visual studio')) return 'vscode';
+      if (p.includes('chrome') || p.includes('browser') || p.includes('facebook') || p.includes('youtube') || p.includes('https')) return 'chrome';
+      if (p.includes('excel')) return 'excel';
+      if (p.includes('word') || p.includes('winword') || p.includes('msword')) return 'word';
+      if (p.includes('explorer') || p.includes('file') || p.includes('folder') || p.includes('ফাইল') || p.includes('স্থিরকারী')) return 'explorer';
+      if (p.includes('calc') || p.includes('calculator') || p.includes('ক্যালকুলেটর')) return 'calculator';
+    }
+
+    // fallback check logs
+    if (logs && logs.length > 0) {
+      const last3Logs = logs.slice(-5).map(l => l.toLowerCase());
+      for (const logLine of last3Logs) {
+        if (logLine.includes('photoshop')) return 'photoshop';
+        if (logLine.includes('illustrator')) return 'illustrator';
+        if (logLine.includes('notepad') || logLine.includes('নোটপ্যাড')) return 'notepad';
+        if (logLine.includes('code') || logLine.includes('vscode')) return 'vscode';
+        if (logLine.includes('chrome') || logLine.includes('browser') || logLine.includes('facebook') || logLine.includes('youtube')) return 'chrome';
+        if (logLine.includes('excel')) return 'excel';
+        if (logLine.includes('word') || logLine.includes('winword') || logLine.includes('msword')) return 'word';
+        if (logLine.includes('opened file') || logLine.includes('folder') || logLine.includes('explorer')) return 'explorer';
+        if (logLine.includes('calc') || logLine.includes('calculator')) return 'calculator';
+      }
+    }
+    return null;
+  };
+
+  const activeTriggeredApp = getActiveAppStatus();
   
   const [prompt, setPrompt] = useState<string>('');
   const [isCompiling, setIsCompiling] = useState<boolean>(false);
@@ -165,7 +276,7 @@ export function OsAgentView({ lang }: OsAgentViewProps) {
     setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Submitting control request: "${effectivePrompt}"...`]);
 
     try {
-      const resData: any = await neoraPost('/api/os/command', { prompt: effectivePrompt, token });
+      const resData: any = await neoraPost('/api/os/command', { prompt: effectivePrompt, token, geminiKey });
       if (resData.status === 'success') {
         setPrompt('');
         fetchAgentStatus();
@@ -313,6 +424,7 @@ import base64
 import io
 import json
 import sys
+import threading
 from datetime import datetime
 
 # Neora OS Remote Control Client Configuration
@@ -361,7 +473,9 @@ def retrieve_authenticated_headers():
                         pass
                     return headers
             except Exception as e:
-                print(f"[RETRY] Connection handshake error: {e}")
+                print(f"[RETRY] Network connection issue (cookie is still valid, retrying in 5s...): {e}")
+                time.sleep(5)
+                continue
                 
         # If expired or missing, show interactive Bengali & English guide
         print("\\n" + "="*75)
@@ -475,6 +589,22 @@ def send_ping():
     except Exception as e:
         pass
 
+# Speak audio feedback using native Windows, Mac or Linux synthesis aloud on the user's PC speakers
+def speak_local(text):
+    def speech_worker():
+        try:
+            clean = text.replace('"', "").replace("'", "").replace("**", "").replace("*", "").replace("#", "").replace("_", "").strip()
+            if sys.platform == "darwin":
+                subprocess.Popen(["say", "-r", "175", clean], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            elif sys.platform == "win32":
+                ps_cmd = f'Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.Speak("{clean}")'
+                subprocess.Popen(["powershell", "-NoProfile", "-Command", ps_cmd], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            else:
+                subprocess.Popen(["espeak", clean], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+    threading.Thread(target=speech_worker, daemon=True).start()
+
 # Captures standard Windows, macOS or Linux desktop screenshot
 def capture_screenshot_base64():
     if not (PYAUTOGUI_AVAILABLE and PILLOW_AVAILABLE):
@@ -564,6 +694,76 @@ def execute_instruction(action, param):
         
     return logs
 
+# --- OPTIONAL DEKSTOP CONTINUOUS VOCAL LISTENER HANDSHAKE ---
+def start_handsfree_voice_listener():
+    try:
+        import speech_recognition as sr
+        print("[SUCCESS] Speech recognition (speech_recognition) package detected!")
+        print("[INFO] Hot mic listening active. Start speaking to trigger Neora commands hands-free...")
+        
+        recognizer = sr.Recognizer()
+        
+        def voice_worker():
+            try:
+                mic = sr.Microphone()
+            except Exception as mic_err:
+                print(f"[WARNING] Microphone initialization failed: {mic_err}")
+                print("[WARNING] SpeechRecognition is installed, but no default microphone input was found. Skipping voice module.")
+                return
+                
+            while True:
+                try:
+                    with mic as source:
+                        # calibrate for ambient background click or hiss noises
+                        recognizer.adjust_for_ambient_noise(source, duration=0.8)
+                        print("[Voice Mic] Listening for prompt or trigger...")
+                        audio = recognizer.listen(source, phrase_time_limit=6)
+                        
+                    print("[Voice Mic] Processing vocal wave patterns...")
+                    speech_text = recognizer.recognize_google(audio, language="en-US").strip()
+                    if not speech_text:
+                        continue
+                        
+                    # Support Bengali pronunciation detections too
+                    try:
+                        bengali_speech = recognizer.recognize_google(audio, language="bn-BD").strip()
+                        # If contains actual Bengali unicode characters, prefer the Bengali transcription
+                        if len([c for c in bengali_speech if ord(c) > 127]) > len(speech_text) * 0.4:
+                            speech_text = bengali_speech
+                    except Exception:
+                        pass
+                        
+                    print(f"[🎙️ Voice Trigger] Caught => '{speech_text}'")
+                    payload = {
+                        "prompt": speech_text,
+                        "token": AGENT_TOKEN,
+                        "client_time": datetime.now().isoformat()
+                    }
+                    requests.post(f"{BROKER_URL}/api/os/command", json=payload, headers=HEADERS, timeout=8)
+                    print(f"✓ Dispatched voiced command directly to Neora cloud panel.")
+                except sr.UnknownValueError:
+                    # ignore silent speech audio ticks
+                    pass
+                except Exception as e:
+                    print(f"[Voice Mic Error] Mic loop exception: {e}")
+                    time.sleep(3)
+                    
+        t = threading.Thread(target=voice_worker, daemon=True)
+        t.start()
+    except ImportError:
+        print("\\n" + "-"*75)
+        print("💡   🎙️ WANT NEORA TO HEAR YOUR VOICE LOCALLY AT YOUR COMPUTER? (HANDS-FREE)")
+        print("-"*75)
+        print("পিসিতে বসেই সরাসরি কথা বলে Neora কে কন্ট্রোল করতে লাইব্রেরিটি ব্রাশ আপ করুন।")
+        print("ভয়েস কম্যান্ড অ্যাক্টিভেট করতে আপনার টার্মিনাল/CMD-তে রান করুন:")
+        print("   pip install SpeechRecognition pyaudio")
+        print("-"*75 + "\\n")
+    except Exception as e:
+        print(f"[INFO] Handsfree module bypassed: {e}")
+
+# Spin off the continuous local microphone listening sequence
+start_handsfree_voice_listener()
+
 # Main agent listener polling query loop
 last_ping_time = time.time() - 30
 
@@ -599,6 +799,8 @@ while True:
                 
                 print(f'\n[INCOMING PROMPT] => "{prompt_text}"')
                 print(f"Processing command actions queue ({len(actions_list)} layers)...")
+                # Trigger local PC speech feedback
+                speak_local(f"Acknowledged direct command: {prompt_text}")
                 
                 execution_logs = [f"Desktop execution started for command: '{prompt_text}'"]
                 success_count = 0
@@ -625,6 +827,8 @@ while True:
                 # Report back to the Neora cloud server
                 requests.post(f"{BROKER_URL}/api/os/report", json=report_payload, headers=HEADERS, timeout=10)
                 print("[REPORT SUCCESS] Sent logs and image visual metrics back to Neora.")
+                # Speak successful completion aloud
+                speak_local("Neora automation task executed successfully, Boss!")
                 
         elif res.status_code == 401:
             print('\n[UNAUTHORIZED] The token NEORA-X7-AGENT does not match. Update the AGENT_TOKEN inside the script.')
@@ -840,6 +1044,222 @@ while True:
               </div>
             </div>
 
+            {/* Quick Launch & Application Config Panel */}
+            <div className="mb-6 select-none bg-slate-900/40 border border-slate-900 rounded-xl p-4">
+              <div className="flex items-center justify-between mb-3 border-b border-slate-800/40 pb-2">
+                <h4 className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <Laptop className="w-3.5 h-3.5 text-cyan-400" />
+                  {lang === 'bn' ? 'কুইক লঞ্চ ম্যানেজার' : 'Quick Launch Manager'}
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => setShowEditPaths(!showEditPaths)}
+                  className="text-[10px] font-semibold text-slate-400 hover:text-cyan-400 flex items-center gap-1 transition"
+                  title="Configure Executable Paths"
+                >
+                  <Settings className="w-3 h-3" />
+                  <span>{showEditPaths ? (lang === 'bn' ? 'আড়াল করুন' : 'Hide Paths') : (lang === 'bn' ? 'পথ পরিবর্তন' : 'Edit Paths')}</span>
+                </button>
+              </div>
+
+              {showEditPaths && (
+                <div className="space-y-2 mb-4 bg-slate-950 p-3 rounded-lg border border-slate-800">
+                  <p className="text-[9px] text-slate-500 font-mono mb-2">
+                    {lang === 'bn' ? 'আপনার পিসির অ্যাপ্লিকেশন ফাইলের পূর্ণ পাথ দিন:' : 'Set your local desktop path or executable names:'}
+                  </p>
+                  <div className="grid grid-cols-1 gap-2 text-[10px]">
+                    <div>
+                      <label className="text-slate-400 font-bold block mb-1">Photoshop Path</label>
+                      <input 
+                        type="text"
+                        value={quickLaunchPaths.photoshop}
+                        onChange={(e) => handleSavePaths({...quickLaunchPaths, photoshop: e.target.value})}
+                        className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-250 outline-none focus:border-cyan-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-slate-400 font-bold block mb-1">Illustrator Path</label>
+                      <input 
+                        type="text"
+                        value={quickLaunchPaths.illustrator}
+                        onChange={(e) => handleSavePaths({...quickLaunchPaths, illustrator: e.target.value})}
+                        className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-255 outline-none focus:border-cyan-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-slate-400 font-bold block mb-1">MS Word Path</label>
+                      <input 
+                        type="text"
+                        value={quickLaunchPaths.word}
+                        onChange={(e) => handleSavePaths({...quickLaunchPaths, word: e.target.value})}
+                        className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-255 outline-none focus:border-cyan-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-slate-400 font-bold block mb-1">MS Excel Path</label>
+                      <input 
+                        type="text"
+                        value={quickLaunchPaths.excel}
+                        onChange={(e) => handleSavePaths({...quickLaunchPaths, excel: e.target.value})}
+                        className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-255 outline-none focus:border-cyan-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-slate-400 font-bold block mb-1">Chrome Browser</label>
+                      <input 
+                        type="text"
+                        value={quickLaunchPaths.chrome}
+                        onChange={(e) => handleSavePaths({...quickLaunchPaths, chrome: e.target.value})}
+                        className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-255 outline-none focus:border-cyan-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-slate-400 font-bold block mb-1">VS Code Path</label>
+                      <input 
+                        type="text"
+                        value={quickLaunchPaths.vscode}
+                        onChange={(e) => handleSavePaths({...quickLaunchPaths, vscode: e.target.value})}
+                        className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-255 outline-none focus:border-cyan-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-slate-400 font-bold block mb-1">Notepad Path</label>
+                      <input 
+                        type="text"
+                        value={quickLaunchPaths.notepad}
+                        onChange={(e) => handleSavePaths({...quickLaunchPaths, notepad: e.target.value})}
+                        className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-250 outline-none focus:border-cyan-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Quick Launch Buttons Grid */}
+              <div className="grid grid-cols-2 gap-2 mt-1 select-none">
+                <button
+                  type="button"
+                  onClick={() => handleQuickLaunch('photoshop')}
+                  className="flex items-center gap-2 bg-gradient-to-r from-blue-900/20 to-blue-950/40 hover:from-blue-900/40 border border-blue-500/10 hover:border-blue-500/30 px-3 py-2 rounded-lg cursor-pointer transition text-left text-slate-255 font-medium text-xs truncate"
+                >
+                  <span className="text-blue-400 text-sm font-bold block shrink-0 bg-blue-500/20 px-1 rounded">Ps</span>
+                  <div className="min-w-0">
+                    <span className="block text-[11px] font-bold leading-tight">Photoshop</span>
+                    <span className="block text-[8px] text-slate-500 font-mono truncate">{quickLaunchPaths.photoshop}</span>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleQuickLaunch('illustrator')}
+                  className="flex items-center gap-2 bg-gradient-to-r from-amber-900/20 to-amber-950/40 hover:from-amber-900/40 border border-amber-500/10 hover:border-amber-500/30 px-3 py-2 rounded-lg cursor-pointer transition text-left text-slate-255 font-medium text-xs truncate"
+                >
+                  <span className="text-amber-400 text-sm font-bold block shrink-0 bg-amber-500/20 px-1 rounded">Ai</span>
+                  <div className="min-w-0">
+                    <span className="block text-[11px] font-bold leading-tight">Illustrator</span>
+                    <span className="block text-[8px] text-slate-500 font-mono truncate">{quickLaunchPaths.illustrator}</span>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleQuickLaunch('word')}
+                  className="flex items-center gap-2 bg-gradient-to-r from-indigo-900/20 to-indigo-950/40 hover:from-indigo-900/40 border border-indigo-500/10 hover:border-indigo-500/30 px-3 py-2 rounded-lg cursor-pointer transition text-left text-slate-255 font-medium text-xs truncate"
+                >
+                  <span className="text-indigo-400 text-sm font-bold block shrink-0 bg-indigo-500/20 px-1 rounded">Wd</span>
+                  <div className="min-w-0">
+                    <span className="block text-[11px] font-bold leading-tight">MS Word</span>
+                    <span className="block text-[8px] text-slate-500 font-mono truncate">{quickLaunchPaths.word}</span>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleQuickLaunch('excel')}
+                  className="flex items-center gap-2 bg-gradient-to-r from-emerald-900/20 to-emerald-950/40 hover:from-emerald-900/40 border border-emerald-500/10 hover:border-emerald-500/30 px-3 py-2 rounded-lg cursor-pointer transition text-left text-slate-255 font-medium text-xs truncate"
+                >
+                  <span className="text-emerald-400 text-sm font-bold block shrink-0 bg-emerald-500/20 px-1 rounded">Xl</span>
+                  <div className="min-w-0">
+                    <span className="block text-[11px] font-bold leading-tight">MS Excel</span>
+                    <span className="block text-[8px] text-slate-500 font-mono truncate">{quickLaunchPaths.excel}</span>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleQuickLaunch('chrome')}
+                  className="flex items-center gap-2 bg-gradient-to-r from-yellow-900/20 to-yellow-950/40 hover:from-yellow-900/40 border border-yellow-500/10 hover:border-yellow-500/30 px-3 py-2 rounded-lg cursor-pointer transition text-left text-slate-255 font-medium text-xs truncate"
+                >
+                  <span className="text-yellow-400 text-sm font-bold block shrink-0 bg-yellow-500/20 px-1 rounded">Ch</span>
+                  <div className="min-w-0">
+                    <span className="block text-[11px] font-bold leading-tight">Chrome</span>
+                    <span className="block text-[8px] text-slate-500 font-mono truncate">{quickLaunchPaths.chrome}</span>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleQuickLaunch('notepad')}
+                  className="flex items-center gap-2 bg-gradient-to-r from-slate-905/20 to-slate-950/40 hover:from-slate-905/40 border border-slate-500/10 hover:border-slate-500/30 px-3 py-2 rounded-lg cursor-pointer transition text-left text-slate-255 font-medium text-xs truncate"
+                >
+                  <span className="text-slate-400 text-sm font-bold block shrink-0 bg-slate-550/20 px-1 rounded">Np</span>
+                  <div className="min-w-0">
+                    <span className="block text-[11px] font-bold leading-tight">Notepad</span>
+                    <span className="block text-[8px] text-slate-500 font-mono truncate">{quickLaunchPaths.notepad}</span>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* Robust Git Code Synchronizer Panel */}
+            <div className="mb-6 select-none bg-slate-900/40 border border-slate-900 rounded-xl p-4">
+              <h4 className="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+                <RefreshCw className={`w-3.5 h-3.5 text-cyan-400 ${isGitSyncing ? 'animate-spin' : ''}`} />
+                {lang === 'bn' ? 'গিট অটো কোড সিঙ্ক' : 'Git Core Synchronizer'}
+              </h4>
+              <p className="text-[9px] text-slate-400 leading-relaxed mb-3">
+                {lang === 'bn' 
+                  ? 'আপনার পিসির লোকাল কোড দ্রুত আপডেট করতে অটো-স্ট্যাশ বা ফোর্স ওভাররাইট পদ্ধতি ব্যবহার করুন:'
+                  : 'Automatically sync and keep local codebases updated by invoking safe stash pull cycles or hard resets:'}
+              </p>
+              
+              <div className="flex gap-2 mb-3">
+                <button
+                  type="button"
+                  onClick={() => setGitSyncStrategy('stash')}
+                  className={`flex-1 text-center py-1.5 rounded text-[10px] font-bold cursor-pointer border transition ${
+                    gitSyncStrategy === 'stash' 
+                      ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-400' 
+                      : 'bg-slate-950 border-slate-850 text-slate-500 hover:text-slate-305'
+                  }`}
+                >
+                  💼 Safe Auto-Stash
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGitSyncStrategy('force')}
+                  className={`flex-1 text-center py-1.5 rounded text-[10px] font-bold cursor-pointer border transition ${
+                    gitSyncStrategy === 'force' 
+                      ? 'bg-red-500/15 border-red-500/40 text-red-400' 
+                      : 'bg-slate-950 border-slate-850 text-slate-500 hover:text-slate-305'
+                  }`}
+                  title="Overwrites and discards all local conflicts instantly!"
+                >
+                  🔥 Force Overwrite
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleGitSync}
+                disabled={isGitSyncing}
+                className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold border border-slate-705/85 transition cursor-pointer"
+              >
+                {isGitSyncing ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <>
+                    <span>🔄 {lang === 'bn' ? 'লোকাল কোড সিনক্রোনাইজ করুন' : 'Execute Local Code Synchronization'}</span>
+                  </>
+                )}
+              </button>
+            </div>
+
             {/* Active Commands Queue List */}
             <div className="flex-1 flex flex-col min-h-[150px]">
               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">
@@ -979,6 +1399,136 @@ while True:
                         </p>
                       </div>
                     )}
+                  </div>
+                </div>
+
+                {/* Real-time Live Trigger HUD Indicator */}
+                <div className="bg-slate-900/40 border border-slate-900 rounded-xl p-4 select-none mb-4">
+                  <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
+                    {lang === 'bn' ? 'রিয়েল-টাইম লাইভ কমান্ড ইন্ডিকেটর' : '📡 Real-Time Command Trigger HUD'}
+                  </h5>
+                  
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                    {/* Photoshop indicator */}
+                    <div className={`p-2.5 rounded-xl border flex flex-col justify-between transition-all ${
+                      activeTriggeredApp === 'photoshop'
+                        ? 'bg-blue-500/10 border-blue-500/40 text-blue-200 shadow-[0_0_15px_rgba(59,130,246,0.15)] animate-pulse'
+                        : 'bg-slate-900/45 border-slate-900 text-slate-500'
+                    }`}>
+                      <div className="flex items-center justify-between font-mono">
+                        <span className="text-[10px] font-bold text-slate-350">Photoshop</span>
+                        <span className={`w-1.5 h-1.5 rounded-full ${activeTriggeredApp === 'photoshop' ? 'bg-blue-400 animate-ping' : 'bg-slate-700'}`}></span>
+                      </div>
+                      <span className="text-[8px] font-mono mt-2 uppercase tracking-wider font-bold">
+                        {activeTriggeredApp === 'photoshop' ? '⚡ LAUNCHING...' : 'IDLE'}
+                      </span>
+                    </div>
+
+                    {/* Illustrator indicator */}
+                    <div className={`p-2.5 rounded-xl border flex flex-col justify-between transition-all ${
+                      activeTriggeredApp === 'illustrator'
+                        ? 'bg-amber-500/10 border-amber-500/40 text-amber-200 shadow-[0_0_15px_rgba(245,158,11,0.15)] animate-pulse'
+                        : 'bg-slate-900/45 border-slate-900 text-slate-500'
+                    }`}>
+                      <div className="flex items-center justify-between font-mono">
+                        <span className="text-[10px] font-bold text-slate-350">Illustrator</span>
+                        <span className={`w-1.5 h-1.5 rounded-full ${activeTriggeredApp === 'illustrator' ? 'bg-amber-400 animate-ping' : 'bg-slate-700'}`}></span>
+                      </div>
+                      <span className="text-[8px] font-mono mt-2 uppercase tracking-wider font-bold">
+                        {activeTriggeredApp === 'illustrator' ? '⚡ LAUNCHING...' : 'IDLE'}
+                      </span>
+                    </div>
+
+                    {/* Chrome indicator */}
+                    <div className={`p-2.5 rounded-xl border flex flex-col justify-between transition-all ${
+                      activeTriggeredApp === 'chrome'
+                        ? 'bg-yellow-500/10 border-yellow-500/40 text-yellow-200 shadow-[0_0_15px_rgba(234,179,8,0.15)] animate-pulse'
+                        : 'bg-slate-900/45 border-slate-900 text-slate-500'
+                    }`}>
+                      <div className="flex items-center justify-between font-mono">
+                        <span className="text-[10px] font-bold text-slate-350">Chrome</span>
+                        <span className={`w-1.5 h-1.5 rounded-full ${activeTriggeredApp === 'chrome' ? 'bg-yellow-400 animate-ping' : 'bg-slate-700'}`}></span>
+                      </div>
+                      <span className="text-[8px] font-mono mt-2 uppercase tracking-wider font-bold">
+                        {activeTriggeredApp === 'chrome' ? '⚡ TRIGGERING' : 'IDLE'}
+                      </span>
+                    </div>
+
+                    {/* Notepad indicator */}
+                    <div className={`p-2.5 rounded-xl border flex flex-col justify-between transition-all ${
+                      activeTriggeredApp === 'notepad'
+                        ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-200 shadow-[0_0_15px_rgba(16,185,129,0.15)] animate-pulse'
+                        : 'bg-slate-900/45 border-slate-900 text-slate-500'
+                    }`}>
+                      <div className="flex items-center justify-between font-mono">
+                        <span className="text-[10px] font-bold text-slate-350">Notepad</span>
+                        <span className={`w-1.5 h-1.5 rounded-full ${activeTriggeredApp === 'notepad' ? 'bg-emerald-400 animate-ping' : 'bg-slate-700'}`}></span>
+                      </div>
+                      <span className="text-[8px] font-mono mt-2 uppercase tracking-wider font-bold">
+                        {activeTriggeredApp === 'notepad' ? '⚡ TRIGGERING' : 'IDLE'}
+                      </span>
+                    </div>
+
+                    {/* VS Code indicator */}
+                    <div className={`p-2.5 rounded-xl border flex flex-col justify-between transition-all ${
+                      activeTriggeredApp === 'vscode'
+                        ? 'bg-cyan-500/10 border-cyan-500/40 text-cyan-200 shadow-[0_0_15px_rgba(6,182,212,0.15)] animate-pulse'
+                        : 'bg-slate-900/45 border-slate-900 text-slate-500'
+                    }`}>
+                      <div className="flex items-center justify-between font-mono">
+                        <span className="text-[10px] font-bold text-slate-350">VS Code</span>
+                        <span className={`w-1.5 h-1.5 rounded-full ${activeTriggeredApp === 'vscode' ? 'bg-cyan-400 animate-ping' : 'bg-slate-700'}`}></span>
+                      </div>
+                      <span className="text-[8px] font-mono mt-2 uppercase tracking-wider font-bold">
+                        {activeTriggeredApp === 'vscode' ? '⚡ TRIGGERING' : 'IDLE'}
+                      </span>
+                    </div>
+
+                    {/* File/Folder Explorer indicator */}
+                    <div className={`p-2.5 rounded-xl border flex flex-col justify-between transition-all ${
+                      activeTriggeredApp === 'explorer'
+                        ? 'bg-indigo-500/10 border-indigo-500/40 text-indigo-250 shadow-[0_0_15px_rgba(99,102,241,0.15)] animate-pulse'
+                        : 'bg-slate-900/45 border-slate-900 text-slate-500'
+                    }`}>
+                      <div className="flex items-center justify-between font-mono font-bold">
+                        <span className="text-[10px] text-slate-350">Files</span>
+                        <span className={`w-1.5 h-1.5 rounded-full ${activeTriggeredApp === 'explorer' ? 'bg-indigo-400 animate-ping' : 'bg-slate-700'}`}></span>
+                      </div>
+                      <span className="text-[8px] font-mono mt-2 uppercase tracking-wider font-bold">
+                        {activeTriggeredApp === 'explorer' ? '⚡ DIR ACCESS' : 'IDLE'}
+                      </span>
+                    </div>
+
+                    {/* Calculator indicator */}
+                    <div className={`p-2.5 rounded-xl border flex flex-col justify-between transition-all ${
+                      activeTriggeredApp === 'calculator'
+                        ? 'bg-purple-500/10 border-purple-500/40 text-purple-200 shadow-[0_0_15px_rgba(168,85,247,0.15)] animate-pulse'
+                        : 'bg-slate-900/45 border-slate-900 text-slate-500'
+                    }`}>
+                      <div className="flex items-center justify-between font-mono">
+                        <span className="text-[10px] font-bold text-slate-350">Calculator</span>
+                        <span className={`w-1.5 h-1.5 rounded-full ${activeTriggeredApp === 'calculator' ? 'bg-purple-400 animate-ping' : 'bg-slate-700'}`}></span>
+                      </div>
+                      <span className="text-[8px] font-mono mt-2 uppercase tracking-wider font-bold">
+                        {activeTriggeredApp === 'calculator' ? '⚡ LAUNCHING...' : 'IDLE'}
+                      </span>
+                    </div>
+
+                    {/* MS Office (Word/Excel) indicator */}
+                    <div className={`p-2.5 rounded-xl border flex flex-col justify-between transition-all ${
+                      (activeTriggeredApp === 'word' || activeTriggeredApp === 'excel')
+                        ? 'bg-rose-500/10 border-rose-500/40 text-rose-200 shadow-[0_0_15px_rgba(244,63,94,0.15)] animate-pulse'
+                        : 'bg-slate-900/45 border-slate-900 text-slate-500'
+                    }`}>
+                      <div className="flex items-center justify-between font-mono">
+                        <span className="text-[10px] font-bold text-slate-350">MS Office</span>
+                        <span className={`w-1.5 h-1.5 rounded-full ${(activeTriggeredApp === 'word' || activeTriggeredApp === 'excel') ? 'bg-rose-400 animate-ping' : 'bg-slate-700'}`}></span>
+                      </div>
+                      <span className="text-[8px] font-mono mt-2 uppercase tracking-wider font-bold truncate">
+                        {activeTriggeredApp === 'word' ? '⚡ MS WORD' : activeTriggeredApp === 'excel' ? '⚡ MS EXCEL' : 'IDLE'}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -1208,6 +1758,37 @@ while True:
                 </div>
               </div>
               
+              {/* Personal Gemini AI Key Gateway Card */}
+              <div className="bg-rose-500/10 border border-rose-500/20 rounded-2xl p-5 flex gap-3.5 text-rose-200 text-xs">
+                <Laptop className="w-5 h-5 text-rose-400 shrink-0 mt-0.5 animate-pulse" />
+                <div className="space-y-2 w-full">
+                  <h4 className="font-bold text-rose-400 uppercase tracking-wide flex items-center gap-1.5 text-xs">
+                    ⚡ {lang === 'bn' ? 'জেমিনি এআই ব্রেইন কনফিগারেশন' : 'NATIVE INTELLIGENCE COMPILER GATE '}
+                  </h4>
+                  <div className="leading-relaxed text-slate-350 text-[11px] space-y-3">
+                    <p>
+                      {lang === 'bn' 
+                        ? 'আপনার ফেসবুক, নোটপ্যাড, ইলাস্ট্রেটর বা ফটোশপ চালু করার কমান্ডগুলো নিখুঁতভাবে কম্পাইল করার জন্য আপনার জেমিনি এপিআই কি প্রয়োজন। নিচের ঘরে কি দিন, এটি ব্রাউজারে সুরক্ষিত থাকবে।' 
+                        : 'To map commands like "Open Photoshop, Illustrator, Facebook" to sequential operating actions, configure your personal Gemini API Key below. This key will be cached safely in your local browser state.'}
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center pt-1 w-full max-w-xl">
+                      <div className="w-full sm:flex-1">
+                        <input
+                          type="password"
+                          placeholder={lang === 'bn' ? 'আপনার Gemini API Key (AIzaSy...) দিন' : 'Enter Personal Gemini API Key (AIzaSy...)'}
+                          value={geminiKey}
+                          onChange={(e) => setGeminiKey(e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-slate-205 placeholder-slate-705 outline-none focus:border-rose-500/50"
+                        />
+                      </div>
+                      <div className="text-[10px] text-slate-400 font-mono bg-slate-950 border border-slate-800 rounded px-3 py-2 self-stretch flex items-center shrink-0">
+                        Model: gemini-3.5-flash
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Standard Step-by-Step Instructions */}
               <div className="bg-slate-900/40 border border-slate-900 rounded-2xl p-6">
                 <h3 className="text-sm font-bold text-white uppercase tracking-wider mb-4 flex items-center gap-2">

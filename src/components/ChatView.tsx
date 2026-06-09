@@ -19,7 +19,14 @@ import {
   Compass, 
   RefreshCw,
   Settings,
-  Wand2
+  Wand2,
+  Plus,
+  ArrowUp,
+  ChevronDown,
+  Database,
+  Info,
+  Check,
+  X
 } from 'lucide-react';
 import { classifyNeoraInput, isLikelyOsCommand } from '../lib/neoraCommand';
 import { NeoraApiError, neoraGet, neoraPost, neoraUpload } from '../lib/neoraApi';
@@ -156,7 +163,16 @@ export function ChatView({
   }, [onAddTask, onAddReminder, onAddNote, onSearchBlueprints]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const timer = setTimeout(() => {
+      const msgStream = document.getElementById('msg-stream');
+      if (msgStream) {
+        msgStream.scrollTo({
+          top: msgStream.scrollHeight,
+          behavior: 'smooth'
+        });
+      }
+    }, 100);
+    return () => clearTimeout(timer);
   }, [messages]);
 
   useEffect(() => {
@@ -939,7 +955,7 @@ export function ChatView({
   };
 
   return (
-    <div id="chat-section" className="flex-1 flex flex-col h-full bg-slate-950 text-slate-100 border-r border-slate-900 overflow-hidden relative panel-surface">
+    <div id="chat-section" className="flex-1 flex h-full bg-[#1b1b1b] text-[#ececec] border-r border-[#2f2f2f] overflow-hidden relative select-none">
       {/* Immersive Holographic Speech Active Overlay */}
       {isListening && (
         <div id="speech-overlay-portal" className="absolute inset-0 bg-slate-950/90 backdrop-blur-md z-40 flex flex-col items-center justify-center text-center p-6 animate-fade-in select-none">
@@ -997,8 +1013,10 @@ export function ChatView({
         </div>
       )}
 
-      {/* Header toolbar */}
-      <div className="p-3 bg-slate-900/60 border-b border-slate-800/80 flex items-center justify-between shrink-0">
+      {/* Main Column Wrapper */}
+      <div className="flex-1 flex flex-col h-full overflow-hidden relative bg-[#212121]">
+        {/* Header toolbar */}
+        <div className="p-3 bg-slate-900/60 border-b border-slate-800/80 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-cyan-400 animate-pulse" />
           <span className="text-xs font-semibold text-white tracking-wider flex items-center gap-1.5 font-mono uppercase">
@@ -1478,9 +1496,18 @@ export function ChatView({
               <button
                 type="button"
                 onClick={() => setShowMessageBadges(prev => !prev)}
-                className="text-[9px] px-2.5 py-1 rounded-full border border-slate-800 bg-slate-900/70 text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition"
+                className={`text-[9px] font-mono px-3 py-1 rounded-full border transition-all flex items-center gap-1 cursor-pointer ${
+                  showMessageBadges 
+                    ? 'border-cyan-500/20 bg-cyan-950/20 text-cyan-400 hover:bg-cyan-950/40' 
+                    : 'border-slate-800 bg-slate-900/50 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                }`}
               >
-                {showMessageBadges ? 'Hide badges' : 'Show badges'}
+                <span className={`w-1.5 h-1.5 rounded-full ${showMessageBadges ? 'bg-cyan-400 animate-pulse' : 'bg-slate-500'}`} />
+                <span>
+                  {lang === 'bn' 
+                    ? (showMessageBadges ? 'মেমরি ও প্ল্যান লুকান (Collapse)' : 'মেমরি ও প্ল্যান দেখান (Expand)') 
+                    : (showMessageBadges ? 'Hide Memories/Plans' : 'Show Memories/Plans')}
+                </span>
               </button>
             </div>
             {(isListening || whisperStatus === 'transcribing') && (
@@ -1548,49 +1575,7 @@ export function ChatView({
             </div>
           )}
 
-          {(pendingVoiceCommand || recentMemories.length > 0 || activePlans.length > 0) && (
-            <div className="mb-3 grid grid-cols-1 lg:grid-cols-3 gap-2 text-[10px]">
-              {pendingVoiceCommand && (
-                <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-amber-100">
-                  <div className="font-mono uppercase text-amber-300 mb-1">Voice Confirm</div>
-                  <div className="mb-2">{pendingVoiceCommand}</div>
-                  <button
-                    type="button"
-                    onClick={confirmPendingVoiceCommand}
-                    className="px-2 py-1 rounded bg-amber-500/20 border border-amber-400/30 text-amber-100 font-bold uppercase"
-                  >
-                    {lang === 'bn' ? 'হ্যাঁ, চালাও' : 'Yes, run it'}
-                  </button>
-                </div>
-              )}
-              {recentMemories.length > 0 && (
-                <div className="rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-2 text-slate-200">
-                  <div className="font-mono uppercase text-cyan-300 mb-1">Recent Memories</div>
-                  <div className="space-y-1">
-                    {recentMemories.map((memory) => (
-                      <div key={memory.id} className="flex items-start justify-between gap-2">
-                        <span className="text-slate-300">{memory.key}</span>
-                        <span className="text-slate-500 text-[9px]">{memory.category}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {activePlans.length > 0 && (
-                <div className="rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-2 text-slate-200">
-                  <div className="font-mono uppercase text-cyan-300 mb-1">Active Plans</div>
-                  <div className="space-y-1">
-                    {activePlans.map((plan) => (
-                      <div key={plan.id} className="flex items-start justify-between gap-2">
-                        <span className="text-slate-300 truncate">{plan.goal}</span>
-                        <span className="text-slate-500 text-[9px]">{plan.status}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+
 
           <div className="flex items-center justify-between mb-2">
             <span className={`px-2 py-0.5 rounded text-[8px] font-mono font-bold uppercase border ${healthChipClass}`}>
@@ -1669,5 +1654,110 @@ export function ChatView({
         </div>
       </div>
     </div>
-  );
+
+    {/* Segment: The Right-side split HUD drawer for memories and planning states */}
+    {showMessageBadges && (
+      <div className="w-80 shrink-0 border-l border-[#2f2f2f] bg-[#171717] p-4 flex flex-col h-full overflow-y-auto space-y-5 select-none animate-fade-in z-10">
+        <div className="flex items-center justify-between pb-2 border-b border-white/[0.04]">
+          <h3 className="text-xs font-bold text-slate-300 font-sans tracking-wide uppercase flex items-center gap-1.5 font-mono">
+            <Database className="w-3.5 h-3.5 text-indigo-400" />
+            <span>{lang === 'bn' ? 'সিস্টেম ট্র্যাকার ও মেমরি' : 'Workspace Trackers'}</span>
+          </h3>
+          <button
+            onClick={() => setShowMessageBadges(false)}
+            className="p-1 text-slate-500 hover:text-white rounded transition-colors cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* Pending Voice Command Confirm card with Yes/No keys */}
+        {pendingVoiceCommand && (
+          <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-200">
+            <span className="font-mono text-[9px] text-amber-400 uppercase font-semibold block mb-1">⏳ পেন্ডিং ভয়েস নিশ্চিতকরণ</span>
+            <p className="text-[10px] leading-relaxed break-words font-mono bg-black/30 p-1.5 rounded border border-white/5">{pendingVoiceCommand}</p>
+            <div className="flex justify-end gap-1.5 mt-2.5">
+              <button
+                onClick={confirmPendingVoiceCommand}
+                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-[8px] font-bold uppercase rounded transition-colors cursor-pointer"
+              >
+                ✓ Confirm
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Memories list */}
+        <div className="space-y-2">
+          <h4 className="text-[10px] text-slate-400 font-bold uppercase tracking-wider font-mono flex items-center justify-between">
+            <span>🧠 {lang === 'bn' ? 'সাম্প্রতিক মেমরি লগ' : 'Persistent Memories'}</span>
+            <span className="text-indigo-400 font-mono">({recentMemories.length})</span>
+          </h4>
+          {recentMemories.length > 0 ? (
+            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+              {recentMemories.map((m) => (
+                <div key={m.id} className="p-2.5 rounded-xl border border-indigo-500/10 bg-indigo-950/20 text-slate-300">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-mono text-[9px] text-indigo-400 uppercase font-semibold">
+                      {m.key || 'Memory'}
+                    </span>
+                    <span className="text-[8px] bg-indigo-950 px-1 py-0.1 border border-[#2f2f2f] text-indigo-300 rounded uppercase">
+                      {m.category || 'general'}
+                    </span>
+                  </div>
+                  <p className="text-[10px] leading-relaxed break-words">{m.text}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-[10px] text-slate-500 font-mono italic">{lang === 'bn' ? 'কোনো মেমরি সংরক্ষিত নেই' : 'No persistent entries'}</p>
+          )}
+        </div>
+
+        {/* Active Plans list */}
+        <div className="space-y-2">
+          <h4 className="text-[10px] text-slate-400 font-bold uppercase tracking-wider font-mono flex items-center justify-between">
+            <span>📋 {lang === 'bn' ? 'সক্রিয় কাজ' : 'Active Planner Sessions'}</span>
+            <span className="text-cyan-400 font-mono">({activePlans.length})</span>
+          </h4>
+          {activePlans.length > 0 ? (
+            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+              {activePlans.map((p) => (
+                <div key={p.id} className="p-2.5 rounded-xl border border-cyan-500/10 bg-cyan-950/10 text-slate-300">
+                  <div className="flex items-center justify-between mb-1 flex-wrap gap-1">
+                    <span className="font-mono text-[9px] text-cyan-400 uppercase font-semibold truncate max-w-[120px]">
+                      Plan Step
+                    </span>
+                    <span className="text-[8px] bg-cyan-950 px-1.5 py-0.2 border border-[#2f2f2f] text-cyan-300 rounded uppercase block shrink-0">
+                      {p.status || 'running'}
+                    </span>
+                  </div>
+                  <p className="text-[10px] leading-relaxed break-words font-mono bg-black/20 p-1.5 rounded">{p.goal || p.prompt}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-[10px] text-slate-500 font-mono italic">{lang === 'bn' ? 'কোনো প্ল্যান রান হচ্ছে না' : 'No running automation workflows'}</p>
+          )}
+        </div>
+
+        {/* Micro status diagnostics */}
+        <div className="mt-auto pt-3 border-t border-white/[0.04]">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wide">Network Server Response:</span>
+            <span className={`px-2 py-0.5 rounded text-[8px] font-mono font-bold uppercase border ${healthChipClass}`}>
+              {healthState === 'healthy' ? 'online' : 'degraded'}
+            </span>
+          </div>
+          {ollamaStatus !== 'not_installed' && (
+            <div className="flex items-center justify-between text-[10px] text-slate-500">
+              <span>Ollama Offline LLM:</span>
+              <span className="font-mono text-[9px] text-[#00ff88]">{ollamaStatus}</span>
+            </div>
+          )}
+        </div>
+      </div>
+    )}
+  </div>
+);
 }

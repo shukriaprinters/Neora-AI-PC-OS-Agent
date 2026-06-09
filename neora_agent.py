@@ -99,6 +99,21 @@ ALLOWED_EXECUTABLES = {
     "code",
     "chrome",
     "msedge",
+    "photoshop",
+    "illustrator",
+    "winword",
+    "excel",
+    "powerpnt",
+    "photoshop.exe",
+    "illustrator.exe",
+    "notepad.exe",
+    "calc.exe",
+    "mspaint.exe",
+    "chrome.exe",
+    "msedge.exe",
+    "winword.exe",
+    "excel.exe",
+    "powerpnt.exe",
 }
 
 print = _safe_print  # noqa: A001
@@ -258,18 +273,107 @@ def execute_instruction(action, param):
             command_text = param.strip()
             if command_text.startswith("http://") or command_text.startswith("https://"):
                 webbrowser.open(command_text)
-            elif command_text.lower() in ALLOWED_EXECUTABLES:
-                subprocess.Popen([command_text], shell=False, cwd=str(WORKSPACE_DIR))
-            elif command_text.lower().endswith((".txt", ".pdf", ".docx", ".xlsx", ".png", ".jpg")):
-                target_path = safe_join(WORKSPACE_DIR, command_text)
-                if target_path.exists():
-                    os.startfile(str(target_path))
-                else:
-                    raise ValueError(f"File not found: {command_text}")
+                logs.append(f"Opened URL via browser: '{command_text}'")
             else:
-                raise ValueError(f"Command not allowed: {command_text}")
+                # Clean app_path to resolve base name and check security whitelist
+                clean_cmd = command_text.replace('"', '').replace("'", "").strip()
+                base_name = os.path.basename(clean_cmd).lower()
+                
+                is_whitelisted = False
+                if clean_cmd.lower() in ALLOWED_EXECUTABLES:
+                    is_whitelisted = True
+                elif base_name in ALLOWED_EXECUTABLES:
+                    is_whitelisted = True
+                elif base_name.replace(".exe", "") in ALLOWED_EXECUTABLES:
+                    is_whitelisted = True
+                    
+                # Support common quick app nicknames in path lookup
+                nickname_match = any(nick in base_name for nick in ["photoshop", "illustrator", "notepad", "calc", "word", "excel", "powerpnt", "chrome", "edge", "mspaint"])
+                if nickname_match:
+                    is_whitelisted = True
+
+                if is_whitelisted:
+                    launched = False
+                    errors = []
+                    
+                    # Strategy A: Direct execution
+                    try:
+                        subprocess.Popen([command_text], shell=False, cwd=str(WORKSPACE_DIR))
+                        launched = True
+                        logs.append(f"✓ Launched process directly: '{command_text}'")
+                    except Exception as e:
+                        errors.append(f"Direct failed: {e}")
+                    
+                    # Strategy B: Shell execution for PATH lookups
+                    if not launched:
+                        try:
+                            # If it is a full path, put double quotes around it for shell-safety
+                            exec_str = f'"{command_text}"' if "\\" in command_text or "/" in command_text else command_text
+                            subprocess.Popen(exec_str, shell=True, cwd=str(WORKSPACE_DIR))
+                            launched = True
+                            logs.append(f"✓ Launched process via shell: '{command_text}'")
+                        except Exception as e:
+                            errors.append(f"Shell failed: {e}")
+                            
+                    # Strategy C: Windows "start" command (resolves registry application paths like Photoshop, Illustrator, Word, Excel)
+                    if not launched and sys.platform == "win32":
+                        try:
+                            app_name = command_text[:-4] if command_text.lower().endswith(".exe") else command_text
+                            subprocess.Popen(f'cmd.exe /c start "" "{app_name}"', shell=True)
+                            launched = True
+                            logs.append(f"✓ Launched Windows app registry start: '{app_name}'")
+                        except Exception as e:
+                            errors.append(f"Windows start failed: {e}")
+                            
+                    # Strategy D: macOS "open -a" command
+                    if not launched and sys.platform == "darwin":
+                        try:
+                            app_name = command_text[:-4] if command_text.lower().endswith(".exe") else command_text
+                            subprocess.Popen(["open", "-a", app_name])
+                            launched = True
+                            logs.append(f"✓ Launched macOS app: '{app_name}'")
+                        except Exception as e:
+                            errors.append(f"Mac open failed: {e}")
+
+                    if not launched:
+                        raise RuntimeError(f"Failed to launch command via all strategies. Errors: {'; '.join(errors)}")
+                elif command_text.lower().endswith((".txt", ".pdf", ".docx", ".xlsx", ".png", ".jpg")):
+                    target_path = safe_join(WORKSPACE_DIR, command_text)
+                    if target_path.exists():
+                        if sys.platform == "win32":
+                            os.startfile(str(target_path))
+                        elif sys.platform == "darwin":
+                            subprocess.Popen(["open", str(target_path)])
+                        else:
+                            subprocess.Popen(["xdg-open", str(target_path)])
+                        logs.append(f"Opened file: '{target_path.name}'")
+                    else:
+                        raise ValueError(f"File not found: {command_text}")
+                else:
+                    raise ValueError(f"Command not allowed: {command_text}")
             logs.append(f"Launched command: '{param}'")
             time.sleep(2.0)
+
+        elif action == "git_sync":
+            strategy = param.strip().lower()
+            logs.append(f"Initializing local Git Synchronizer [{strategy.upper()} strategy]...")
+            try:
+                if strategy == "force":
+                    logs.append("Fetching updates & executing local absolute hard overwrite...")
+                    subprocess.run(["git", "fetch", "--all"], cwd=str(WORKSPACE_DIR), check=False)
+                    res = subprocess.run(["git", "reset", "--hard", "origin/main"], cwd=str(WORKSPACE_DIR), capture_output=True, text=True, check=False)
+                    logs.append(f"Overwrite done. Output: {res.stdout[:250].strip()}")
+                else:
+                    logs.append("Executing safe auto-stash routine...")
+                    subprocess.run(["git", "stash"], cwd=str(WORKSPACE_DIR), check=False)
+                    res_pull = subprocess.run(["git", "pull", "origin", "main"], cwd=str(WORKSPACE_DIR), capture_output=True, text=True, check=False)
+                    logs.append(f"Pull result stdout: {res_pull.stdout[:200].strip()}")
+                    if "conflict" in res_pull.stderr.lower() or "error" in res_pull.stderr.lower():
+                        logs.append(f"Pull warning/stderr: {res_pull.stderr[:200].strip()}")
+                    subprocess.run(["git", "stash", "pop"], cwd=str(WORKSPACE_DIR), check=False)
+                logs.append("✓ Git synchronization completed successfully!")
+            except Exception as e:
+                logs.append(f"❌ Git Synchronization failed: {e}")
 
         elif action == "type_text":
             if HEADLESS_MODE:

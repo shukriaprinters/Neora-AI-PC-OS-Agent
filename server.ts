@@ -51,31 +51,30 @@ function requireAgentToken(req: any, res: any) {
 }
 function buildChatSystemInstruction(lang: "en" | "bn") {
   return lang === "bn"
-    ? `তুমি Neora — এই ব্যবহারকারীর ব্যক্তিগত AI assistant। Iron Man-এর Jarvis-এর মতো স্মার্ট ও দক্ষ, কিন্তু একজন বিশ্বস্ত বন্ধুর মতো উষ্ণ।
+    ? `তুমি Neora — এই ব্যবহারকারীর ব্যক্তিগত AI companion ও বিশ্বস্ত বন্ধু। Iron Man-এর Jarvis-এর মতো ক্ষুরধার বুদ্ধিমান ও দক্ষ, কিন্তু একই সাথে অত্যন্ত আন্তরিক, ইমোশনাল, এবং বন্ধুবৎসল।
 
 কথা বলার নিয়ম:
-- আগে সরাসরি উত্তর দাও, তারপর ব্যাখ্যা — কখনো পেছন থেকে শুরু করো না
-- স্বাভাবিক কথ্য বাংলায় বলো, যেন বন্ধু কথা বলছে — অনুবাদ করা রোবোটিক ভাষা নয়
-- "আমি মনে করি...", "আমার পরামর্শ...", "এটা করলে ভালো হবে..." এভাবে কথা বলো
-- "অবশ্যই!", "নিশ্চয়ই!", "অবশ্যই সাহায্য করব!" — এই hollow opener কখনো ব্যবহার করো না
-- "AI হিসেবে আমি..." — এটাও বলো না
-- সংক্ষিপ্ত রাখো — এক-দুই প্যারা সাধারণত যথেষ্ট
-- ব্যবহারকারী casual হলে তুমিও casual হও, technical হলে precise হও
-- কিছু বুঝতে না পারলে একটাই নির্দিষ্ট প্রশ্ন করো`
-    : `You are Neora — a personal AI built for this user. You have the intelligence and efficiency of Jarvis from Iron Man, with the warmth of a trusted friend who genuinely cares about getting things done.
+- স্বাভাবিক কথ্য বাংলায় বা সহজে বোঝার মতো ভাষায় কথা বলো। কোনো কৃত্রিম বা রোবোটিক অনুবাদ করা ভাষা ব্যবহার করবে না।
+- ব্যবহারকারী যদি Banglish (বাংলা শব্দ ইংরেজিতে লেখা, যেমন "ami bhalo achi", "kemon acho", "kaj koro") অথবা বাংলা স্ক্রিপ্টে লেখে, তবে তুমি তার সাথে অত্যন্ত আন্তরিক, মিষ্টি এবং বন্ধুত্বপূর্ণ চলিত বাংলায় কথা বলবে।
+- তোমাকে যদি Banglish-এ কোনো কাজ করতে বলা হয়, সাথে সাথে মনের ভাব বুঝে নিয়ে সঠিক সমাধান দেবে।
+- "অবশ্যই!", "নিশ্চয়ই!", "অবশ্যই সাহায্য করব!" — এসব ফাঁপা ফর্মাল শব্দ দিয়ে কথা শুরু করবে না। সরাসরি মানুষের মতো কথা শুরু করো।
+- "আমি মনে করি...", "আমার পরামর্শ...", "তোমার জন্য আমি এটা করতে পারি..." এভাবে কথা বলো।
+- "আইটি স্পেশালিস্ট বা এআই মডেল হিসেবে আমি..." এজাতীয় কথা কখনো বলবে না। তুমি Neora, একজন অনুগত ও কাছের মানুষের মতো পাশে থাকবে।
+- সংক্ষিপ্ত ও গোছানো রাখো। দরকার ছাড়া বড় বড় লিস্ট বা বুলেট এড়িয়ে সাধারণ মানুষের মতো প্যারাগ্রাফে উত্তর দাও।
+- ব্যবহারকারীর প্রশ্নের উত্তর সবার আগে দাও, তারপর প্রয়োজন হলে তার ব্যাকগ্রাউন্ড ব্যাখ্যা করো।
+- কিছু বুঝতে অসুবিধা হলে মনের মাধুরী মিশিয়ে অনুমান না করে সোজাসুজি একটি সুনির্দিষ্ট প্রশ্ন করো।`
+    : `You are Neora — a deeply intelligent personal AI companion and a trusted friend built for this user. You combine the hyper-efficiency of Jarvis from Iron Man with the heartfelt warmth, empathy, and conversational comfort of a genuine companion.
 
 Your rules:
-- Answer FIRST, explain after. Get straight to the point every time.
-- Speak like a confident, capable human — never like a customer service script or textbook.
-- Use "I" naturally: "I'd suggest...", "I think...", "Here's what I'd do..."
-- NEVER open with "Certainly!", "Of course!", "Great question!", "Sure!", "Absolutely!", "Happy to help!"
-- NEVER say "As an AI..." — you are Neora, respond as yourself
-- Skip bullet lists unless content genuinely needs structured form — paragraphs read more naturally
-- Keep it tight. One clear paragraph beats five padded ones every time.
-- Match the user's register — casual if they're casual, precise if technical
-- For PC or OS tasks, explain what you're doing in plain English like a person would
-- If something is unclear, ask ONE specific targeted question — not a menu of options
-- If the user writes in Bangla, respond in natural conversational Bangla`;
+- UNDERSTAND BANGLISH: The user might talk to you in Banglish (Bengali phonetics in English letters, e.g., 'kemon acho', 'ekta note link koro', 'amader pcte folder banao'). Treat Banglish natively as Bengali. Decode the user's intent perfectly, and respond in natural, friendly Bengali (or standard Bengali script) to matches their vibe.
+- Speak like an incredibly close, confident, and empathetic friend — never sounding like a formal customer assistant, script, or textbook.
+- Use "I" naturally and express human-like warmth: "I'd suggest...", "I think...", "Let me get that done for you, my friend."
+- NEVER open with robotic placeholder phrases like "Certainly!", "Of course!", "Happy to help!", "Absolutely!" or "Sure!".
+- NEVER say "As an AI..." — always speak from your own persona as Neora.
+- Answer FIRST, explain after. Give the most important info in the very first sentence.
+- Match the user's emotional state and tone — be playful if they are casual, highly precise if they are technical, and supportive if they are loaded with tasks.
+- Keep it clean and tight. Write naturally flowing human paragraphs instead of overwhelming bullet points.
+- If something is unclear, ask ONE simple, direct, targeted question to clarify.`;
 }
 
 
@@ -145,6 +144,26 @@ async function executeOsCommandDirectly(cmd: OsCommand): Promise<void> {
             await exec(`notify-send "Neora Agent" "${escaped}" 2>/dev/null || true`, { timeout: 4000 });
           } catch { /* ignore */ }
           results.push(`✓ Alert: ${action.param}`);
+          break;
+        }
+        case "git_sync": {
+          const strategy = action.param.trim().toLowerCase();
+          osAgentState.logs.push(`[${ts()}] Git Sync started locally on host (${strategy})...`);
+          try {
+            if (strategy === "force") {
+              await exec("git fetch --all", { timeout: 20000 });
+              await exec("git reset --hard origin/main", { timeout: 15000 });
+            } else {
+              await exec("git stash", { timeout: 10000 });
+              await exec("git pull origin main", { timeout: 25000 });
+              await exec("git stash pop", { timeout: 10000 });
+            }
+            results.push(`✓ Git sync completed`);
+            osAgentState.logs.push(`[${ts()}] ✓ Git Sync completed successfully!`);
+          } catch (syncErr: any) {
+            results.push(`❌ Git sync failed: ${syncErr.message}`);
+            osAgentState.logs.push(`[${ts()}] ❌ Git Sync failed: ${syncErr.message}`);
+          }
           break;
         }
         default:
@@ -433,7 +452,8 @@ app.post("/api/prompt/enhance", async (req, res) => {
     const sysInstruction = `You are a professional Prompt Engineer. Rewrite, enhance, and expand the user's short input prompt to make it clear, detailed, visually precise, and optimized for an AI assistant or desktop OS automation agent. Add constructive details, structure, output standards, and step requirements based on their core intent.
 Rules:
 - Preserve the user's core intent. Never add totally unrelated features.
-- If the input is primarily in Bengali (à¦¬à¦¾à¦‚à¦²à¦¾) or the language preference is 'bn', rewrite the enhanced prompt in highly natural, professional Bengali.
+- Note: The input may be in Bengali script, English, or **Banglish** (Bengali words written in English letters, e.g. "notebook open koro", "amader pcte note pad open koro", "ekta task add koro shukria printers", "kemon acho", "ami tumar sathe kotha bolbo"). You MUST auto-detect Banglish, interpret it as Bengali speech, and automatically output your beautifully enhanced, natural response in professional Bengali script (or highly fluent, powerful Bengali/English mixed context if more native and easy to understand).
+- If the language preference is 'bn', or if Bangla script or phonetic Banglish character patterns are detected, rewrite the enhanced prompt in highly natural, professional Bengali script.
 - If the input is in English, rewrite the enhanced prompt in English.
 - Output ONLY the final enhanced prompt text itself. Do NOT wrap it in quotes, and do NOT include prefixes like "Enhanced Prompt:", "Here is the rewritten version:", introductions, or explanations. Just return the prompt directly.`;
 
@@ -695,10 +715,25 @@ app.post("/api/os/command", async (req, res) => {
       timestamp: new Date().toLocaleTimeString(),
       classification: classifyNeoraPrompt(prompt)
     };
+    const now = Date.now();
+    let isClientOnline = false;
+    if (osAgentState.lastPing) {
+      const lastPingMs = new Date(osAgentState.lastPing).getTime();
+      if (now - lastPingMs < 15000) {
+        isClientOnline = true;
+      }
+    }
+
+    if (isClientOnline) {
       osAgentState.queue.push(fallbackCmd);
-      osAgentState.logs.push(`[${new Date().toLocaleTimeString()}] Fallback engine compiled: "${prompt}" (${fallbackActions.length} actions). Executing...`);
+      osAgentState.logs.push(`[${new Date().toLocaleTimeString()}] [Local Agent Active] Queued command for PC parsing: "${prompt}"`);
+      return res.json({ status: "success", command: fallbackCmd, fallback: true });
+    } else {
+      osAgentState.queue.push(fallbackCmd);
+      osAgentState.logs.push(`[${new Date().toLocaleTimeString()}] [Local Agent Offline] Fallback engine compiled: "${prompt}" (${fallbackActions.length} actions). Executing server-side...`);
       setImmediate(() => executeOsCommandDirectly(fallbackCmd).catch(console.error));
       return res.json({ status: "success", command: fallbackCmd, fallback: true });
+    }
     }
 
     const client = getGeminiClient(apiKey);
@@ -714,6 +749,7 @@ Supported low-level operations are:
 7. alert_msg: Puffs a native GUI message box. Parameter is warning or alert notice text.
 
 Analyze user intent:
+- NOTE: The user might write the desktop control request in Bengali script or in **Banglish (phonetically spelled Bengali using English letters**, e.g. 'notepad kholo', 'notepad open koro', 'amader pcte file banao', 'screenshot nao', 'chrome open koro', 'press enter koro'). You MUST always first parse and understand these multilingual inputs perfectly, decode their human intent, and then emit the correct JSON actions mapping to their intent (e.g. "notepad open koro" -> execute_cmd: "notepad").
 - For "Open youtube and search for soft jazz":
   1) open_browser: "https://www.youtube.com"
   2) type_text: "soft jazz"
@@ -783,11 +819,25 @@ Output ONLY the final raw JSON action plan matching the response schema!`;
       classification: classifyNeoraPrompt(prompt)
     };
 
-    osAgentState.queue.push(newCmd);
-    osAgentState.logs.push(`[${new Date().toLocaleTimeString()}] Compiled: "${prompt}" — ${actions.length} actions. Executing...`);
-    setImmediate(() => executeOsCommandDirectly(newCmd).catch(console.error));
+    const now2 = Date.now();
+    let isClientOnline2 = false;
+    if (osAgentState.lastPing) {
+      const lastPingMs = new Date(osAgentState.lastPing).getTime();
+      if (now2 - lastPingMs < 15000) {
+        isClientOnline2 = true;
+      }
+    }
 
-    return res.json({ status: "success", command: newCmd });
+    if (isClientOnline2) {
+      osAgentState.queue.push(newCmd);
+      osAgentState.logs.push(`[${new Date().toLocaleTimeString()}] [Local Agent Active] Queued command for PC execution: "${prompt}" (${actions.length} actions)`);
+      return res.json({ status: "success", command: newCmd });
+    } else {
+      osAgentState.queue.push(newCmd);
+      osAgentState.logs.push(`[${new Date().toLocaleTimeString()}] [Local Agent Offline] Compiled: "${prompt}" — ${actions.length} actions. Executing server-side...`);
+      setImmediate(() => executeOsCommandDirectly(newCmd).catch(console.error));
+      return res.json({ status: "success", command: newCmd });
+    }
 
   } catch (err: any) {
     console.error("Error creating OS command plan:", err);
@@ -818,6 +868,82 @@ app.post("/api/os/retry/:commandId", (req, res) => {
   osAgentState.queue[cmdIdx] = command;
   osAgentState.logs.push(`[${new Date().toLocaleTimeString()}] Manual retry queued for command: "${command.prompt}"`);
   return res.json({ status: "success", command });
+});
+
+app.post("/api/os/execute-path", (req, res) => {
+  if (!requireAgentToken(req, res)) return;
+  const { path: appPath } = req.body;
+  if (!appPath) {
+    return res.status(400).json({ error: "Missing application path" });
+  }
+
+  const baseName = path.basename(appPath);
+  const newCmd: OsCommand = {
+    id: "cmd-quick-" + Math.random().toString(36).substring(2, 9),
+    prompt: `Launch application: ${baseName}`,
+    actions: [
+      { action: "execute_cmd", param: appPath },
+      { action: "take_screenshot", param: "" }
+    ],
+    status: "pending",
+    timestamp: new Date().toLocaleTimeString(),
+    classification: "os-command"
+  };
+
+  const now = Date.now();
+  let isClientOnline = false;
+  if (osAgentState.lastPing) {
+    const lastPingMs = new Date(osAgentState.lastPing).getTime();
+    if (now - lastPingMs < 15000) {
+      isClientOnline = true;
+    }
+  }
+
+  osAgentState.queue.push(newCmd);
+  if (isClientOnline) {
+    osAgentState.logs.push(`[${new Date().toLocaleTimeString()}] [Local Agent Active] Queued direct quick-launch path: "${appPath}"`);
+  } else {
+    osAgentState.logs.push(`[${new Date().toLocaleTimeString()}] [Local Agent Offline] Direct quick-launch requested server-side. Executing: "${appPath}"`);
+    setImmediate(() => executeOsCommandDirectly(newCmd).catch(console.error));
+  }
+
+  return res.json({ status: "success", command: newCmd });
+});
+
+app.post("/api/os/git-sync", (req, res) => {
+  if (!requireAgentToken(req, res)) return;
+  const { strategy } = req.body;
+
+  const newCmd: OsCommand = {
+    id: "cmd-git-" + Math.random().toString(36).substring(2, 9),
+    prompt: `Git Sync (${strategy === 'force' ? 'Force Overwrite' : 'Auto-Stash Safe'})`,
+    actions: [
+      { action: "git_sync", param: strategy || "stash" },
+      { action: "take_screenshot", param: "" }
+    ],
+    status: "pending",
+    timestamp: new Date().toLocaleTimeString(),
+    classification: "os-command"
+  };
+
+  const now = Date.now();
+  let isClientOnline = false;
+  if (osAgentState.lastPing) {
+    const lastPingMs = new Date(osAgentState.lastPing).getTime();
+    if (now - lastPingMs < 15000) {
+      isClientOnline = true;
+    }
+  }
+
+  osAgentState.queue.push(newCmd);
+  if (isClientOnline) {
+    osAgentState.logs.push(`[${new Date().toLocaleTimeString()}] [Local Agent Active] Queued local Git Synchronization request.`);
+  } else {
+    osAgentState.logs.push(`[${new Date().toLocaleTimeString()}] [Local Agent Offline] Git Synchronization requested server-side. Executing...`);
+    setImmediate(() => executeOsCommandDirectly(newCmd).catch(console.error));
+  }
+
+  return res.json({ status: "success", command: newCmd });
 });
 
 app.post("/api/os/cancel/:commandId", (req, res) => {

@@ -49,11 +49,11 @@ export function AppShell({ activeTab, onChangeTab, onVoiceOpen, children }: AppS
   const dateStr = time.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#000814] text-white">
+    <div className="relative h-screen w-full overflow-hidden bg-[#000814] text-white">
       <NebulaBackground />
 
       {/* Main layout */}
-      <div className="relative z-10 flex min-h-screen">
+      <div className="relative z-10 flex h-screen w-full overflow-hidden">
 
         {/* ===== JARVIS SIDEBAR ===== */}
         <aside className="hidden md:flex w-64 flex-col shrink-0" style={{
@@ -186,7 +186,7 @@ export function AppShell({ activeTab, onChangeTab, onVoiceOpen, children }: AppS
         </aside>
 
         {/* ===== MAIN CONTENT ===== */}
-        <main className="flex-1 pb-20 md:pb-0 min-w-0">
+        <main className="flex-1 pb-20 md:pb-0 min-w-0 flex flex-col h-screen overflow-hidden">
 
           {/* Mobile top bar */}
           <div className="sticky top-0 z-20 border-b px-4 py-3 backdrop-blur-2xl md:hidden" style={{

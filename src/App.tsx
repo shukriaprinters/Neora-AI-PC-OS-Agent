@@ -467,7 +467,7 @@ export default function App() {
           persisted={showDebugBanner}
         />
       )}
-    <div id="app-wrapper" className={`flex flex-col h-screen font-sans overflow-hidden print:bg-white print:text-black relative ${clickInspectorMode ? 'cursor-crosshair' : ''}`} style={{ background: '#000814', color: '#cce8ff' }}>
+    <div id="app-wrapper" className={`flex-1 flex flex-col h-full min-h-0 w-full font-sans overflow-hidden print:bg-white print:text-black relative ${clickInspectorMode ? 'cursor-crosshair' : ''}`} style={{ background: '#000814', color: '#cce8ff' }}>
       {clickInspectorMode && (
         <div className="pointer-events-none fixed right-4 top-16 z-[70] rounded-2xl border border-fuchsia-500/20 bg-fuchsia-500/10 px-3 py-2 text-xs text-fuchsia-100 backdrop-blur-xl space-y-1">
           <div>Click Inspector: ON</div>
@@ -868,6 +868,8 @@ export default function App() {
         {activeTab === 'osAgent' && (
           <OsAgentView
             lang={lang}
+            geminiKey={geminiKey}
+            setGeminiKey={setGeminiKey}
           />
         )}
 
