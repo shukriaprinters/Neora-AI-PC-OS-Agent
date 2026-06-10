@@ -85,6 +85,7 @@ export function ChatView({
   const [showSettings, setShowSettings] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isEnhancing, setIsEnhancing] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   // Ollama Client Integration states
   const [useOllama, setUseOllama] = useState<boolean>(false);
@@ -170,16 +171,86 @@ export function ChatView({
     return () => window.removeEventListener('neora-submit-chat', handleGlobalSubmit);
   }, [inputValue, isGenerating]);
 
+  const playSystemChirp = (type: 'boot' | 'listen' | 'success' | 'error') => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      
+      if (type === 'boot') {
+        const osc1 = ctx.createOscillator();
+        const osc2 = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(523.25, ctx.currentTime);
+        osc1.frequency.exponentialRampToValueAtTime(1046.50, ctx.currentTime + 0.15);
+        osc2.type = 'triangle';
+        osc2.frequency.setValueAtTime(659.25, ctx.currentTime);
+        osc2.frequency.exponentialRampToValueAtTime(1318.51, ctx.currentTime + 0.15);
+        gain.gain.setValueAtTime(0.08, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+        osc1.connect(gain);
+        osc2.connect(gain);
+        gain.connect(ctx.destination);
+        osc1.start();
+        osc2.start();
+        osc1.stop(ctx.currentTime + 0.35);
+        osc2.stop(ctx.currentTime + 0.35);
+      } else if (type === 'listen') {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.18);
+        gain.gain.setValueAtTime(0.06, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.22);
+      } else if (type === 'success') {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(987.77, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(1975.53, ctx.currentTime + 0.12);
+        gain.gain.setValueAtTime(0.08, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.15);
+      } else if (type === 'error') {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(220, ctx.currentTime);
+        osc.frequency.linearRampToValueAtTime(110, ctx.currentTime + 0.25);
+        gain.gain.setValueAtTime(0.1, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.26);
+      }
+    } catch (e) {
+      console.warn("AudioContext chirp failed:", e);
+    }
+  };
+
   const speakQueueRef = useRef<{ cancel: () => void } | null>(null);
 
   const handleSpeak = (text: string, onSpeechFinished?: () => void) => {
+    setIsSpeaking(true);
     if (!speakVolumeOn) {
+      setIsSpeaking(false);
       if (onSpeechFinished) onSpeechFinished();
       return;
     }
     const cleanText = text.replace(/[`*#_\[\]]/g, '').replace(/\*\*/g, '').slice(0, 1800);
     const synth = window.speechSynthesis;
     if (!synth) {
+      setIsSpeaking(false);
       if (onSpeechFinished) onSpeechFinished();
       return;
     }
@@ -195,6 +266,7 @@ export function ChatView({
       .filter(s => s.length > 0);
 
     if (sentences.length === 0) {
+      setIsSpeaking(false);
       if (onSpeechFinished) onSpeechFinished();
       return;
     }
@@ -204,14 +276,19 @@ export function ChatView({
 
     const cancel = () => {
       cancelled = true;
+      setIsSpeaking(false);
       synth.cancel();
     };
 
     speakQueueRef.current = { cancel };
 
     const speakNext = () => {
-      if (cancelled || !speakVolumeOn) return;
+      if (cancelled || !speakVolumeOn) {
+        setIsSpeaking(false);
+        return;
+      }
       if (index >= sentences.length) {
+        setIsSpeaking(false);
         if (onSpeechFinished) onSpeechFinished();
         return;
       }
@@ -265,6 +342,7 @@ export function ChatView({
   };
 
   const initializeVoiceCore = () => {
+    playSystemChirp('boot');
     // Elegant proactive vocal greeting
     const greetingText = lang === 'bn'
       ? "হ্যালো বস! শুকরিয়া প্রিন্টার্স কন্ট্রোল রুমে আপনাকে স্বাগতম। আমি আপনার অল-ইন-ওয়ান সহকারী নিওরা, কাজের জন্য সম্পূর্ণ রেডি। বলুন বস, আজকে আপনার প্রথম কাজ কী দিয়ে শুরু করব?"
@@ -304,79 +382,13 @@ export function ChatView({
     const lowerText = normalizedTranscript.toLowerCase();
     const isBangla = /[\u0980-\u09FF]/.test(normalizedTranscript);
 
-    let matchedCommand = false;
+    let matchedShortcut = false;
     let titleToUse = '';
     let responseText = '';
 
     const currentHandlers = handlersRef.current;
 
-    if (classification === 'os-command') {
-      if (isRisky) {
-        setPendingVoiceCommand(normalizedTranscript);
-        const warning = lang === 'bn'
-          ? `ঝুঁকিপূর্ণ ভয়েস কমান্ড শনাক্ত: "${normalizedTranscript}". চালাতে আবার "হ্যাঁ চালাও" বলুন বা টেক্সট ইনপুটে নিশ্চিত করুন।`
-          : `Risky voice command detected: "${normalizedTranscript}". Say "yes, run it" again or confirm in text to continue.`;
-        setStatusBanner(warning);
-        handleSpeak(warning);
-        return;
-      }
-      matchedCommand = true;
-      const userMsg: Message = {
-        id: Math.random().toString(),
-        role: 'user',
-        content: `🎤 [OS Command]: ${normalizedTranscript}`,
-        timestamp: new Date().toLocaleTimeString(),
-        classification: 'os-command'
-      };
-      setMessages(prev => [...prev, userMsg]);
-      submitOsCommand(normalizedTranscript).then((result) => {
-        const botReply: Message = {
-          id: Math.random().toString(),
-          role: 'assistant',
-          content: result?.fallback
-            ? (lang === 'bn' ? 'অফলাইন parser ব্যবহার করে কমান্ড পাঠানো হয়েছে।' : 'Command submitted using local fallback parser.')
-            : (lang === 'bn' ? 'কমান্ড broker-এ পাঠানো হয়েছে।' : 'Command sent to the broker successfully.'),
-          timestamp: new Date().toLocaleTimeString(),
-          classification: 'os-command'
-        };
-        setMessages(prev => [...prev, botReply]);
-        handleSpeak(botReply.content);
-      }).catch((err) => {
-        const botReply: Message = {
-          id: Math.random().toString(),
-          role: 'assistant',
-          content: lang === 'bn' ? `কমান্ড পাঠানো যায়নি: ${String(err)}` : `Failed to submit command: ${String(err)}`,
-          timestamp: new Date().toLocaleTimeString(),
-          classification: 'rejected'
-        };
-        setMessages(prev => [...prev, botReply]);
-      });
-      return;
-    }
-
-    if (normalizedTranscript) {
-      const userMsg: Message = {
-        id: Math.random().toString(),
-        role: 'user',
-        content: `🎤 [Chat]: ${normalizedTranscript}`,
-        timestamp: new Date().toLocaleTimeString(),
-        classification: 'chat'
-      };
-      setMessages(prev => [...prev, userMsg]);
-      const botReply: Message = {
-        id: Math.random().toString(),
-        role: 'assistant',
-        content: lang === 'bn'
-          ? 'এটি PC command হিসেবে শনাক্ত হয়নি, তাই সাধারণ চ্যাট হিসেবে প্রক্রিয়া করা হচ্ছে।'
-          : 'This was not recognized as a PC command, so it is being processed as a normal chat message.',
-        timestamp: new Date().toLocaleTimeString(),
-        classification: 'chat'
-      };
-      setMessages(prev => [...prev, botReply]);
-      handleSpeak(botReply.content);
-    }
-
-    // Create Task keywords matching
+    // 1. Check layout / productivity shortcuts
     if (
       lowerText.includes('create task') ||
       lowerText.includes('add task') ||
@@ -400,7 +412,7 @@ export function ChatView({
         ? `🎤 ভয়েস কমান্ড সনাক্ত করা হয়েছে: নতুন টাস্ক "${titleToUse}" তৈরি করা হয়েছে!`
         : `🎤 Voice command detected: Successfully created high-priority task "${titleToUse}"!`;
       
-      matchedCommand = true;
+      matchedShortcut = true;
     }
     // Set Reminder keywords matching
     else if (
@@ -430,7 +442,7 @@ export function ChatView({
         ? `🎤 ভয়েস কমান্ড সনাক্ত করা হয়েছে: রিমাইন্ডার "${titleToUse}" সেট করা হয়েছে!`
         : `🎤 Voice command detected: Successfully set active reminder for "${titleToUse}" scheduled for tomorrow!`;
       
-      matchedCommand = true;
+      matchedShortcut = true;
     }
     // Search Blueprints keywords matching
     else if (
@@ -438,7 +450,7 @@ export function ChatView({
       lowerText.includes('find blueprint') ||
       lowerText.includes('search blueprint') ||
       lowerText.includes('blueprint') ||
-      lowerText.includes('ब्लूप्रিন্ট') ||
+      lowerText.includes('ব্লুপ্রিন্ট') ||
       lowerText.includes('অনুসন্ধান করো') ||
       lowerText.includes('ব্লুপ্রিন্ট সার্চ করো')
     ) {
@@ -449,13 +461,14 @@ export function ChatView({
       if (currentHandlers.onSearchBlueprints) {
         currentHandlers.onSearchBlueprints(query);
         responseText = isBangla
-          ? `🎤 ভয়েস কমান্ড সনাক্ত করা হয়েছে: ব্লুপ্রিন্ট "${query || 'সব'}" কুয়েরি সার্চ করা এবং ভিউ ওপেন করা হয়েছে!`
+          ? `🎤 ভয়েস কমান্ড সনাক্ত করা হয়েছে: ব্লুপ্রিন্ট "${query || 'সব'}" সার্চ করা এবং ভিউ ওপেন করা হয়েছে!`
           : `🎤 Voice command detected: Searching blueprints for "${query || 'all specs'}" and showing Blueprint tab!`;
-        matchedCommand = true;
+        matchedShortcut = true;
       }
     }
 
-    if (matchedCommand) {
+    if (matchedShortcut) {
+      playSystemChirp('success');
       setInputValue('');
       setPendingVoiceCommand(null);
 
@@ -477,6 +490,62 @@ export function ChatView({
 
       setMessages(prev => [...prev, userMsg, botReply]);
       handleSpeak(responseText);
+      return;
+    }
+
+    // 2. Fallback to OS commands if applicable
+    if (classification === 'os-command') {
+      if (isRisky) {
+        setPendingVoiceCommand(normalizedTranscript);
+        const warning = lang === 'bn'
+          ? `ঝুঁকিপূর্ণ ভয়েস কমান্ড শনাক্ত: "${normalizedTranscript}". চালাতে আবার "হ্যাঁ চালাও" বলুন বা টেক্সট ইনপুটে নিশ্চিত করুন।`
+          : `Risky voice command detected: "${normalizedTranscript}". Say "yes, run it" again or confirm in text to continue.`;
+        setStatusBanner(warning);
+        playSystemChirp('error');
+        handleSpeak(warning);
+        return;
+      }
+
+      const userMsg: Message = {
+        id: Math.random().toString(),
+        role: 'user',
+        content: `🎤 [OS Command]: ${normalizedTranscript}`,
+        timestamp: new Date().toLocaleTimeString(),
+        classification: 'os-command'
+      };
+      setMessages(prev => [...prev, userMsg]);
+      submitOsCommand(normalizedTranscript).then((result) => {
+        playSystemChirp('success');
+        const botReply: Message = {
+          id: Math.random().toString(),
+          role: 'assistant',
+          content: result?.fallback
+            ? (lang === 'bn' ? 'অফলাইন parser ব্যবহার করে কমান্ড পাঠানো হয়েছে।' : 'Command submitted using local fallback parser.')
+            : (lang === 'bn' ? 'কমান্ড broker-এ পাঠানো হয়েছে।' : 'Command sent to the broker successfully.'),
+          timestamp: new Date().toLocaleTimeString(),
+          classification: 'os-command'
+        };
+        setMessages(prev => [...prev, botReply]);
+        handleSpeak(botReply.content);
+      }).catch((err) => {
+        playSystemChirp('error');
+        const botReply: Message = {
+          id: Math.random().toString(),
+          role: 'assistant',
+          content: lang === 'bn' ? `কমান্ড পাঠানো যায়নি: ${String(err)}` : `Failed to submit command: ${String(err)}`,
+          timestamp: new Date().toLocaleTimeString(),
+          classification: 'rejected'
+        };
+        setMessages(prev => [...prev, botReply]);
+      });
+      return;
+    }
+
+    // 3. Complete general conversation fallback (e.g. recitation, requests, details)
+    if (normalizedTranscript) {
+      playSystemChirp('success');
+      // Submits voice speech directly to unified LLM pipeline (Gemini/Groq/Ollama) with voice output
+      handleSendMessage(normalizedTranscript);
     }
   };
 
@@ -625,6 +694,7 @@ export function ChatView({
         recorder.start(200);
         setIsListening(true);
         setWhisperStatus('recording');
+        playSystemChirp('listen');
       } catch (err) {
         console.error("Critical failure during mic authorization:", err);
         // Fallback to browser standard
@@ -658,14 +728,17 @@ export function ChatView({
     }
   };
 
-  const handleSendMessage = async () => {
-    if (!inputValue.trim() || isGenerating) return;
+  const handleSendMessage = async (overrideText?: string) => {
+    const textToProcess = overrideText !== undefined ? overrideText : inputValue;
+    if (!textToProcess.trim() || isGenerating) return;
 
-    const userText = inputValue.trim();
+    const userText = textToProcess.trim();
     const route = classifyNeoraInput(userText);
     const confirmText = /^(yes|confirm|run it|yes run it|হ্যাঁ|চালাও|চলুক)$/i.test(userText);
     if (pendingVoiceCommand && confirmText) {
-      setInputValue('');
+      if (overrideText === undefined) {
+        setInputValue('');
+      }
       await confirmPendingVoiceCommand();
       return;
     }
@@ -678,7 +751,9 @@ export function ChatView({
     };
 
     setMessages(prev => [...prev, newMsg]);
-    setInputValue('');
+    if (overrideText === undefined) {
+      setInputValue('');
+    }
 
     const lowerText = userText.toLowerCase();
     const isBangla = /[\u0980-\u09FF]/.test(userText);
@@ -1067,22 +1142,20 @@ export function ChatView({
           </div>
 
           {/* Glowing Sound waves equalizer visualizer using existing classes */}
-          <div className={`my-8 flex items-end gap-1.5 h-12 px-6 bg-slate-900/40 rounded-full py-3 border border-slate-800 transition-all duration-500 ease-in-out ${
-            isGenerating ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'
-          }`}>
-            <span className={`eq-bar ${whisperStatus === 'transcribing' ? 'pulsing bg-cyan-400' : 'bg-slate-700'}`}></span>
-            <span className={`eq-bar ${whisperStatus === 'transcribing' ? 'pulsing bg-cyan-400' : 'bg-slate-700'}`}></span>
-            <span className={`eq-bar ${whisperStatus === 'transcribing' ? 'pulsing bg-cyan-400' : 'bg-slate-700'}`}></span>
-            <span className={`eq-bar ${whisperStatus === 'transcribing' ? 'pulsing bg-cyan-400' : 'bg-slate-700'}`}></span>
-            <span className={`eq-bar text-cyan-300 ${whisperStatus === 'transcribing' ? 'pulsing bg-cyan-300' : 'bg-slate-700'}`}></span>
-            <span className={`eq-bar ${whisperStatus === 'transcribing' ? 'pulsing bg-cyan-400' : 'bg-slate-700'}`}></span>
-            <span className={`eq-bar ${whisperStatus === 'transcribing' ? 'pulsing bg-cyan-400' : 'bg-slate-700'}`}></span>
-            <span className={`eq-bar ${whisperStatus === 'transcribing' ? 'pulsing bg-cyan-400' : 'bg-slate-700'}`}></span>
-            <span className={`eq-bar ${whisperStatus === 'transcribing' ? 'pulsing bg-cyan-400' : 'bg-slate-700'}`}></span>
-            <span className={`eq-bar text-cyan-300 ${whisperStatus === 'transcribing' ? 'pulsing bg-cyan-300' : 'bg-slate-700'}`}></span>
-            <span className={`eq-bar ${whisperStatus === 'transcribing' ? 'pulsing bg-cyan-400' : 'bg-slate-700'}`}></span>
-            <span className={`eq-bar ${whisperStatus === 'transcribing' ? 'pulsing bg-cyan-400' : 'bg-slate-700'}`}></span>
-            <span className={`eq-bar font-bold text-cyan-300 ${whisperStatus === 'transcribing' ? 'pulsing bg-cyan-300' : 'bg-slate-700'}`}></span>
+          <div className="my-8 flex items-end gap-1.5 h-12 px-6 bg-slate-900/40 rounded-full py-3 border border-slate-800 transition-all duration-500 ease-in-out">
+            <span className={`eq-bar ${(whisperStatus === 'transcribing' || whisperStatus === 'recording') ? 'pulsing bg-cyan-400' : 'bg-slate-700'}`}></span>
+            <span className={`eq-bar ${(whisperStatus === 'transcribing' || whisperStatus === 'recording') ? 'pulsing bg-cyan-400' : 'bg-slate-700'}`}></span>
+            <span className={`eq-bar ${(whisperStatus === 'transcribing' || whisperStatus === 'recording') ? 'pulsing bg-cyan-400' : 'bg-slate-700'}`}></span>
+            <span className={`eq-bar ${(whisperStatus === 'transcribing' || whisperStatus === 'recording') ? 'pulsing bg-cyan-400' : 'bg-slate-700'}`}></span>
+            <span className={`eq-bar text-cyan-300 ${(whisperStatus === 'transcribing' || whisperStatus === 'recording') ? 'pulsing bg-cyan-300' : 'bg-slate-700'}`}></span>
+            <span className={`eq-bar ${(whisperStatus === 'transcribing' || whisperStatus === 'recording') ? 'pulsing bg-cyan-400' : 'bg-slate-700'}`}></span>
+            <span className={`eq-bar ${(whisperStatus === 'transcribing' || whisperStatus === 'recording') ? 'pulsing bg-cyan-400' : 'bg-slate-700'}`}></span>
+            <span className={`eq-bar ${(whisperStatus === 'transcribing' || whisperStatus === 'recording') ? 'pulsing bg-cyan-400' : 'bg-slate-700'}`}></span>
+            <span className={`eq-bar ${(whisperStatus === 'transcribing' || whisperStatus === 'recording') ? 'pulsing bg-cyan-400' : 'bg-slate-700'}`}></span>
+            <span className={`eq-bar text-cyan-300 ${(whisperStatus === 'transcribing' || whisperStatus === 'recording') ? 'pulsing bg-cyan-300' : 'bg-slate-700'}`}></span>
+            <span className={`eq-bar ${(whisperStatus === 'transcribing' || whisperStatus === 'recording') ? 'pulsing bg-cyan-400' : 'bg-slate-700'}`}></span>
+            <span className={`eq-bar ${(whisperStatus === 'transcribing' || whisperStatus === 'recording') ? 'pulsing bg-cyan-400' : 'bg-slate-700'}`}></span>
+            <span className={`eq-bar font-bold text-cyan-300 ${(whisperStatus === 'transcribing' || whisperStatus === 'recording') ? 'pulsing bg-cyan-300' : 'bg-slate-700'}`}></span>
           </div>
 
           <div className="space-y-4">
@@ -1443,20 +1516,32 @@ export function ChatView({
                   }`}
                 >
                   {/* Gemini-Inspired Round Soft Glow Avatar */}
-                  <div className={`w-9 h-9 rounded-full shrink-0 flex items-center justify-center border transition-transform hover:scale-105 ${
+                  <div className={`w-9 h-9 rounded-full shrink-0 flex items-center justify-center border transition-all hover:scale-105 ${
                     isBot 
-                      ? 'bg-gradient-to-tr from-cyan-600/30 via-indigo-600/30 to-rose-600/30 border-cyan-500/20 shadow-[0_0_12px_rgba(6,182,212,0.15)] text-cyan-300' 
+                      ? (isSpeaking 
+                          ? 'bg-gradient-to-tr from-cyan-500 via-indigo-600 to-rose-500 border-cyan-400 ring-2 ring-cyan-400 ring-offset-1 ring-offset-slate-950 shadow-[0_0_20px_rgba(6,182,212,0.65)] text-white'
+                          : 'bg-gradient-to-tr from-cyan-600/30 via-indigo-600/30 to-rose-600/30 border-cyan-500/20 shadow-[0_0_12px_rgba(6,182,212,0.15)] text-cyan-300')
                       : 'bg-slate-800 border-slate-700 text-slate-300'
                   }`}>
-                    {isBot ? <Sparkles className="w-4 h-4 animate-pulse" /> : <User className="w-4.5 h-4.5" />}
+                    {isBot ? <Sparkles className={`w-4 h-4 ${isSpeaking ? 'animate-bounce text-white' : 'animate-pulse'}`} /> : <User className="w-4.5 h-4.5" />}
                   </div>
 
                   <div className="space-y-1 max-w-[82%]">
                     {/* User / Model Name label like Gemini/Groq */}
-                    <span className="text-[10px] text-slate-500 font-mono tracking-wide block px-1">
-                      {isBot 
-                        ? (useGroq ? `Neora AI (${groqModel.split('-')[0].toUpperCase()} - Groq Client)` : 'Neora AI (Gemini Core)') 
-                        : (lang === 'bn' ? 'আপনি (শুকরিয়া প্রিন্টার্স)' : 'You (Shukria Printers)')}
+                    <span className="text-[10px] text-slate-500 font-mono tracking-wide flex items-center gap-2 px-1">
+                      <span>
+                        {isBot 
+                          ? (useGroq ? `Neora AI (${groqModel.split('-')[0].toUpperCase()} - Groq Client)` : 'Neora AI (Gemini Core)') 
+                          : (lang === 'bn' ? 'আপনি (শুকরিয়া প্রিন্টার্স)' : 'You (Shukria Printers)')}
+                      </span>
+                      {isSpeaking && isBot && (
+                        <span className="flex items-center gap-0.5 text-cyan-400 bg-cyan-950/40 px-1.5 py-0.5 rounded border border-cyan-500/20 animate-pulse text-[8px] font-bold">
+                          <span className="w-0.5 h-2.5 bg-cyan-400 rounded-full animate-bounce [animation-delay:0.1s]"></span>
+                          <span className="w-0.5 h-3.5 bg-cyan-400 rounded-full animate-bounce [animation-delay:0.2s]"></span>
+                          <span className="w-0.5 h-2 bg-cyan-400 rounded-full animate-bounce [animation-delay:0.3s]"></span>
+                          <span className="ml-1 tracking-wider text-cyan-300 uppercase">{lang === 'bn' ? 'কথা বলছে' : 'SPEAKING'}</span>
+                        </span>
+                      )}
                     </span>
                     {showMessageBadges && (
                       <span className={`inline-flex px-2 py-0.5 rounded text-[8px] font-mono font-bold uppercase border mb-2 ${classificationClass}`}>
