@@ -19,7 +19,7 @@ if (-not $env:NEORA_AGENT_TOKEN) {
 }
 
 if (-not $env:NEORA_HEADLESS) {
-  $env:NEORA_HEADLESS = '1'
+  $env:NEORA_HEADLESS = '0'
 }
 
 if (-not $env:NEORA_BROKER_URL) {

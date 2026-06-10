@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Mic, MicOff, X, Zap, CheckCircle2, Clock, Volume2 } from 'lucide-react';
+import { Mic, MicOff, X, Zap, CheckCircle2, Clock, Volume2, Laptop, Play } from 'lucide-react';
+import { classifyNeoraInput } from '../lib/neoraCommand';
+import { neoraPost } from '../lib/neoraApi';
 
 interface VoiceCommandPanelProps {
   onAddTask: (title: string, priority: 'low' | 'medium' | 'high' | 'critical') => void;
@@ -139,7 +141,23 @@ export function VoiceCommandPanel({ onAddTask, onAddNote, onAddReminder, onNavig
     };
 
     recognitionRef.current = recognition;
-    return () => { recognition.abort(); };
+
+    const timer = setTimeout(() => {
+      try {
+        setTranscript('');
+        setFeedback(null);
+        setIsListening(true);
+        animateBars();
+        recognition.start();
+      } catch (err) {
+        console.warn("Auto-start mic recognition failed or blocked:", err);
+      }
+    }, 400);
+
+    return () => { 
+      clearTimeout(timer);
+      recognition.abort(); 
+    };
   }, [lang]);
 
   const animateBars = useCallback(() => {
@@ -201,10 +219,70 @@ export function VoiceCommandPanel({ onAddTask, onAddNote, onAddReminder, onNavig
         setTranscript('');
         setTimeout(() => setFeedback(null), 3500);
       } else {
-        const unknownMsg = lang === 'bn' ? `কমান্ড বোঝা যায়নি: "${transcript}"` : `Unknown command: "${transcript}"`;
-        setFeedback({ msg: unknownMsg, ok: false });
-        speakFeedback(lang === 'bn' ? 'কমান্ড বোঝা যায়নি' : 'Command not recognized. Try saying task, note, or remind me to.');
-        setTimeout(() => setFeedback(null), 3000);
+        // Fallback: Smart Cognitive OS Agent Voice Command Router
+        const osRoute = classifyNeoraInput(transcript);
+        if (osRoute.classification === 'os-command') {
+          let actionLabel = '';
+          const dispatchingMsg = lang === 'bn' 
+            ? `অনুমোদিত! পিসিতে ওএস কমান্ড পাঠানো হচ্ছেঃ "${transcript}"` 
+            : `Authorizing: Dispatching OS Command: => "${transcript}"`;
+          setFeedback({ msg: dispatchingMsg, ok: true });
+          
+          const speakWaitingMsg = lang === 'bn'
+            ? `অনুমোদিত, বস্! আপনার পিসিতে অপারেশন রান করা হচ্ছে।`
+            : `Access granted, boss! Launching command sequence on your computer.`;
+          speakFeedback(speakWaitingMsg);
+          
+          const token = localStorage.getItem('neora_token') || 'NEORA-X7-AGENT';
+          const geminiKey = localStorage.getItem('neora_gemini_key') || '';
+          
+          neoraPost('/api/os/command', { prompt: osRoute.normalized, token, geminiKey })
+            .then((resData: any) => {
+              if (resData && resData.status === 'success') {
+                actionLabel = lang === 'bn'
+                  ? `নিওরা পিসি অপারেটরঃ "${transcript}" সফলভাবে পাঠানো হয়েছে!`
+                  : `Neora PC Operator: Actioned "${transcript}" successfully!`;
+                
+                const finalSuccessMsg = lang === 'bn'
+                  ? `অপারেশন সচল করা হয়েছে, বস্!`
+                  : `Command executed successfully, boss!`;
+                speakFeedback(finalSuccessMsg);
+                
+                setFeedback({ msg: actionLabel, ok: true });
+                setRecent(prev => [{
+                  id: Date.now().toString(),
+                  transcript,
+                  action: actionLabel,
+                  time: new Date().toLocaleTimeString('en-US', { hour12: false }),
+                  success: true,
+                }, ...prev.slice(0, 4)]);
+              } else {
+                throw new Error("Rejected");
+              }
+            })
+            .catch(() => {
+              const errMsg = lang === 'bn'
+                ? `পিসির সাথে সংযোগ করা যায়নি। স্ক্রিপ্টটি চালু আছে কিনা নিশ্চিত করুন।`
+                : `PC connection failed. Ensure the Neora Python script is running.`;
+              setFeedback({ msg: errMsg, ok: false });
+              speakFeedback(lang === 'bn' ? 'কনেকশন ব্যর্থ হয়েছে' : 'Connection failed');
+              setRecent(prev => [{
+                id: Date.now().toString(),
+                transcript,
+                action: 'OS Command Failed',
+                time: new Date().toLocaleTimeString('en-US', { hour12: false }),
+                success: false,
+              }, ...prev.slice(0, 4)]);
+            });
+            
+          setTranscript('');
+          setTimeout(() => setFeedback(null), 6000);
+        } else {
+          const unknownMsg = lang === 'bn' ? `কমান্ড বোঝা যায়নি: "${transcript}"` : `Unknown command: "${transcript}"`;
+          setFeedback({ msg: unknownMsg, ok: false });
+          speakFeedback(lang === 'bn' ? 'কমান্ড বোঝা যায়নি' : 'Command not recognized. Try saying task, note, or remind me to.');
+          setTimeout(() => setFeedback(null), 3000);
+        }
       }
     }
   }, [isListening, transcript, onAddTask, onAddNote, onAddReminder, onNavigate]);
@@ -333,14 +411,26 @@ export function VoiceCommandPanel({ onAddTask, onAddNote, onAddReminder, onNavig
 
           {/* Command guide */}
           <div className="rounded-xl p-3 space-y-1.5" style={{ background: 'rgba(0,212,255,0.03)', border: '1px solid rgba(0,212,255,0.08)' }}>
-            <div className="jarvis-label mb-2">COMMAND SYNTAX</div>
-            {[
-              { cmd: '"task: Print 50 flyers"', desc: 'Creates a task' },
-              { cmd: '"note: Call client tomorrow"', desc: 'Saves a note' },
-              { cmd: '"remind me to submit invoice"', desc: 'Sets reminder' },
-              { cmd: '"open memory"', desc: 'Navigates to page' },
-              { cmd: '"show os agent"', desc: 'Navigates to page' },
-            ].map(({ cmd, desc }) => (
+            <div className="jarvis-label mb-2 flex items-center justify-between">
+              <span>COMMAND SYNTAX</span>
+              <span className="text-[9px] font-mono font-bold text-[#00ff88] flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#00ff88] animate-pulse" />
+                OS COGNITIVE VOICE ENABLED
+              </span>
+            </div>
+            {(lang === 'bn' ? [
+              { cmd: '"পেইন্ট খোলো এবং ডিজাইন করো"', desc: 'আঁকার কাজ সচল' },
+              { cmd: '"ফটোশপ শুরু করো"', desc: 'ব্যানার ডিজাইন' },
+              { cmd: '"ওয়ার্ডে চিঠি লিখুন"', desc: 'অফিসিয়াল রিপোর্ট' },
+              { cmd: '"স্ক্রিনশট নাও"', desc: 'পিসি স্ক্রিন ক্যাপচার' },
+              { cmd: '"শো ওএস এজেন্ট"', desc: 'কন্ট্রোলার পেজ' },
+            ] : [
+              { cmd: '"open paint and draw"', desc: 'Draw creative circle' },
+              { cmd: '"open photoshop and design"', desc: 'Design billing banner' },
+              { cmd: '"winword write business report"', desc: 'Create DOCX file' },
+              { cmd: '"take desktop screenshot"', desc: 'Capture active PC screen' },
+              { cmd: '"show os agent"', desc: 'Open controller tab' },
+            ]).map(({ cmd, desc }) => (
               <div key={cmd} className="flex items-center justify-between gap-2">
                 <code className="text-[10px] font-mono" style={{ color: 'rgba(0,212,255,0.7)' }}>{cmd}</code>
                 <span className="text-[10px] font-mono shrink-0" style={{ color: 'rgba(148,163,184,0.4)' }}>{desc}</span>
