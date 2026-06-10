@@ -5,6 +5,7 @@ import os
 import signal
 import subprocess
 import sys
+import threading
 import time
 import webbrowser
 from datetime import datetime
@@ -83,12 +84,13 @@ BROKER_URL = os.environ.get(
 AGENT_TOKEN = os.environ.get("NEORA_AGENT_TOKEN", "NEORA-X7-AGENT").strip()
 POLL_INTERVAL = max(1, int(os.environ.get("NEORA_POLL_INTERVAL", "4")))
 REQUEST_TIMEOUT = max(3, int(os.environ.get("NEORA_REQUEST_TIMEOUT", "10")))
-PING_INTERVAL = max(5, int(os.environ.get("NEORA_PING_INTERVAL", "10")))
+PING_INTERVAL = max(5, int(os.environ.get("NEORA_PING_INTERVAL", "14")))
 HEADLESS_MODE = os.environ.get("NEORA_HEADLESS", "0").strip().lower() in {"1", "true", "yes", "on"}
 WORKSPACE_DIR = Path(os.environ.get("NEORA_WORKDIR", os.getcwd())).resolve()
 CONFIG_FILE = WORKSPACE_DIR / "neora_config.json"
 LOG_FILE = WORKSPACE_DIR / "logs" / "neora_agent.log"
 STOP_REQUESTED = False
+
 ALLOWED_EXECUTABLES = {
     "notepad",
     "calc",
@@ -104,6 +106,8 @@ ALLOWED_EXECUTABLES = {
     "winword",
     "excel",
     "powerpnt",
+    "powerpoint",
+    "word",
     "photoshop.exe",
     "illustrator.exe",
     "notepad.exe",
@@ -112,8 +116,10 @@ ALLOWED_EXECUTABLES = {
     "chrome.exe",
     "msedge.exe",
     "winword.exe",
+    "word.exe",
     "excel.exe",
     "powerpnt.exe",
+    "powerpoint.exe",
 }
 
 print = _safe_print  # noqa: A001
@@ -158,49 +164,187 @@ def banner():
     log(f"Headless mode: {'enabled' if HEADLESS_MODE else 'disabled'}")
 
 
-def parse_cookie_text(raw_text: str) -> str:
-    raw_text = raw_text.strip()
-    if not raw_text:
-        return ""
+# Speak audio using local synthesizer aloud on PC speakers
+def speak_local(text: str):
+    def speech_worker():
+        try:
+            clean = text.replace('"', "").replace("'", "").replace("**", "").replace("*", "").replace("#", "").replace("_", "").strip()
+            if sys.platform == "darwin":
+                subprocess.Popen(["say", "-r", "175", clean], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            elif sys.platform == "win32":
+                ps_cmd = f'Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.Speak("{clean}")'
+                subprocess.Popen(["powershell", "-NoProfile", "-Command", ps_cmd], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            else:
+                subprocess.Popen(["espeak", clean], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+    threading.Thread(target=speech_worker, daemon=True).start()
 
-    lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
-    for index, line in enumerate(lines):
-        lower_line = line.lower()
-        if lower_line.startswith("cookie:"):
-            return line[7:].strip().strip("'\"")
-        if lower_line == "cookie" and index + 1 < len(lines):
-            return lines[index + 1].strip().strip("'\"")
 
-    return raw_text.strip("'\"")
+# Hands-free hot microphone background voice listener that accepts Google Speech API for both English and Bengali
+def start_handsfree_voice_listener():
+    try:
+        import speech_recognition as sr
+        log("[SUCCESS] Speech recognition (speech_recognition) package detected!")
+        log("[INFO] Hot mic listening active. Start speaking to trigger Neora commands hands-free...")
+
+        recognizer = sr.Recognizer()
+
+        def voice_worker():
+            try:
+                mic = sr.Microphone()
+            except Exception as mic_err:
+                log(f"[WARNING] Microphone initialization failed: {mic_err}")
+                log("[WARNING] SpeechRecognition is installed, but no default microphone input was found. Skipping voice module.")
+                return
+
+            while not STOP_REQUESTED:
+                try:
+                    with mic as source:
+                        recognizer.adjust_for_ambient_noise(source, duration=0.8)
+                        log("[Voice Mic] Listening for prompt or trigger...")
+                        audio = recognizer.listen(source, phrase_time_limit=8)
+
+                    log("[Voice Mic] Processing vocal wave patterns...")
+                    speech_text = recognizer.recognize_google(audio, language="en-US").strip()
+                    if not speech_text:
+                        continue
+
+                    # Support Bengali pronunciation detections too
+                    try:
+                        bengali_speech = recognizer.recognize_google(audio, language="bn-BD").strip()
+                        # If contains actual Bengali unicode characters, prefer the Bengali transcription
+                        if len([c for c in bengali_speech if ord(c) > 127]) > len(speech_text) * 0.4:
+                            speech_text = bengali_speech
+                    except Exception:
+                        pass
+
+                    log(f"[🎙️ Voice Trigger] Caught => '{speech_text}'")
+                    payload = {
+                        "prompt": speech_text,
+                        "token": AGENT_TOKEN,
+                        "client_time": datetime.now().isoformat()
+                    }
+                    try:
+                        SESSION.post(f"{BROKER_URL}/api/os/command", json=payload, timeout=8)
+                        log("✓ Dispatched voiced command directly to Neora cloud panel.")
+                    except Exception as post_err:
+                        log(f"Failed to post voice command: {post_err}")
+                except sr.WaitTimeoutError:
+                    pass
+                except sr.UnknownValueError:
+                    pass
+                except Exception as e:
+                    log(f"[Voice Mic Error] Mic loop exception: {e}")
+                    time.sleep(3)
+
+        t = threading.Thread(target=voice_worker, daemon=True)
+        t.start()
+    except ImportError:
+        log("\n" + "-" * 75)
+        log("💡   🎙️ WANT NEORA TO HEAR YOUR VOICE LOCALLY AT YOUR COMPUTER? (HANDS-FREE)")
+        log("-" * 75)
+        log("পিসিতে বসেই সরাসরি কথা বলে Neora কে কন্ট্রোল করতে লাইব্রেরিটি ব্রাশ আপ করুন।")
+        log("ভয়েস কম্যান্ড অ্যাক্টিভেট করতে আপনার টার্মিনাল/CMD-তে রান করুন:")
+        log("   pip install SpeechRecognition pyaudio")
+        log("-" * 75 + "\n")
+    except Exception as e:
+        log(f"[INFO] Handsfree module bypassed: {e}")
 
 
 def retrieve_authenticated_headers():
     config = load_json_file(CONFIG_FILE)
     cookie = os.environ.get("NEORA_COOKIE", "").strip() or str(config.get("cookie", "")).strip()
 
-    if not cookie:
-        log("No session cookie configured. Continuing without authenticated headers.")
-        return {}
+    while True:
+        if cookie:
+            headers = {"cookie": cookie}
+            try:
+                response = requests.get(f"{BROKER_URL}/api/os/status", headers=headers, timeout=REQUEST_TIMEOUT)
+                response_text = response.text.strip()
+                is_html = (
+                    "text/html" in response.headers.get("Content-Type", "")
+                    or response_text.startswith("<!doctype")
+                    or response_text.startswith("<html")
+                )
+                if response.status_code == 200 and not is_html:
+                    config["cookie"] = cookie
+                    save_json_file(CONFIG_FILE, config)
+                    log("Authenticated session cookie loaded and cached.")
+                    return headers
+                log(f"Cookie validation failed with HTTP {response.status_code}; session may be expired.")
+            except Exception as exc:
+                log(f"Authentication handshake failed: {exc}")
+                if config.get("cookie") == cookie:
+                    log("Network connection issue (cookie is still valid, retrying in 5s...)...")
+                    time.sleep(5)
+                    continue
 
-    headers = {"cookie": cookie}
-    try:
-        response = requests.get(f"{BROKER_URL}/api/os/status", headers=headers, timeout=REQUEST_TIMEOUT)
-        response_text = response.text.strip()
-        is_html = (
-            "text/html" in response.headers.get("Content-Type", "")
-            or response_text.startswith("<!doctype")
-            or response_text.startswith("<html")
-        )
-        if response.status_code == 200 and not is_html:
-            config["cookie"] = cookie
-            save_json_file(CONFIG_FILE, config)
-            log("Authenticated session cookie loaded and cached.")
-            return headers
-        log(f"Cookie validation failed with HTTP {response.status_code}; proceeding without cookie.")
-    except Exception as exc:
-        log(f"Authentication handshake failed: {exc}; proceeding without cookie.")
+        # If expired or missing, show interactive Bengali & English guide
+        print("\n" + "=" * 75)
+        print("🔑   NEORA SECURE INTERACTIVE LOGIN OVERPASS (GOOGLE CLOUD GATED)")
+        print("=" * 75)
+        print("আপনার ক্লাউড ওয়ার্কস্পেসের সিকিউরিটি সেশন কুকি (Session Cookie) কপি করে এখানে দিন।")
+        print("এতে কোনো পাসওয়ার্ড বা অতিরিক্ত কোডিং ছাড়াই সাথে সাথে রিমোট কানেকশন পেয়ে যাবেন!")
+        print("\n💡 কপি করার সহজ ৪টি ধাপ (How to get Cookie/Headers value):")
+        print("1. ব্রাউজারে Neora অ্যাপ বা ড্যাশবোর্ড ট্যাবটি একবার রিফ্রেশ দিন (F5)।")
+        print("2. কিবোর্ড থেকে 'F12' প্রেস করুন অথবা রাইট-ক্লিক করে 'Inspect' করুন।")
+        print("3. ডেভেলপার উইন্ডোর 'Network' ট্যাবে ক্লিক করে 'Fetch/XHR' ক্যাটাগরি সিলেক্ট করুন।")
+        print("4. ট্রাফিকে আসা 'status' বা 'poll' রিকুয়েস্টে ক্লিক করে 'Request Headers' এ যান।")
+        print("5. সেখানে থাকা 'cookie' মানটি সম্পূর্ণ কপি করুন এবং এই উইন্ডোতে রাইট-ক্লিক করে পেস্ট করুন!")
+        print("\n[বিঃদ্রঃ]: আপনি চাইলে পুরো রিকুয়েস্ট হেডার্স (Request Headers) টেক্সট একসাথে পেস্ট করতে পারেন।")
+        print("স্ক্রিপ্টটি নিজে নিজেই তার মধ্য থেকে মূল 'cookie' সেশনটি খুঁজে বের করে নিবে!")
+        print("=" * 75)
 
-    return {}
+        print("\n📋 Paste your copied Cookie OR Full Request Headers block (then press Enter twice):")
+
+        user_input_lines = []
+        while True:
+            try:
+                line_input = input()
+                # Fast connection for single-line cookie dump
+                if len(user_input_lines) == 0 and line_input.strip() and not any(kw in line_input.lower() for kw in ["cookie:", "referer:", "host:", "user-agent:"]):
+                    user_input_lines.append(line_input)
+                    break
+                # End of multi-line paste block
+                if not line_input.strip():
+                    break
+                user_input_lines.append(line_input)
+            except EOFError:
+                break
+
+        raw_pasted = "\n".join(user_input_lines).strip()
+        if not raw_pasted:
+            print("❌ No input detected. Please paste again!")
+            cookie = ""
+            continue
+
+        extracted_cookie = ""
+        lines = [l.strip() for l in raw_pasted.split("\n") if l.strip()]
+
+        cookie_found = False
+        for i, line in enumerate(lines):
+            if line.lower().startswith("cookie:"):
+                extracted_cookie = line[7:].strip()
+                cookie_found = True
+                break
+            elif line.lower() == "cookie":
+                if i + 1 < len(lines):
+                    extracted_cookie = lines[i + 1]
+                    cookie_found = True
+                    break
+
+        if not cookie_found:
+            extracted_cookie = raw_pasted.strip("'\" \t\r\n")
+
+        if extracted_cookie.lower().startswith("cookie:"):
+            extracted_cookie = extracted_cookie[7:].strip()
+
+        cookie = extracted_cookie.strip()
+        if not cookie:
+            print("❌ Input parsing failed. Make sure you copied correctly.")
+            cookie = ""
+            continue
 
 
 HEADERS = retrieve_authenticated_headers()
@@ -249,6 +393,168 @@ def write_file_action(param: str):
     return target_path
 
 
+def find_executable(command_text: str) -> str:
+    """
+    Tries to resolve a command name / nickname or partial path to a fully qualified,
+    launchable executable path.
+    """
+    clean = command_text.replace('"', '').replace("'", "").strip()
+    if os.path.isabs(clean) and os.path.exists(clean):
+        return clean
+
+    name_lower = os.path.basename(clean).lower()
+    name_no_ext = name_lower.replace(".exe", "")
+
+    # Mapping nicknames/names to standard binary executable names
+    app_map = {
+        "photoshop": "Photoshop.exe",
+        "illustrator": "Illustrator.exe",
+        "word": "winword.exe",
+        "winword": "winword.exe",
+        "excel": "excel.exe",
+        "powerpoint": "powerpnt.exe",
+        "powerpnt": "powerpnt.exe",
+        "chrome": "chrome.exe",
+        "edge": "msedge.exe",
+        "msedge": "msedge.exe",
+        "notepad": "notepad.exe",
+        "calc": "calc.exe",
+        "mspaint": "mspaint.exe",
+        "vscode": "Code.exe",
+        "code": "Code.exe"
+    }
+
+    target_exe = app_map.get(name_no_ext, name_lower)
+    if not target_exe.endswith(".exe") and sys.platform == "win32":
+        target_exe += ".exe"
+
+    if sys.platform == "win32":
+        # 1. Look in Windows Registry (App Paths)
+        try:
+            import winreg
+            for hkey in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+                try:
+                    key_path = f"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\{target_exe}"
+                    with winreg.OpenKey(hkey, key_path) as key:
+                        val, _ = winreg.QueryValueEx(key, "")
+                        if val and os.path.exists(str(val)):
+                            return str(val)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # 2. Look in typical installation folders (including Adobe sub-folders)
+        program_files = [
+            os.environ.get("ProgramFiles", "C:\\Program Files"),
+            os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)"),
+            os.environ.get("LocalAppData", "C:\\Users\\Default\\AppData\\Local"),
+            "C:\\Program Files",
+            "C:\\Program Files (x86)"
+        ]
+
+        # Specially search Adobe directories for Photoshop and Illustrator
+        if "adobe" in target_exe.lower() or target_exe.lower() in ["photoshop.exe", "illustrator.exe"]:
+            for pf in program_files:
+                if not pf:
+                    continue
+                adobe_dir = os.path.join(pf, "Adobe")
+                if os.path.exists(adobe_dir):
+                    # We can look for matches
+                    for root, dirs, files in os.walk(adobe_dir):
+                        for f in files:
+                            if f.lower() == target_exe.lower():
+                                return os.path.join(root, f)
+
+        # Look in other common folders
+        for pf in program_files:
+            if not pf:
+                continue
+            candidates = [
+                os.path.join(pf, "Programs", "Microsoft VS Code", "Code.exe"),
+                os.path.join(pf, "Microsoft VS Code", "Code.exe"),
+                os.path.join(pf, "Google", "Chrome", "Application", "chrome.exe"),
+                os.path.join(pf, "Microsoft", "Edge", "Application", "msedge.exe"),
+            ]
+            for cand in candidates:
+                if os.path.exists(cand):
+                    # check if name matches
+                    if os.path.basename(cand).lower() == target_exe.lower():
+                        return cand
+
+    elif sys.platform == "darwin":
+        # MacOS Search applications
+        mac_apps = {
+            "photoshop": ["/Applications/Adobe Photoshop 2024/Adobe Photoshop 2024.app", 
+                          "/Applications/Adobe Photoshop 2023/Adobe Photoshop 2023.app",
+                          "/Applications/Adobe Photoshop.app"],
+            "illustrator": ["/Applications/Adobe Illustrator 2024/Adobe Illustrator 2024.app",
+                            "/Applications/Adobe Illustrator 2023/Adobe Illustrator 2023.app",
+                            "/Applications/Adobe Illustrator.app"],
+            "chrome": ["/Applications/Google Chrome.app"],
+            "vscode": ["/Applications/Visual Studio Code.app"],
+            "code": ["/Applications/Visual Studio Code.app"],
+            "word": ["/Applications/Microsoft Word.app"],
+            "excel": ["/Applications/Microsoft Excel.app"],
+            "powerpnt": ["/Applications/Microsoft PowerPoint.app"]
+        }
+        candidates = mac_apps.get(name_no_ext, [])
+        for p in candidates:
+            if os.path.exists(p):
+                return p
+
+    # Fallback to search path using shutil.which
+    import shutil
+    resolved = shutil.which(clean) or shutil.which(target_exe)
+    if resolved:
+        return resolved
+
+    return command_text
+
+
+def set_clipboard_text(text: str) -> bool:
+    """
+    Writes unicode text to the local system clipboard without human intervention.
+    Supports Windows, macOS, and Linux out-of-the-box with fallback.
+    """
+    try:
+        import pyperclip
+        pyperclip.copy(text)
+        return True
+    except Exception:
+        pass
+
+    try:
+        if sys.platform == "win32":
+            import ctypes
+            if ctypes.windll.user32.OpenClipboard(None):
+                try:
+                    ctypes.windll.user32.EmptyClipboard()
+                    encoded = text.encode('utf-16-le') + b'\x00\x00'
+                    h_global_mem = ctypes.windll.kernel32.GlobalAlloc(0x0042, len(encoded))
+                    if h_global_mem:
+                        lp_str = ctypes.windll.kernel32.GlobalLock(h_global_mem)
+                        if lp_str:
+                            ctypes.memmove(lp_str, encoded, len(encoded))
+                            ctypes.windll.kernel32.GlobalUnlock(h_global_mem)
+                            # 13 is CF_UNICODETEXT
+                            ctypes.windll.user32.SetClipboardData(13, h_global_mem)
+                finally:
+                    ctypes.windll.user32.CloseClipboard()
+            return True
+        elif sys.platform == "darwin":
+            p = subprocess.Popen(['pbcopy'], stdin=subprocess.PIPE, text=True)
+            p.communicate(text)
+            return True
+        else:
+            # Linux
+            p = subprocess.Popen(['xclip', '-selection', 'clipboard'], stdin=subprocess.PIPE, text=True)
+            p.communicate(text)
+            return True
+    except Exception:
+        return False
+
+
 def execute_instruction(action, param):
     action = sanitize_text(action).strip().lower()
     param = sanitize_text(param)
@@ -275,60 +581,78 @@ def execute_instruction(action, param):
                 webbrowser.open(command_text)
                 logs.append(f"Opened URL via browser: '{command_text}'")
             else:
-                # Clean app_path to resolve base name and check security whitelist
-                clean_cmd = command_text.replace('"', '').replace("'", "").strip()
+                resolved_cmd = find_executable(command_text)
+                clean_cmd = resolved_cmd.replace('"', '').replace("'", "").strip()
                 base_name = os.path.basename(clean_cmd).lower()
-                
+
+                # Either resolved path or original name whitelisted?
                 is_whitelisted = False
-                if clean_cmd.lower() in ALLOWED_EXECUTABLES:
+                orig_clean = command_text.replace('"', '').replace("'", "").strip()
+                orig_base = os.path.basename(orig_clean).lower()
+
+                if orig_clean.lower() in ALLOWED_EXECUTABLES:
+                    is_whitelisted = True
+                elif orig_base in ALLOWED_EXECUTABLES:
+                    is_whitelisted = True
+                elif orig_base.replace(".exe", "") in ALLOWED_EXECUTABLES:
+                    is_whitelisted = True
+                elif clean_cmd.lower() in ALLOWED_EXECUTABLES:
                     is_whitelisted = True
                 elif base_name in ALLOWED_EXECUTABLES:
                     is_whitelisted = True
                 elif base_name.replace(".exe", "") in ALLOWED_EXECUTABLES:
                     is_whitelisted = True
-                    
-                # Support common quick app nicknames in path lookup
+
                 nickname_match = any(nick in base_name for nick in ["photoshop", "illustrator", "notepad", "calc", "word", "excel", "powerpnt", "chrome", "edge", "mspaint"])
-                if nickname_match:
+                nickname_match_orig = any(nick in orig_base for nick in ["photoshop", "illustrator", "notepad", "calc", "word", "excel", "powerpnt", "chrome", "edge", "mspaint"])
+                if nickname_match or nickname_match_orig:
                     is_whitelisted = True
 
                 if is_whitelisted:
                     launched = False
                     errors = []
-                    
-                    # Strategy A: Direct execution
+
+                    # 1. Try direct execute (using lists for space compatibility)
                     try:
-                        subprocess.Popen([command_text], shell=False, cwd=str(WORKSPACE_DIR))
-                        launched = True
-                        logs.append(f"✓ Launched process directly: '{command_text}'")
+                        if sys.platform == "win32" and os.path.exists(clean_cmd):
+                            subprocess.Popen([clean_cmd], shell=False)
+                            launched = True
+                            logs.append(f"✓ Launched Windows app from resolved path: '{clean_cmd}'")
+                        elif sys.platform == "darwin" and clean_cmd.endswith(".app"):
+                            subprocess.Popen(["open", clean_cmd])
+                            launched = True
+                            logs.append(f"✓ Opened macOS App Bundle: '{clean_cmd}'")
+                        else:
+                            subprocess.Popen([clean_cmd], shell=False, cwd=str(WORKSPACE_DIR))
+                            launched = True
+                            logs.append(f"✓ Launched process directly: '{clean_cmd}'")
                     except Exception as e:
                         errors.append(f"Direct failed: {e}")
-                    
-                    # Strategy B: Shell execution for PATH lookups
+
+                    # 2. Try via shell
                     if not launched:
                         try:
-                            # If it is a full path, put double quotes around it for shell-safety
-                            exec_str = f'"{command_text}"' if "\\" in command_text or "/" in command_text else command_text
+                            exec_str = f'"{clean_cmd}"' if "\\" in clean_cmd or "/" in clean_cmd else clean_cmd
                             subprocess.Popen(exec_str, shell=True, cwd=str(WORKSPACE_DIR))
                             launched = True
-                            logs.append(f"✓ Launched process via shell: '{command_text}'")
+                            logs.append(f"✓ Launched process via shell: '{clean_cmd}'")
                         except Exception as e:
                             errors.append(f"Shell failed: {e}")
-                            
-                    # Strategy C: Windows "start" command (resolves registry application paths like Photoshop, Illustrator, Word, Excel)
+
+                    # 3. Try Windows registry start
                     if not launched and sys.platform == "win32":
                         try:
-                            app_name = command_text[:-4] if command_text.lower().endswith(".exe") else command_text
+                            app_name = orig_base[:-4] if orig_base.endswith(".exe") else orig_base
                             subprocess.Popen(f'cmd.exe /c start "" "{app_name}"', shell=True)
                             launched = True
                             logs.append(f"✓ Launched Windows app registry start: '{app_name}'")
                         except Exception as e:
                             errors.append(f"Windows start failed: {e}")
-                            
-                    # Strategy D: macOS "open -a" command
+
+                    # 4. Try darwin shell open
                     if not launched and sys.platform == "darwin":
                         try:
-                            app_name = command_text[:-4] if command_text.lower().endswith(".exe") else command_text
+                            app_name = orig_base[:-4] if orig_base.endswith(".exe") else orig_base
                             subprocess.Popen(["open", "-a", app_name])
                             launched = True
                             logs.append(f"✓ Launched macOS app: '{app_name}'")
@@ -337,7 +661,7 @@ def execute_instruction(action, param):
 
                     if not launched:
                         raise RuntimeError(f"Failed to launch command via all strategies. Errors: {'; '.join(errors)}")
-                elif command_text.lower().endswith((".txt", ".pdf", ".docx", ".xlsx", ".png", ".jpg")):
+                elif command_text.lower().endswith((".txt", ".pdf", ".docx", ".xlsx", ".png", ".jpg", ".psd", ".ai")):
                     target_path = safe_join(WORKSPACE_DIR, command_text)
                     if target_path.exists():
                         if sys.platform == "win32":
@@ -379,10 +703,14 @@ def execute_instruction(action, param):
             if HEADLESS_MODE:
                 logs.append(f"Headless mode: skipped typing '{param}'")
             elif PYAUTOGUI_AVAILABLE:
-                pyautogui.click()
-                time.sleep(0.25)
-                pyautogui.write(param, interval=0.01)
-                logs.append(f"Typed text: '{param}'")
+                # Use our clipboard copy-paste tool. It supports Bengali Unicode characters beautifully!
+                if set_clipboard_text(param):
+                    paste_combo = "command+v" if sys.platform == "darwin" else "ctrl+v"
+                    pyautogui.hotkey(*(paste_combo.split("+")))
+                    logs.append(f"Pasted text via clipboard (Unicode supported): '{param}'")
+                else:
+                    pyautogui.write(param, interval=0.01)
+                    logs.append(f"Typed text (ASCII only fallback): '{param}'")
             else:
                 logs.append(f"GUI automation unavailable: typed text skipped '{param}'")
 
@@ -390,8 +718,6 @@ def execute_instruction(action, param):
             if HEADLESS_MODE:
                 logs.append(f"Headless mode: skipped key press '{param}'")
             elif PYAUTOGUI_AVAILABLE:
-                pyautogui.click()
-                time.sleep(0.2)
                 keys = [key for key in param.lower().replace(" ", "").split("+") if key]
                 if not keys:
                     raise ValueError("press_key requires at least one key")
@@ -399,9 +725,121 @@ def execute_instruction(action, param):
                     pyautogui.hotkey(*keys)
                 else:
                     pyautogui.press(keys[0])
-                logs.append(f"Pressed keys: {param}")
+                logs.append(f"Pressed keys combo: {param}")
             else:
                 logs.append(f"GUI automation unavailable: key press skipped '{param}'")
+
+        elif action == "mouse_click":
+            if HEADLESS_MODE or not PYAUTOGUI_AVAILABLE:
+                logs.append("Skipped mouse click in headless/no-gui mode")
+            else:
+                parts = [p.strip() for p in param.split(",") if p.strip()]
+                click_type = "left"
+                clicks = 1
+                coords = None
+                
+                if len(parts) >= 2:
+                    try:
+                        x, y = int(parts[0]), int(parts[1])
+                        coords = (x, y)
+                        if len(parts) >= 3:
+                            click_type = parts[2].lower()
+                    except ValueError:
+                        click_type = parts[0].lower()
+                elif len(parts) == 1:
+                    click_type = parts[0].lower()
+                    
+                if click_type == "double":
+                    clicks = 2
+                    click_type = "left"
+                elif click_type == "right":
+                    clicks = 1
+                    
+                if coords:
+                    pyautogui.click(x=coords[0], y=coords[1], clicks=clicks, button=click_type)
+                    logs.append(f"Clicked {click_type} mouse at {coords} (clicks: {clicks})")
+                else:
+                    pyautogui.click(clicks=clicks, button=click_type)
+                    logs.append(f"Clicked {click_type} mouse at current position (clicks: {clicks})")
+
+        elif action == "mouse_drag":
+            if HEADLESS_MODE or not PYAUTOGUI_AVAILABLE:
+                logs.append("Skipped mouse drag in headless")
+            else:
+                parts = [p.strip() for p in param.split(",") if p.strip()]
+                try:
+                    if len(parts) >= 4:
+                        start_x, start_y = int(parts[0]), int(parts[1])
+                        end_x, end_y = int(parts[2]), int(parts[3])
+                        pyautogui.moveTo(start_x, start_y)
+                        time.sleep(0.15)
+                        pyautogui.dragTo(end_x, end_y, duration=0.8, button="left")
+                        logs.append(f"Dragged mouse from {start_x},{start_y} to {end_x},{end_y}")
+                    elif len(parts) >= 2:
+                        end_x, end_y = int(parts[0]), int(parts[1])
+                        pyautogui.dragTo(end_x, end_y, duration=0.8, button="left")
+                        logs.append(f"Dragged mouse to end coordinates: {end_x},{end_y}")
+                except ValueError:
+                    logs.append("Invalid mouse drag parameters")
+
+        elif action == "wait":
+            duration = 1.0
+            try:
+                duration = float(param) if param else 1.0
+            except ValueError:
+                pass
+            time.sleep(duration)
+            logs.append(f"Waited for {duration} seconds")
+
+        elif action == "open_file":
+            clean_path = param.replace('"', '').replace("'", "").strip()
+            # If absolute or exists
+            if os.path.exists(clean_path) or os.path.isabs(clean_path):
+                try:
+                    if sys.platform == "win32":
+                        os.startfile(clean_path)
+                    elif sys.platform == "darwin":
+                        subprocess.Popen(["open", clean_path])
+                    else:
+                        subprocess.Popen(["xdg-open", clean_path])
+                    logs.append(f"Opened file directly via OS: '{clean_path}'")
+                except Exception as e:
+                    logs.append(f"OS open failed: {e}")
+            else:
+                # Try opening dialog inside the currently active application (Ctrl+O)
+                if not HEADLESS_MODE and PYAUTOGUI_AVAILABLE:
+                    open_combo = "command+o" if sys.platform == "darwin" else "ctrl+o"
+                    pyautogui.hotkey(*(open_combo.split("+")))
+                    time.sleep(1.2)
+                    if set_clipboard_text(clean_path):
+                        paste_combo = "command+v" if sys.platform == "darwin" else "ctrl+v"
+                        pyautogui.hotkey(*(paste_combo.split("+")))
+                    else:
+                        pyautogui.write(clean_path, interval=0.01)
+                    time.sleep(0.5)
+                    pyautogui.press("enter")
+                    time.sleep(1.5)
+                    logs.append(f"Executed Open File dialog paste for: '{clean_path}'")
+                else:
+                    logs.append(f"Could not open file: path does not exist and GUI mode is inactive ({clean_path})")
+
+        elif action == "save_file_as":
+            clean_path = param.replace('"', '').replace("'", "").strip()
+            if not HEADLESS_MODE and PYAUTOGUI_AVAILABLE:
+                save_combo = "command+s" if sys.platform == "darwin" else "ctrl+s"
+                pyautogui.hotkey(*(save_combo.split("+")))
+                time.sleep(1.2)
+                if set_clipboard_text(clean_path):
+                    paste_combo = "command+v" if sys.platform == "darwin" else "ctrl+v"
+                    pyautogui.hotkey(*(paste_combo.split("+")))
+                else:
+                    pyautogui.write(clean_path, interval=0.01)
+                time.sleep(0.5)
+                pyautogui.press("enter")
+                time.sleep(1.5)
+                logs.append(f"Executed Save File As dialog paste for: '{clean_path}'")
+            else:
+                logs.append(f"Save File As skipped: GUI mode is inactive for path ({clean_path})")
 
         elif action == "take_screenshot":
             if HEADLESS_MODE:
@@ -476,6 +914,9 @@ def main():
     banner()
     log("Agent initialized. Waiting for commands.")
 
+    # Start the continuous hot hands-free microphone vocal listener sequence in background
+    start_handsfree_voice_listener()
+
     last_ping_time = 0.0
     backoff_seconds = POLL_INTERVAL
 
@@ -502,6 +943,9 @@ def main():
             log(f"Incoming prompt: {prompt_text}")
             log(f"Action layers: {len(actions_list)}")
 
+            # Speak incoming command to notify user
+            speak_local(f"Acknowledged direct command: {prompt_text}")
+
             execution_logs = [f"Desktop execution started for command: '{prompt_text}'"]
             success_count = 0
             failed = False
@@ -523,6 +967,10 @@ def main():
             try:
                 report_command_result(command_id, status, execution_logs, screenshot_base64, result)
                 log(f"Reported command result for {command_id}: {status}")
+                if failed:
+                    speak_local("Automation task offline due to critical error.")
+                else:
+                    speak_local("Neora automation task executed successfully, Boss!")
             except Exception as exc:
                 log(f"Report failed: {exc}")
 

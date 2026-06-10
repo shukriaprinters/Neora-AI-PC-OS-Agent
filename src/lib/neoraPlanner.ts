@@ -21,11 +21,21 @@ export function buildNeoraPlan(goal: string): Plan {
       if (action.action === "open_browser") {
         steps.push(makeStep("tool_call", "Open browser target", action.param));
       } else if (action.action === "execute_cmd") {
-        steps.push(makeStep("shell", "Launch allowlisted app", action.param));
+        steps.push(makeStep("shell", "Launch app / execute binary", action.param));
       } else if (action.action === "type_text") {
-        steps.push(makeStep("tool_call", "Type requested text", action.param));
+        steps.push(makeStep("tool_call", "Type text content", action.param));
       } else if (action.action === "press_key") {
         steps.push(makeStep("tool_call", "Press keyboard shortcut", action.param));
+      } else if (action.action === "wait") {
+        steps.push(makeStep("tool_call", "Sleep/Wait for loading", `${action.param} seconds`));
+      } else if (action.action === "mouse_click") {
+        steps.push(makeStep("tool_call", "Click mouse at location", action.param));
+      } else if (action.action === "mouse_drag") {
+        steps.push(makeStep("tool_call", "Drag cursor / Draw design", action.param));
+      } else if (action.action === "open_file") {
+        steps.push(makeStep("shell", "Open relative/local file on disk", action.param));
+      } else if (action.action === "save_file_as") {
+        steps.push(makeStep("file_write", "Save active document to file", action.param));
       } else if (action.action === "write_file") {
         steps.push(makeStep("file_write", "Write requested file", action.param));
       } else if (action.action === "take_screenshot") {

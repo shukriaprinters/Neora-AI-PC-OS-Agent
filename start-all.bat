@@ -71,7 +71,7 @@ if not exist package.json (
 
 if not defined NEORA_AGENT_TOKEN set "NEORA_AGENT_TOKEN=NEORA-X7-AGENT"
 if not defined NEORA_BROKER_URL set "NEORA_BROKER_URL=http://127.0.0.1:3000"
-if not defined NEORA_HEADLESS set "NEORA_HEADLESS=1"
+if not defined NEORA_HEADLESS set "NEORA_HEADLESS=0"
 if not defined PORT set "PORT=3000"
 
 where npm >nul 2>nul

@@ -6,6 +6,7 @@ import { DebugBanner } from './components/ui/DebugBanner';
 import { LiveJournalWidget } from './components/LiveJournalWidget';
 import { VoiceCommandPanel } from './components/VoiceCommandPanel';
 import { NeoraNotifications } from './components/NeoraNotifications';
+import { CommandStatusIndicator } from './components/CommandStatusIndicator';
 const SectionViewer = React.lazy(() => import('./components/SectionViewer').then((m) => ({ default: m.SectionViewer })));
 const ChatView = React.lazy(() => import('./components/ChatView').then((m) => ({ default: m.ChatView })));
 const PlannerView = React.lazy(() => import('./components/PlannerView').then((m) => ({ default: m.PlannerView })));
@@ -171,6 +172,7 @@ export default function App() {
   const [apiHealth, setApiHealth] = useState(100);
   const recoveryImportRef = React.useRef<HTMLInputElement | null>(null);
   const [serverOnline, setServerOnline] = useState(false);
+  const [commandQueue, setCommandQueue] = useState<any[]>([]);
   const [overlayBlocked, setOverlayBlocked] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [showDebugBanner, setShowDebugBanner] = useState(false);
@@ -237,6 +239,9 @@ export default function App() {
         if (!cancelled) {
           setServerOnline(status?.status === 'online');
           setApiHealth(100);
+          if (status?.queue) {
+            setCommandQueue(status.queue);
+          }
         }
       } catch {
         if (!cancelled) {
@@ -1096,6 +1101,9 @@ export default function App() {
       </AnimatePresence>
       {/* ===== HOLOGRAPHIC NOTIFICATION SYSTEM ===== */}
       <NeoraNotifications reminders={reminders} apiHealth={apiHealth} />
+
+      {/* ===== COMMAND STATUS CORNER DOCKED INDICATOR ===== */}
+      <CommandStatusIndicator queue={commandQueue} lang={lang} />
 
       {/* ===== VOICE COMMAND PANEL ===== */}
       {voicePanelOpen && (

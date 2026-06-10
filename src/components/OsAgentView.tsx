@@ -6,6 +6,9 @@ import {
 import { copyToClipboardFailsafe } from '../utils/clipboard';
 import { classifyNeoraInput } from '../lib/neoraCommand';
 import { NeoraApiError, neoraGet, neoraPost } from '../lib/neoraApi';
+import { WorkflowAutomator } from './WorkflowAutomator';
+import { LocalFileSystemBrowser } from './LocalFileSystemBrowser';
+import { AgentExecutionLog } from './AgentExecutionLog';
 
 interface OsAgentViewProps {
   lang: 'en' | 'bn';
@@ -56,6 +59,7 @@ export function OsAgentView({ lang, geminiKey, setGeminiKey }: OsAgentViewProps)
   const [lastResult, setLastResult] = useState<string | null>(null);
   const [watchdogNote, setWatchdogNote] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<CommandItem | HistoryItem | null>(null);
+  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
   
   // Custom Quick Launch application paths loaded from local storage
   const [quickLaunchPaths, setQuickLaunchPaths] = useState(() => {
@@ -82,6 +86,52 @@ export function OsAgentView({ lang, geminiKey, setGeminiKey }: OsAgentViewProps)
   const [showEditPaths, setShowEditPaths] = useState<boolean>(false);
   const [gitSyncStrategy, setGitSyncStrategy] = useState<'stash' | 'force'>('stash');
   const [isGitSyncing, setIsGitSyncing] = useState<boolean>(false);
+
+  // New Git Health and repository status states
+  const [gitStatus, setGitStatus] = useState<{
+    branch: string;
+    ahead: number;
+    behind: number;
+    dirty: boolean;
+    conflicts: string[];
+    unstaged: string[];
+    staged: string[];
+    remoteUrl: string;
+    lastFetched: string;
+  } | null>(null);
+  const [isGitLoading, setIsGitLoading] = useState<boolean>(false);
+
+  const fetchGitStatus = async () => {
+    try {
+      setIsGitLoading(true);
+      const res: any = await neoraGet('/api/git/status');
+      if (res.status === 'success' && res.data) {
+        setGitStatus(res.data);
+      }
+    } catch (err) {
+      console.error("Error fetching repository Git status:", err);
+    } finally {
+      setIsGitLoading(false);
+    }
+  };
+
+  const handleGitAction = async (actionType: 'stash_sync' | 'force_sync' | 'fetch') => {
+    setIsGitSyncing(true);
+    setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Executing Git action: ${actionType}...`]);
+    try {
+      const res: any = await neoraPost('/api/git/action', { action: actionType, branch: gitStatus?.branch || 'main' });
+      if (res.status === 'success') {
+        setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Git ${actionType} completed successfully: ${res.message}`]);
+        await fetchGitStatus();
+      } else {
+        setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Git ${actionType} failed: ${res.error}`]);
+      }
+    } catch (err: any) {
+      setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Git failure executing: ${err.message}`]);
+    } finally {
+      setIsGitSyncing(false);
+    }
+  };
 
   const handleSavePaths = (newPaths: typeof quickLaunchPaths) => {
     setQuickLaunchPaths(newPaths);
@@ -234,11 +284,45 @@ export function OsAgentView({ lang, geminiKey, setGeminiKey }: OsAgentViewProps)
   useEffect(() => {
     fetchAgentStatus();
     fetchWorkspaceState();
+    fetchGitStatus();
     const interval = setInterval(fetchAgentStatus, 3000);
+    const gitInterval = setInterval(fetchGitStatus, 15000); // Poll git status occasionally
     const workspaceInterval = setInterval(fetchWorkspaceState, 15000);
     return () => {
       clearInterval(interval);
+      clearInterval(gitInterval);
       clearInterval(workspaceInterval);
+    };
+  }, []);
+
+  // Real-time SSE console stream subscription
+  useEffect(() => {
+    // Connect to Neora Stream
+    const stream = new EventSource("/api/os/stream");
+    
+    stream.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (payload.type === "history") {
+          setLogs(payload.logs || []);
+        } else if (payload.type === "log" && payload.log) {
+          setLogs(prev => {
+            const next = [...prev, payload.log];
+            if (next.length > 200) next.shift();
+            return next;
+          });
+        }
+      } catch (err) {
+        console.error("Failed to parse streamed log item:", err);
+      }
+    };
+
+    stream.onerror = () => {
+      console.warn("Real-time logging stream connection dropped. Reconnecting...");
+    };
+
+    return () => {
+      stream.close();
     };
   }, []);
 
@@ -252,7 +336,11 @@ export function OsAgentView({ lang, geminiKey, setGeminiKey }: OsAgentViewProps)
   // Submit human voice/text command to server
   const handleSendCommand = async (e?: React.FormEvent, overridePrompt?: string) => {
     if (e) e.preventDefault();
-    const route = classifyNeoraInput(overridePrompt ?? prompt);
+    let finalPrompt = overridePrompt ?? prompt;
+    if (selectedFilePath && !finalPrompt.toLowerCase().includes(selectedFilePath.toLowerCase())) {
+      finalPrompt += ` targeting file "${selectedFilePath}"`;
+    }
+    const route = classifyNeoraInput(finalPrompt);
     const effectivePrompt = route.normalized;
     if (!effectivePrompt || isCompiling) return;
 
@@ -979,6 +1067,21 @@ while True:
 
             {/* Vocal Input Button and command field */}
             <form onSubmit={handleSendCommand} className="space-y-3 mb-6">
+              {selectedFilePath && (
+                <div className="p-2 border border-emerald-500/20 bg-emerald-500/10 rounded-lg text-[10px] font-mono text-emerald-300 flex items-center justify-between select-none">
+                  <span className="flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-450 animate-ping"></span>
+                    <strong>TARGETING NODE:</strong> {selectedFilePath} (Auto-appended to prompt)
+                  </span>
+                  <button 
+                    type="button" 
+                    onClick={() => setSelectedFilePath(null)}
+                    className="font-mono text-[9px] hover:text-white px-1.5 py-0.5 bg-slate-800 text-slate-400 rounded"
+                  >
+                    remove
+                  </button>
+                </div>
+              )}
               <div className="relative">
                 <textarea
                   value={prompt}
@@ -1013,33 +1116,45 @@ while True:
 
             {/* Presets and shortcut templates for quick validation */}
             <div className="mb-6 select-none bg-slate-900/10 border border-slate-900 rounded-xl p-4">
-              <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-                {lang === 'bn' ? 'কুইক প্রিসেট স্ক্রিপ্টস' : 'OS Automation Presets'}
+              <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center justify-between">
+                <span>{lang === 'bn' ? 'কুইক প্রিসেট স্ক্রিপ্টস' : 'OS Automation Presets'}</span>
+                <span className="text-[9px] text-cyan-400 font-normal normal-case">{lang === 'bn' ? 'অপারেটর মোড সক্রিয়' : 'Operator Mode Active'}</span>
               </h4>
               <div className="flex flex-col gap-2">
                 <button 
-                  onClick={() => setPrompt('open browser to https://facebook.com')}
-                  className="w-full text-left bg-slate-900 text-xs px-3 py-2 rounded-lg border border-slate-850 hover:bg-slate-800 cursor-pointer text-slate-300 transition"
+                  onClick={() => setPrompt('open word, wait 4 seconds, type "Shukria Printers memo detailed report", save file as ShukriaMemo.docx')}
+                  className="w-full text-left bg-slate-900 text-xs px-3 py-2 rounded-lg border border-slate-850 hover:bg-slate-800 cursor-pointer text-slate-300 transition flex items-center justify-between"
                 >
-                  🌐 {lang === 'bn' ? 'ফেসবুক ব্রাউজার ওপেন করুন' : 'Open browser to Facebook'}
+                  <span>📝 {lang === 'bn' ? 'MS Word এ শুক্রিয়া প্রিন্টার্সের রিপোর্ট লিখে সেভ করুন' : 'Write & Save Report in MS Word'}</span>
+                  <span className="text-[9px] text-slate-500 font-mono">winword</span>
                 </button>
                 <button 
-                  onClick={() => setPrompt('open notepad write shukria printers update memo then press enter')}
-                  className="w-full text-left bg-slate-900 text-xs px-3 py-2 rounded-lg border border-slate-850 hover:bg-slate-800 cursor-pointer text-slate-300 transition"
+                  onClick={() => setPrompt('open photoshop, wait 5.5 seconds, press ctrl+n, wait 1.5 seconds, press enter, type "Shukria premium poster header text", save file as project.psd, take a screenshot')}
+                  className="w-full text-left bg-slate-900 text-xs px-3 py-2 rounded-lg border border-slate-850 hover:bg-slate-800 cursor-pointer text-slate-300 transition flex items-center justify-between"
                 >
-                  📝 {lang === 'bn' ? 'নোটপ্যাড ওপেন করে মেমো ফাইল লিখুন' : 'Open Notepad & Type Memo'}
+                  <span>🎨 {lang === 'bn' ? 'Photoshop এ প্রফেশনাল পোস্টার ও ব্যানার ডিজাইন করুন' : 'Create Poster and Save in Photoshop'}</span>
+                  <span className="text-[9px] text-indigo-400 font-mono">photoshop</span>
                 </button>
                 <button 
-                  onClick={() => setPrompt('open paint and calculator')}
-                  className="w-full text-left bg-slate-900 text-xs px-3 py-2 rounded-lg border border-slate-850 hover:bg-slate-800 cursor-pointer text-slate-300 transition"
+                  onClick={() => setPrompt('open mspaint, wait 3 seconds, drag mouse from 150,150 to 500,150, drag mouse from 500,150 to 500,450, drag mouse from 500,450 to 150,450, drag mouse from 150,450 to 150,150, type "Designed by Neora Agent", save file as design.png')}
+                  className="w-full text-left bg-slate-900 text-xs px-3 py-2 rounded-lg border border-slate-850 hover:bg-slate-800 cursor-pointer text-slate-300 transition flex items-center justify-between"
                 >
-                  🧮 {lang === 'bn' ? 'ক্যালকুলেটর ও পেইন্ট অ্যাপ খুলুন' : 'Open Paint & Calculator'}
+                  <span>🖌️ {lang === 'bn' ? 'MS Paint ক্যানভাসে মাউস দিয়ে বাউন্ডারি এঁকে ফাইল সেভ করুন' : 'Draw Boundary Box & Save in Paint'}</span>
+                  <span className="text-[9px] text-rose-400 font-mono">mspaint</span>
+                </button>
+                <button 
+                  onClick={() => setPrompt('open file sample.txt, wait 2 seconds, type " - Updated by Neora on PC Drive", save file as sample.txt')}
+                  className="w-full text-left bg-slate-900 text-xs px-3 py-2 rounded-lg border border-slate-850 hover:bg-slate-800 cursor-pointer text-slate-300 transition flex items-center justify-between"
+                >
+                  <span>📂 {lang === 'bn' ? 'পিসির ড্রাইভ থেকে ফাইল ওপেন ও এডিট করে ওভাররাইট সেভ করুন' : 'Open PC Drive File, Edit & Auto-Save'}</span>
+                  <span className="text-[9px] text-green-400 font-mono">file-system</span>
                 </button>
                 <button 
                   onClick={() => setPrompt('take a screenshot to update dashboard')}
-                  className="w-full text-left bg-slate-900 text-xs px-3 py-2 rounded-lg border border-slate-850 hover:bg-slate-800 cursor-pointer text-slate-300 transition"
+                  className="w-full text-left bg-slate-900 text-xs px-3 py-2 rounded-lg border border-slate-850 hover:bg-slate-800 cursor-pointer text-slate-300 transition flex items-center justify-between"
                 >
-                  📸 {lang === 'bn' ? 'লাইভ স্ক্রিনশট সংগ্রহ করুন' : 'Force capture desktop screenshot'}
+                  <span>📸 {lang === 'bn' ? 'পিসি মনিটরের লাইভ স্ক্রিনশট সংগ্রহ করুন' : 'Force capture desktop screenshot'}</span>
+                  <span className="text-[9px] text-slate-500 font-mono">screenshot</span>
                 </button>
               </div>
             </div>
@@ -1206,58 +1321,142 @@ while True:
               </div>
             </div>
 
-            {/* Robust Git Code Synchronizer Panel */}
-            <div className="mb-6 select-none bg-slate-900/40 border border-slate-900 rounded-xl p-4">
-              <h4 className="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
-                <RefreshCw className={`w-3.5 h-3.5 text-cyan-400 ${isGitSyncing ? 'animate-spin' : ''}`} />
-                {lang === 'bn' ? 'গিট অটো কোড সিঙ্ক' : 'Git Core Synchronizer'}
-              </h4>
-              <p className="text-[9px] text-slate-400 leading-relaxed mb-3">
-                {lang === 'bn' 
-                  ? 'আপনার পিসির লোকাল কোড দ্রুত আপডেট করতে অটো-স্ট্যাশ বা ফোর্স ওভাররাইট পদ্ধতি ব্যবহার করুন:'
-                  : 'Automatically sync and keep local codebases updated by invoking safe stash pull cycles or hard resets:'}
-              </p>
-              
-              <div className="flex gap-2 mb-3">
-                <button
-                  type="button"
-                  onClick={() => setGitSyncStrategy('stash')}
-                  className={`flex-1 text-center py-1.5 rounded text-[10px] font-bold cursor-pointer border transition ${
-                    gitSyncStrategy === 'stash' 
-                      ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-400' 
-                      : 'bg-slate-950 border-slate-850 text-slate-500 hover:text-slate-305'
-                  }`}
-                >
-                  💼 Safe Auto-Stash
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setGitSyncStrategy('force')}
-                  className={`flex-1 text-center py-1.5 rounded text-[10px] font-bold cursor-pointer border transition ${
-                    gitSyncStrategy === 'force' 
-                      ? 'bg-red-500/15 border-red-500/40 text-red-400' 
-                      : 'bg-slate-950 border-slate-850 text-slate-500 hover:text-slate-305'
-                  }`}
-                  title="Overwrites and discards all local conflicts instantly!"
-                >
-                  🔥 Force Overwrite
-                </button>
+            {/* ----------------- GIT HEALTH & REPOSITORY HUB ----------------- */}
+            <div className="mb-6 bg-slate-900/40 border border-slate-800/80 rounded-xl p-4 space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-850/60 pb-2.5">
+                <h4 className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5 font-sans">
+                  <RefreshCw className={`w-3.5 h-3.5 text-cyan-400 ${isGitSyncing ? 'animate-spin' : ''}`} />
+                  {lang === 'bn' ? 'গিট রেপো স্বাস্থ্য ও নিয়ন্ত্রণ' : 'Git Core Health'}
+                </h4>
+                {gitStatus && (
+                  <span className="text-[10px] bg-slate-950 px-2 py-0.5 rounded border border-slate-850 text-slate-400 font-mono">
+                     {gitStatus.branch}
+                  </span>
+                )}
               </div>
 
-              <button
-                type="button"
-                onClick={handleGitSync}
-                disabled={isGitSyncing}
-                className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold border border-slate-705/85 transition cursor-pointer"
-              >
-                {isGitSyncing ? (
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <>
-                    <span>🔄 {lang === 'bn' ? 'লোকাল কোড সিনক্রোনাইজ করুন' : 'Execute Local Code Synchronization'}</span>
-                  </>
-                )}
-              </button>
+              {/* Git Status Information Block */}
+              {!gitStatus ? (
+                <div className="text-center py-4 space-y-2">
+                  <div className="h-4 w-4 border-2 border-cyan-450/40 border-t-cyan-400 rounded-full animate-spin mx-auto" />
+                  <p className="text-[10px] text-slate-500 font-mono">
+                    {lang === 'bn' ? 'গিট স্থিতি লোড করা হচ্ছে...' : 'Querying git repository...'}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {/* Diagnostic Metrics Grid */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="p-2 bg-slate-950/60 rounded border border-slate-850/40 text-center">
+                      <span className="block text-[8px] font-mono text-slate-500 uppercase tracking-widest leading-none mb-1">Ahead / Behind</span>
+                      <strong className="text-sm font-mono text-cyan-400 block">
+                        +{gitStatus.ahead} / -{gitStatus.behind}
+                      </strong>
+                    </div>
+                    <div className="p-2 bg-slate-950/60 rounded border border-slate-850/40 text-center">
+                      <span className="block text-[8px] font-mono text-slate-500 uppercase tracking-widest leading-none mb-1">Unstaged Changes</span>
+                      <strong className={`text-sm font-mono block ${gitStatus.dirty ? 'text-amber-400' : 'text-slate-400'}`}>
+                        {gitStatus.dirty ? (lang === 'bn' ? 'পরিমার্জিত' : 'Dirty') : (lang === 'bn' ? 'পরিষ্কার' : 'Clean')}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {/* Conflict File Alert Badge */}
+                  {gitStatus.conflicts.length > 0 ? (
+                    <div className="p-3 bg-rose-500/10 border border-rose-500/35 rounded-lg space-y-1.5 animate-pulse">
+                      <div className="flex items-center gap-1.5 text-rose-405 text-[10px] font-bold uppercase tracking-wider font-mono">
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-505"></span>
+                        </span>
+                        {lang === 'bn' ? 'মার্জ কনফ্লিক্ট সনাক্ত করা গেছে!' : 'Merge Conflicts Detected!'}
+                      </div>
+                      <p className="text-[9px] text-rose-300 leading-normal font-sans">
+                        {lang === 'bn' 
+                          ? `মোট ${gitStatus.conflicts.length}টি ফাইলে কোড কনফ্লিক্ট রয়েছে। সমাধান করতে 'Force Overwrites' করুন বা ম্যানুয়াল গাইড দেখুন।`
+                          : `There are ${gitStatus.conflicts.length} file(s) with unresolved git merge conflicts in your tree.`}
+                      </p>
+                      <div className="bg-slate-950/85 rounded border border-rose-950/80 p-1.5 text-[9px] font-mono text-rose-300 space-y-0.5 max-h-20 overflow-y-auto">
+                        {gitStatus.conflicts.map((file, fIdx) => (
+                          <div key={fIdx} className="truncate">⚠ {file}</div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-2 bg-slate-950/40 rounded border border-slate-850/40 flex items-center justify-between text-[10px] font-mono">
+                      <span className="text-slate-500">{lang === 'bn' ? 'ফাইল পরিবর্তন ট্র্যাকিং:' : 'Working Tree status:'}</span>
+                      <span className={gitStatus.dirty ? 'text-amber-400' : 'text-emerald-400'}>
+                        {gitStatus.dirty 
+                          ? (lang === 'bn' ? 'Uncommitted ফাইল রয়েছে' : 'Dirty (uncommitted)') 
+                          : (lang === 'bn' ? '✓ সবকিছু ক্লিন' : '✓ Clean')}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Sync Control Action Drawer Buttons */}
+                  <div className="space-y-2 pt-1 select-none">
+                    <button
+                      type="button"
+                      onClick={() => handleGitAction('stash_sync')}
+                      disabled={isGitSyncing}
+                      className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-[10px] font-bold border border-slate-700/80 transition cursor-pointer"
+                    >
+                      <span>💼 {lang === 'bn' ? 'নিরাপদ অটো-স্ট্যাশ ও সিঙ্ক' : 'Stash & Sync'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleGitAction('force_sync')}
+                      disabled={isGitSyncing}
+                      className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-gradient-to-r from-rose-950/80 to-red-900/80 hover:from-rose-900 hover:to-red-800 text-rose-200 text-[10px] font-bold border border-rose-800/80 transition cursor-pointer"
+                      title="Destructive! Overwrites and discards all local conflicts instantly."
+                    >
+                      <span>🔥 {lang === 'bn' ? 'ফোর্স ওভাররাইট করে সিঙ্ক' : 'Force Overwrite Sync'}</span>
+                    </button>
+                    
+                    <p className="text-[8px] text-slate-500 text-center font-mono">
+                      {lang === 'bn' 
+                        ? 'ফোর্স ওভাররাইট লোকাল কাজ মুছে ফেলে রিমোট মেইন কোড লোড করবে।' 
+                        : 'Force Overwrite resets local modifications to match remote main branch.'}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Interactive Bilingual Git Help Manual */}
+              <div className="mt-4 pt-3 border-t border-slate-850 select-text">
+                <details className="group">
+                  <summary className="list-none flex items-center justify-between text-[10px] font-bold text-slate-400 hover:text-white cursor-pointer select-none font-mono">
+                    <span>💡 {lang === 'bn' ? 'মার্জ কনফ্লিক্ট দূর করার গাইড' : 'Conflict Resolution Manual'}</span>
+                    <span className="transition-transform group-open:rotate-180">▼</span>
+                  </summary>
+                  <div className="mt-2.5 bg-slate-950 p-3 rounded-lg border border-slate-850 space-y-3.5 text-[10px] leading-relaxed select-text font-sans">
+                    {/* Bengali Instructions */}
+                    <div className="space-y-1.5 border-b border-slate-850/60 pb-2.5">
+                      <h5 className="font-bold text-cyan-400 font-mono text-[9px] uppercase tracking-wider">গিট ম্যানুয়াল রেজোলিউশন (বাংলা)</h5>
+                      <ol className="list-decimal pl-4 space-y-1 text-slate-300">
+                        <li>প্রথমে আপনার পিসির টার্মিনালে <code className="bg-slate-900 px-1 py-0.5 rounded text-amber-300 font-mono text-[9px]">git status</code> দিয়ে কনফ্লিক্ট হওয়া ফাইল চিহ্নিত করুন।</li>
+                        <li>কনফ্লিক্ট ফাইলগুলো খুলে <code className="text-rose-450 font-mono">&lt;&lt;&lt;&lt;&lt;&lt;&lt; HEAD</code> এবং <code className="text-cyan-405 font-mono">&gt;&gt;&gt;&gt;&gt;&gt;&gt; remote</code> ট্যাগের মধ্যের কোড তুলনা করুন। </li>
+                        <li>পরিবর্তনগুলো ম্যানুয়ালি এডিট করে ফাইল সেভ করুন।</li>
+                        <li>ফাইল সেভ করার পর <code className="bg-slate-900 px-1 py-0.5 rounded text-emerald-400 font-mono text-[9px]">git add filename</code> কমান্ডের সাহায্যে ফাইল স্টেজ করুন।</li>
+                        <li>অবশেষে <code className="bg-slate-900 px-1 py-0.5 rounded text-emerald-400 font-mono text-[9px]">git commit -m "resolved conflicts"</code> দিয়ে মার্জ সম্পূর্ণ করুন।</li>
+                      </ol>
+                    </div>
+
+                    {/* English Instructions */}
+                    <div className="space-y-1.5">
+                      <h5 className="font-bold text-cyan-400 font-mono text-[9px] uppercase tracking-wider">Manual Merge Conflict Fix (English)</h5>
+                      <ol className="list-decimal pl-4 space-y-1 text-slate-300">
+                        <li>Run <code className="text-amber-300 font-mono">git status</code> in your project repository directory.</li>
+                        <li>Locate the files listed under <span className="text-amber-400 font-mono font-bold">"Both Modified"</span>.</li>
+                        <li>Open the file, search for merge markers (<code className="font-mono text-rose-400">&lt;&lt;&lt;&lt;&lt;&lt;&lt;</code>). Compare then choose which block to keep.</li>
+                        <li>Delete the markers, save the files, and run <code className="text-emerald-400 font-mono">git add .</code> to stage resolved states.</li>
+                        <li>Commit normally to close: <code className="text-emerald-400 font-mono">git commit -m "fix conflicts"</code>.</li>
+                      </ol>
+                    </div>
+                  </div>
+                </details>
+              </div>
             </div>
 
             {/* Active Commands Queue List */}
@@ -1358,7 +1557,9 @@ while True:
           
           {/* VIEW: Agent Monitor (Screenshots scaled view) */}
           {viewMode === 'monitor' && (
-            <div className="flex-1 overflow-y-auto p-6 flex flex-col md:flex-row gap-6">
+            <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-8">
+              
+              <div className="flex flex-col md:flex-row gap-6">
               
               {/* Desktop Mirror Screen Panel */}
               <div className="flex-1 flex flex-col">
@@ -1550,6 +1751,15 @@ while True:
 
               {/* Execution History Tracker */}
               <div className="w-full md:w-[280px] shrink-0 flex flex-col bg-slate-950 select-none">
+                {/* Agent Live Progress Step Indicators */}
+                <div className="mb-5 text-left select-none">
+                  <AgentExecutionLog 
+                    lang={lang}
+                    activeCommand={queue.find(item => item.status === 'running') || queue.find(item => item.status === 'pending') || null}
+                    logs={logs}
+                  />
+                </div>
+
                 <h3 className="text-xs font-bold text-slate-300 uppercase tracking-widest mb-3">
                   {lang === 'bn' ? 'সম্পন্ন কাজের ইতিহাস' : 'Recent Operations Run'}
                 </h3>
@@ -1661,6 +1871,34 @@ while True:
                   </div>
                 </div>
               )}
+
+              </div>
+
+              {/* Advanced Auto-Macros and File Targeter Bento Grid */}
+              <div className="border-t border-slate-850 pt-6">
+                <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                  {/* Column 1: Workflow Studio */}
+                  <div className="xl:col-span-1">
+                    <WorkflowAutomator 
+                      lang={lang}
+                      token={token}
+                      onWorkflowDispatched={(msg) => {
+                        setLastResult(msg);
+                        fetchAgentStatus();
+                      }}
+                    />
+                  </div>
+
+                  {/* Column 2: File Browser Studio */}
+                  <div className="xl:col-span-2">
+                    <LocalFileSystemBrowser 
+                      lang={lang}
+                      selectedFilePath={selectedFilePath}
+                      onFileSelected={(filePath) => setSelectedFilePath(filePath)}
+                    />
+                  </div>
+                </div>
+              </div>
 
             </div>
           )}
