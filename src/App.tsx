@@ -29,7 +29,13 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function App() {
-  const [lang, setLang] = useState<'en' | 'bn'>('en');
+  const [lang, setLang] = useState<'en' | 'bn'>(() => {
+    return (localStorage.getItem('neora_lang') || 'bn') as 'en' | 'bn';
+  });
+
+  React.useEffect(() => {
+    localStorage.setItem('neora_lang', lang);
+  }, [lang]);
 
   // Persist activeTab to localStorage
   const [activeTab, setActiveTab] = useState<'home' | 'chat' | 'autonomy' | 'productivity' | 'invoice' | 'dev' | 'blueprint' | 'filterLab' | 'roadmap' | 'osAgent' | 'vscode'>(() => {
@@ -488,6 +494,7 @@ export default function App() {
       </div>
 
       {/* ===== JARVIS HEADER ===== */}
+      {activeTab === 'home' && (
       <header id="main-header" className="shrink-0 print:hidden select-none" style={{
         background: "rgba(0,6,18,0.92)",
         borderBottom: "1px solid rgba(0,212,255,0.12)",
@@ -602,8 +609,10 @@ export default function App() {
           </div>
         </div>
       </header>
+      )}
 
       {/* ===== JARVIS NAV BAR ===== */}
+      {activeTab === 'home' && (
       <nav id="primary-tabs" className="shrink-0 flex items-center overflow-x-auto gap-0.5 px-4 py-1.5 select-none print:hidden" style={{
         background: "rgba(0,4,12,0.85)",
         borderBottom: "1px solid rgba(0,212,255,0.08)",
@@ -646,6 +655,7 @@ export default function App() {
           );
         })}
       </nav>
+      )}
 
       {/* ===== JARVIS COMMAND CENTER — Dashboard tab only (fills remaining height) ===== */}
       {activeTab === 'home' && <section className="px-4 py-3 print:hidden flex-1 overflow-y-auto min-h-0">

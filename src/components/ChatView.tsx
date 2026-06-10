@@ -63,15 +63,7 @@ export function ChatView({
   setGeminiKey
 }: ChatViewProps) {
   const t = TRANSLATIONS[lang];
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: 'init',
-      role: 'assistant',
-      content: lang === 'bn' ? 'হ্যাঁ, বলো — কী দরকার? আমি রেডি।' : "Hey, I'm online. What do you need?",
-      timestamp: new Date().toLocaleTimeString(),
-      classification: 'chat'
-    }
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isListening, setIsListening] = useState(false);
   const [speakVolumeOn, setSpeakVolumeOn] = useState(true);
@@ -99,12 +91,7 @@ export function ChatView({
   const [ollamaStatus, setOllamaStatus] = useState<'checking' | 'available' | 'partial' | 'blocked' | 'not_installed'>('checking');
   const [ollamaModels, setOllamaModels] = useState<any[]>([]);
   const [selectedOllamaModel, setSelectedOllamaModel] = useState<string>('llama3');
-  const healthState =
-    statusEndpoint
-      ? 'offline'
-      : statusBanner
-        ? 'degraded'
-        : (ollamaStatus === 'available' ? 'healthy' : 'degraded');
+  const healthState = statusEndpoint ? 'offline' : 'healthy';
   const healthChipClass =
     healthState === 'healthy'
       ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
@@ -183,23 +170,124 @@ export function ChatView({
     return () => window.removeEventListener('neora-submit-chat', handleGlobalSubmit);
   }, [inputValue, isGenerating]);
 
-  const handleSpeak = (text: string) => {
-    if (!speakVolumeOn) return;
-    const cleanText = text.replace(/[`*#_\[\]]/g, '').replace(/\*\*/g, '').slice(0, 600);
+  const speakQueueRef = useRef<{ cancel: () => void } | null>(null);
+
+  const handleSpeak = (text: string, onSpeechFinished?: () => void) => {
+    if (!speakVolumeOn) {
+      if (onSpeechFinished) onSpeechFinished();
+      return;
+    }
+    const cleanText = text.replace(/[`*#_\[\]]/g, '').replace(/\*\*/g, '').slice(0, 1800);
     const synth = window.speechSynthesis;
-    if (!synth) return;
+    if (!synth) {
+      if (onSpeechFinished) onSpeechFinished();
+      return;
+    }
+    if (speakQueueRef.current) {
+      speakQueueRef.current.cancel();
+    }
     synth.cancel();
-    const utterance = new SpeechSynthesisUtterance(cleanText);
-    utterance.lang = lang === 'bn' ? 'bn-BD' : 'en-US';
-    utterance.rate = 1.05;
-    utterance.pitch = 0.92;
-    const voices = synth.getVoices();
-    const preferred = voices.find(v =>
-      v.lang.startsWith(lang === 'bn' ? 'bn' : 'en') &&
-      (v.name.includes('Google') || v.name.includes('Neural') || v.name.includes('Premium') || v.name.includes('Natural'))
-    ) || voices.find(v => v.lang.startsWith(lang === 'bn' ? 'bn' : 'en'));
-    if (preferred) utterance.voice = preferred;
-    synth.speak(utterance);
+
+    // Split text into elegant sentence chunks by punctuation and line breaks
+    const sentences = cleanText
+      .split(/[।\n!?.]/)
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
+
+    if (sentences.length === 0) {
+      if (onSpeechFinished) onSpeechFinished();
+      return;
+    }
+
+    let index = 0;
+    let cancelled = false;
+
+    const cancel = () => {
+      cancelled = true;
+      synth.cancel();
+    };
+
+    speakQueueRef.current = { cancel };
+
+    const speakNext = () => {
+      if (cancelled || !speakVolumeOn) return;
+      if (index >= sentences.length) {
+        if (onSpeechFinished) onSpeechFinished();
+        return;
+      }
+      
+      const sentenceText = sentences[index];
+      const utterance = new SpeechSynthesisUtterance(sentenceText);
+      utterance.lang = lang === 'bn' ? 'bn-BD' : 'en-US';
+      utterance.rate = 0.98; // elegant and melodic rate
+      utterance.pitch = 1.08; // gorgeous, soft female voice pitch
+      
+      const voices = synth.getVoices();
+      
+      // Proactively match sweet female Bengali voice or primary Google/Microsoft natural voices
+      const preferred = voices.find(v => {
+        const nameLower = v.name.toLowerCase();
+        const isBengali = v.lang.startsWith('bn') || nameLower.includes('bengali') || nameLower.includes('bangla') || nameLower.includes('বাংলা');
+        return isBengali && (
+          nameLower.includes('sabina') || 
+          nameLower.includes('kalpana') || 
+          nameLower.includes('sanjukta') || 
+          nameLower.includes('female') ||
+          nameLower.includes('online') ||
+          nameLower.includes('google')
+        );
+      }) || voices.find(v => 
+        v.lang.startsWith('bn') || 
+        v.name.toLowerCase().includes('bengali') || 
+        v.name.toLowerCase().includes('bangla') || 
+        v.name.toLowerCase().includes('বাংলা')
+      );
+      
+      if (preferred) {
+        utterance.voice = preferred;
+      }
+
+      utterance.onend = () => {
+        index++;
+        speakNext();
+      };
+
+      utterance.onerror = (e) => {
+        console.warn("Speech Synthesis error caught (resuming queue):", e);
+        index++;
+        speakNext();
+      };
+
+      synth.speak(utterance);
+    };
+
+    speakNext();
+  };
+
+  const initializeVoiceCore = () => {
+    // Elegant proactive vocal greeting
+    const greetingText = lang === 'bn'
+      ? "হ্যালো বস! শুকরিয়া প্রিন্টার্স কন্ট্রোল রুমে আপনাকে স্বাগতম। আমি আপনার অল-ইন-ওয়ান সহকারী নিওরা, কাজের জন্য সম্পূর্ণ রেডি। বলুন বস, আজকে আপনার প্রথম কাজ কী দিয়ে শুরু করব?"
+      : "Hello Boss! Welcome to Shukria Printers control room. I am Neora, your intelligent agent. I am fully ready for your command. Tell me, what is your first task today?";
+    
+    setMessages([
+      {
+        id: 'init-vocal-core',
+        role: 'assistant',
+        content: greetingText,
+        timestamp: new Date().toLocaleTimeString(),
+        classification: 'chat'
+      }
+    ]);
+
+    handleSpeak(greetingText, () => {
+      // Small natural delay, then trigger mic automatically
+      setTimeout(() => {
+        if (!isListening) {
+          toggleMic();
+        }
+      }, 500);
+    });
   };
 
   const submitOsCommand = async (commandText: string) => {
@@ -1295,107 +1383,45 @@ export function ChatView({
       {/* Message stream & Workspace Hello Board */}
       <div id="msg-stream" className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
         {messages.length === 0 ? (
-          /* Sleek Gemini Landing Hub */
-          <div className="h-full flex flex-col justify-center max-w-2xl mx-auto py-10 px-4 animate-fade-in select-none">
-            <div className="space-y-2 mb-8">
+          /* Sleek Gemini Landing Hub with Holographic Neural Pulsar */
+          <div className="h-full flex flex-col justify-center items-center max-w-xl mx-auto py-12 px-4 animate-fade-in select-none text-center my-auto min-h-[400px]">
+            {/* Holographic Glowing Brain Core Pulsar */}
+            <div 
+              onClick={initializeVoiceCore}
+              className="relative mb-8 group cursor-pointer"
+              id="hologram-activation-core"
+            >
+              <div className="absolute inset-0 rounded-full bg-gradient-to-r from-cyan-500 via-indigo-500 to-rose-500 blur-2xl opacity-40 group-hover:opacity-75 transition-opacity duration-500 animate-pulse" />
+              <div className="relative w-32 h-32 rounded-full bg-slate-950/80 border-2 border-cyan-400 flex flex-col items-center justify-center shadow-[0_0_50px_rgba(0,212,255,0.3)] hover:shadow-[0_0_70px_rgba(0,212,255,0.6)] hover:border-cyan-300 transition-all duration-300 transform hover:scale-105">
+                <Cpu className="w-11 h-11 text-cyan-400 animate-spin-slow mb-1" />
+                <span className="text-[10px] font-mono tracking-[0.25em] text-cyan-400 font-bold uppercase">INIT CORE</span>
+              </div>
+            </div>
+
+            <div className="space-y-3 mb-7">
               <h1 className="bg-gradient-to-r from-cyan-400 via-indigo-400 to-rose-400 bg-clip-text text-transparent font-extrabold text-3xl sm:text-4xl font-sans tracking-tight leading-none">
-                {lang === 'bn' ? 'স্বাগতম, শুকরিয়া প্রিন্টার্স' : 'Hello, Shukria Printers.'}
+                {lang === 'bn' ? 'স্বাগতম, শুকরিয়া প্রিন্টার্স সিস্টেমে' : 'Speak to Neora System'}
               </h1>
-              <p className="text-slate-400 text-lg font-medium leading-normal">
+              <p className="text-slate-400 text-xs sm:text-sm font-medium leading-relaxed max-w-sm mx-auto">
                 {lang === 'bn' 
-                  ? 'আমি আজ আপনাকে কীভাবে সাহায্য করতে পারি?' 
-                  : 'How can I help you today?'}
+                  ? 'আমি আপনার ভয়েস সহকারী নিওরা। আপনার সব কাজ ও পিসির নির্দেশাবলী কন্ঠস্বরের মাধ্যমে পরিচালনা করতে প্রস্তুত।' 
+                  : 'I am Neora, your smart voice operating client. Click below to start our vocal session, and execute automated actions on your system.'}
               </p>
-              <div className="text-[11px] font-mono text-cyan-500/80 uppercase tracking-widest flex items-center gap-1.5 pt-1">
+              <div className="text-[11px] font-mono text-cyan-500/80 uppercase tracking-widest flex items-center justify-center gap-1.5 pt-1">
                 <Cpu className="w-3.5 h-3.5 animate-pulse" />
-                <span>Core Speech Intelligent Framework Active (Porcupine Wake-word + Local Whisper STT Integration)</span>
+                <span>Neora Intelligent Companion Active</span>
               </div>
             </div>
 
-            {/* Gemini Bento-Style Interaction Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
-              <div 
-                onClick={() => handleSuggestionClick(lang === 'bn' ? 'টাস্ক: শুকরিয়া প্রিন্টার্স ব্যানার প্রুফ ডেলিভারি' : 'task: Deliver layout mockups for Shukria Printers')}
-                className="p-4 bg-slate-900/40 hover:bg-slate-900/80 border border-slate-800 hover:border-cyan-500/30 rounded-xl cursor-pointer transition-all hover:-translate-y-0.5 group"
-              >
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <h3 className="text-xs font-semibold text-slate-200 group-hover:text-cyan-400 transition-colors">
-                      {lang === 'bn' ? 'প্রোডাকশন টাস্ক তৈরি' : 'Create Production Task'}
-                    </h3>
-                    <p className="text-[10px] text-slate-500 line-clamp-2 leading-relaxed">
-                      {lang === 'bn' 
-                        ? 'ক্লায়েন্টের জন্য নতুন ব্যানার, পোস্টার বা প্রিন্টিং অর্ডার টাস্ক সিডিউল করুন।' 
-                        : 'Automatically schedule a high-priority banner or offset print proofing layout Task.'}
-                    </p>
-                  </div>
-                  <CheckSquare className="w-4 h-4 text-slate-600 group-hover:text-cyan-400 shrink-0 ml-2" />
-                </div>
-              </div>
-
-              <div 
-                onClick={() => handleSuggestionClick(lang === 'bn' ? 'P-5 এবং P-6 ডাবল মাইক্রো-ফিল্টার নিয়ে গবেষণা বলুন' : 'Research P-5 & P-6 double micro-filters')}
-                className="p-4 bg-slate-900/40 hover:bg-slate-900/80 border border-slate-800 hover:border-indigo-500/30 rounded-xl cursor-pointer transition-all hover:-translate-y-0.5 group"
-              >
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <h3 className="text-xs font-semibold text-slate-200 group-hover:text-indigo-400 transition-colors">
-                      {lang === 'bn' ? 'ফিল্টার ল্যাব সিমুলেশন' : 'Research Filtration Specs'}
-                    </h3>
-                    <p className="text-[10px] text-slate-500 line-clamp-2 leading-relaxed">
-                      {lang === 'bn' 
-                        ? 'P-5 এবং P-6 ডুয়াল বাস্কেট মাইক্রো-ফিল্টার গবেষণা ও ৩০০ মেশ সিমুলেশন দেখুন।' 
-                        : 'Request deep physics specs, 200/500 mesh ratings, and materials science data of filtration.'}
-                    </p>
-                  </div>
-                  <Cpu className="w-4 h-4 text-slate-600 group-hover:text-indigo-400 shrink-0 ml-2" />
-                </div>
-              </div>
-
-              <div 
-                onClick={() => handleSuggestionClick(lang === 'bn' ? 'শুকরিয়া প্রিন্টার্সের জন্য প্রিন্ট-রেডি ট্যাক্স ইনভয়েস বের করো' : 'Generate tax invoice for Shukria Printers')}
-                className="p-4 bg-slate-900/40 hover:bg-slate-900/80 border border-slate-800 hover:border-rose-500/30 rounded-xl cursor-pointer transition-all hover:-translate-y-0.5 group"
-              >
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <h3 className="text-xs font-semibold text-slate-200 group-hover:text-rose-400 transition-colors">
-                      {lang === 'bn' ? 'আর্নিং ও বিলিং ক্যালকুলেশন' : 'Run Corporate Invoice'}
-                    </h3>
-                    <p className="text-[10px] text-slate-500 line-clamp-2 leading-relaxed">
-                      {lang === 'bn' 
-                        ? 'অফসেট বা বুকলেট প্রিন্টের জন্য ১৫% ভ্যাট হিসাবসহ সম্পূর্ণ কর্পোরেট ইনভয়েস তৈরি।' 
-                        : 'Instantly design, calculate 15% corporate tax, and prepare print-ready billing documents.'}
-                    </p>
-                  </div>
-                  <Layers className="w-4 h-4 text-slate-600 group-hover:text-rose-400 shrink-0 ml-2" />
-                </div>
-              </div>
-
-              <div 
-                onClick={() => handleSuggestionClick(lang === 'bn' ? 'নিওরা প্রজেক্টের নো-নেটওয়ার্ক রোডম্যাপ' : 'Show autonomous launch roadmap')}
-                className="p-4 bg-slate-900/40 hover:bg-slate-900/80 border border-slate-800 hover:border-amber-500/30 rounded-xl cursor-pointer transition-all hover:-translate-y-0.5 group"
-              >
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <h3 className="text-xs font-semibold text-slate-200 group-hover:text-amber-400 transition-colors">
-                      {lang === 'bn' ? 'ডেভলপমেন্ট রোডম্যাপ' : 'Inspect Development Systems'}
-                    </h3>
-                    <p className="text-[10px] text-slate-500 line-clamp-2 leading-relaxed">
-                      {lang === 'bn' 
-                        ? 'মনোরেপো আর্কিটেকচার, ড্রিল সিকিউরিটি এবং ডেসক্টপ কোড ইন্টিগ্রেশন প্রোটোকল।' 
-                        : 'Explore offline Porcupine trigger codes and Windows background startup scripts.'}
-                    </p>
-                  </div>
-                  <Compass className="w-4 h-4 text-slate-600 group-hover:text-amber-400 shrink-0 ml-2" />
-                </div>
-              </div>
-            </div>
-
-            <div className="text-center">
-              <span className="text-[10px] text-slate-600 font-mono">
-                ✦ {lang === 'bn' ? 'ভয়েস দিয়ে কাজ করাতে "Microphone" প্রেস করে বলুনঃ "task: design catalogue"' : 'Press the microphone icon or type below to command Neora seamlessly.'}
-              </span>
-            </div>
+            <button
+              onClick={initializeVoiceCore}
+              className="px-7 py-3.5 rounded-full bg-gradient-to-r from-cyan-500 via-indigo-500 to-purple-600 hover:from-cyan-400 hover:to-indigo-400 text-white font-bold text-xs tracking-widest uppercase shadow-[0_0_30px_rgba(0,212,255,0.25)] hover:shadow-[0_0_55px_rgba(0,212,255,0.45)] transition-all duration-300 transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
+            >
+              {lang === 'bn' ? '⚡ কন্ঠস্বর ও ডিক্টেশন চালু করুন (Speak & Listen)' : '⚡ ACTIVATE VOCAL VOICE CORE (Speak & Listen)'}
+            </button>
+            <p className="text-[10px] text-slate-500 font-mono mt-4">
+              ✦ {lang === 'bn' ? 'নিওরা কন্ঠস্বরের মাধ্যমে প্রশ্নের উত্তর দেবে ও আপনার হয়ে পিসির কাজ করে দেবে' : 'Binds vocal response synthesis with local OS background command processing.'}
+            </p>
           </div>
         ) : (
           /* Beautiful Gemini Message Container Lists */
@@ -1458,36 +1484,7 @@ export function ChatView({
         )}
       </div>
 
-      {/* NLP Suggestion panel */}
-      {messages.length > 0 && (
-        <div className="px-4 py-2 bg-slate-900/20 border-t border-slate-900/40 flex items-center gap-2 overflow-x-auto shrink-0 select-none">
-          <span className="text-[10px] text-slate-500 font-mono whitespace-nowrap">QUICK PROMPTS:</span>
-          <button
-            onClick={() => handleSuggestionClick(lang === 'bn' ? 'টাস্ক: শুকরিয়া প্রিন্টার্স ব্যানার প্রুফ ডেলিভারি' : 'task: Deliver layout mockups for Shukria Printers')}
-            className="text-[9px] bg-slate-900/60 hover:bg-slate-800 border border-slate-800/80 px-2.5 py-1 rounded-full text-slate-400 hover:text-slate-200 transition-all shrink-0 cursor-pointer"
-          >
-            ➕ Task
-          </button>
-          <button
-            onClick={() => handleSuggestionClick(lang === 'bn' ? 'মনে করিয়ে দিও কাল সকালে ক্লায়েন্ট মিটিং' : 'remind me tomorrow morning customer audit')}
-            className="text-[9px] bg-slate-900/60 hover:bg-slate-800 border border-slate-800/80 px-2.5 py-1 rounded-full text-slate-400 hover:text-slate-200 transition-all shrink-0 cursor-pointer"
-          >
-            ⏰ Reminder
-          </button>
-          <button
-            onClick={() => handleSuggestionClick(lang === 'bn' ? 'নোট: ইনভয়েস পেমেন্ট রিসিভ করতে হবে' : 'note: Client billing pending')}
-            className="text-[9px] bg-slate-900/60 hover:bg-slate-800 border border-slate-800/80 px-2.5 py-1 rounded-full text-slate-400 hover:text-slate-200 transition-all shrink-0 cursor-pointer"
-          >
-            📝 Note
-          </button>
-          <button
-            onClick={() => handleSuggestionClick('Help / কমান্ড')}
-            className="text-[9px] bg-cyan-950/30 border border-cyan-500/20 px-2.5 py-1 rounded-full text-cyan-400 hover:text-cyan-300 transition-all shrink-0 cursor-pointer"
-          >
-            ❓ Help
-          </button>
-        </div>
-      )}
+      {/* NLP Suggestion panel removed from fixed placement per user request */}
 
       {/* Gemini Floating Pill Input bar */}
       <div className="p-4 bg-slate-950 border-t border-slate-900 shrink-0">
@@ -1645,8 +1642,48 @@ export function ChatView({
               </button>
             </div>
           </div>
+
+          {/* Row of quick-action pills below the chat input bar */}
+          <div className="flex flex-wrap items-center justify-center gap-2 mt-4 select-none">
+            <button
+              type="button"
+              onClick={() => handleSuggestionClick(lang === 'bn' ? 'টাস্ক: শুকরিয়া প্রিন্টার্স ব্যানার প্রুফ ডেলিভারি' : 'task: Deliver layout mockups for Shukria Printers')}
+              className="px-3 py-1.5 bg-slate-900/60 hover:bg-slate-850 border border-slate-800/70 hover:border-cyan-500/30 rounded-xl text-[10.5px] font-mono text-slate-300 hover:text-white transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+              title={lang === 'bn' ? 'প্রোডাকশন টাস্ক তৈরি করুন' : 'Schedule Layout/Print Tasks'}
+            >
+              <span>➕</span>
+              <span>{lang === 'bn' ? 'টাস্ক ক্রিয়েটর' : 'Task Creator'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSuggestionClick(lang === 'bn' ? 'মনে করিয়ে দিও কাল সকালে ক্লায়েন্ট মিটিং' : 'remind me tomorrow morning customer audit')}
+              className="px-3 py-1.5 bg-slate-900/60 hover:bg-slate-850 border border-slate-800/70 hover:border-indigo-500/30 rounded-xl text-[10.5px] font-mono text-slate-300 hover:text-white transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+              title={lang === 'bn' ? 'রিমাইন্ডার সেট করুন' : 'Set Work Reminders'}
+            >
+              <span>⏰</span>
+              <span>{lang === 'bn' ? 'রিমাইন্ডার' : 'Reminder'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSuggestionClick(lang === 'bn' ? 'নোট: ইনভয়েস পেমেন্ট রিসিভ করতে হবে' : 'note: Client billing pending')}
+              className="px-3 py-1.5 bg-slate-900/60 hover:bg-slate-850 border border-slate-800/70 hover:border-rose-500/30 rounded-xl text-[10.5px] font-mono text-slate-300 hover:text-white transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+              title={lang === 'bn' ? 'মেমো নোট সংরক্ষণ করুন' : 'Save Database Notes'}
+            >
+              <span>📝</span>
+              <span>{lang === 'bn' ? 'মেমো নোট' : 'Save Note'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSuggestionClick('Help / কমান্ড')}
+              className="px-3 py-1.5 bg-cyan-950/40 hover:bg-cyan-900/60 border border-cyan-800/30 rounded-xl text-[10.5px] font-mono text-cyan-300 hover:text-cyan-200 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+              title={lang === 'bn' ? 'হেল্প ও সিস্টেম কমান্ড' : 'Systems Help Panel'}
+            >
+              <span>❓</span>
+              <span>{lang === 'bn' ? 'হেল্প গাইড' : 'Help Specs'}</span>
+            </button>
+          </div>
           
-          <p className="text-[10px] text-center text-slate-500 mt-2 font-mono">
+          <p className="text-[10px] text-center text-slate-500 mt-2.5 font-mono">
             {lang === 'bn' 
               ? 'নিওরা ডিক্টেশন অফলাইনেও কাজ করতে পারে। লোকাল Whisper ও Porcupine ইন্টিগ্রেশন প্রোটোকল সমর্থিত।' 
               : 'Neora system runs fully offline by binding local Porcupine wake-word with Whisper engines.'}
@@ -1669,6 +1706,47 @@ export function ChatView({
           >
             <X className="w-3.5 h-3.5" />
           </button>
+        </div>
+
+        {/* Quick Prompts / Quick Creation tools moved here per user sidebar request */}
+        <div className="p-3.5 rounded-2xl bg-slate-900/50 border border-slate-800/80 space-y-2.5">
+          <h4 className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider font-mono flex items-center gap-1.5">
+            <span>⚙️ {lang === 'bn' ? 'কুইক অ্যাকশন ও প্রম্পট' : 'QUICK ACTIONS & TOOLS'}</span>
+          </h4>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => handleSuggestionClick(lang === 'bn' ? 'টাস্ক: শুকরিয়া প্রিন্টার্স ব্যানার প্রুফ ডেলিভারি' : 'task: Deliver layout mockups for Shukria Printers')}
+              className="py-2 px-2.5 bg-slate-950 hover:bg-slate-850 border border-slate-800 rounded-xl text-left text-[9.5px] font-mono text-slate-300 hover:text-white hover:border-cyan-500/30 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+              title="Schedule Layout/Print Tasks"
+            >
+              <span>➕</span>
+              <span className="truncate">{lang === 'bn' ? 'নিওরা টাস্ক' : 'Task Agent'}</span>
+            </button>
+            <button
+              onClick={() => handleSuggestionClick(lang === 'bn' ? 'মনে করিয়ে দিও কাল সকালে ক্লায়েন্ট মিটিং' : 'remind me tomorrow morning customer audit')}
+              className="py-2 px-2.5 bg-slate-950 hover:bg-slate-850 border border-slate-800 rounded-xl text-left text-[9.5px] font-mono text-slate-300 hover:text-white hover:border-indigo-500/30 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+              title="Set Work Reminders"
+            >
+              <span>⏰</span>
+              <span className="truncate">{lang === 'bn' ? 'রিমাইন্ডার' : 'Reminder'}</span>
+            </button>
+            <button
+              onClick={() => handleSuggestionClick(lang === 'bn' ? 'নোট: ইনভয়েস পেমেন্ট রিসিভ করতে হবে' : 'note: Client billing pending')}
+              className="py-2 px-2.5 bg-slate-950 hover:bg-slate-850 border border-slate-800 rounded-xl text-left text-[9.5px] font-mono text-slate-300 hover:text-white hover:border-rose-500/30 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+              title="Save Database Notes"
+            >
+              <span>📝</span>
+              <span className="truncate">{lang === 'bn' ? 'মেমো নোট' : 'Save Note'}</span>
+            </button>
+            <button
+              onClick={() => handleSuggestionClick('Help / কমান্ড')}
+              className="py-2 px-2.5 bg-cyan-950/40 hover:bg-cyan-900/60 border border-cyan-800/30 rounded-xl text-left text-[9.5px] font-mono text-cyan-300 hover:text-cyan-200 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+              title="Systems Help Panel"
+            >
+              <span>❓</span>
+              <span className="truncate">{lang === 'bn' ? 'হেল্প গাইড' : 'Help Specs'}</span>
+            </button>
+          </div>
         </div>
 
         {/* Pending Voice Command Confirm card with Yes/No keys */}
