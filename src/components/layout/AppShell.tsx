@@ -1,19 +1,25 @@
 import React, { useState, useEffect } from "react";
 import {
   Brain, LayoutDashboard, MessageSquare, Monitor,
-  Settings, Workflow, Activity, Zap, Shield, ChevronRight, LayoutGrid
+  Settings, Workflow, Activity, Zap, Shield, ChevronRight, LayoutGrid,
+  DollarSign, Filter, Milestone, BookOpen
 } from "lucide-react";
 import { NebulaBackground } from "../NebulaBackground";
 import { VoiceOrb } from "../VoiceOrb";
+import { motion } from "motion/react";
 
 const navItems = [
-  { id: "home",       label: "Dashboard",   icon: LayoutGrid,    color: "#00d4ff" },
-  { id: "chat",       label: "Neural Chat", icon: MessageSquare, color: "#00d4ff" },
-  { id: "autonomy",   label: "Automation",  icon: Workflow,      color: "#1a9fff" },
-  { id: "productivity", label: "Memory",    icon: Brain,         color: "#7c3aed" },
-  { id: "osAgent",    label: "OS Agent",    icon: Monitor,       color: "#00ff88" },
-  { id: "dev",        label: "Settings",    icon: Settings,      color: "#f5a623" },
-  { id: "vscode",     label: "Workspace",   icon: LayoutDashboard, color: "#00d4ff" },
+  { id: "home",         label: "Dashboard",   icon: LayoutGrid,      color: "#00d4ff" },
+  { id: "chat",         label: "Neural Chat", icon: MessageSquare,   color: "#00d4ff" },
+  { id: "autonomy",     label: "Automation",  icon: Workflow,        color: "#1a9fff" },
+  { id: "productivity", label: "Memory",      icon: Brain,           color: "#7c3aed" },
+  { id: "invoice",      label: "Earning",     icon: DollarSign,      color: "#f5a623" },
+  { id: "osAgent",      label: "OS Agent",    icon: Monitor,         color: "#00ff88" },
+  { id: "filterLab",    label: "Filter Lab",  icon: Filter,          color: "#00d4ff" },
+  { id: "roadmap",      label: "Roadmap",     icon: Milestone,       color: "#1a9fff" },
+  { id: "blueprint",    label: "Specs",       icon: BookOpen,        color: "#00d4ff" },
+  { id: "dev",          label: "Settings",    icon: Settings,        color: "#f5a623" },
+  { id: "vscode",       label: "Workspace",   icon: LayoutDashboard, color: "#00d4ff" },
 ] as const;
 
 type ActiveTab = typeof navItems[number]["id"];
@@ -64,10 +70,21 @@ export function AppShell({ activeTab, onChangeTab, onVoiceOpen, children }: AppS
         }}>
 
           {/* Logo / Identity */}
-          <div className="p-5 flex flex-col items-center" style={{
-            borderBottom: "1px solid rgba(0,212,255,0.08)",
-            background: "linear-gradient(180deg, rgba(0,212,255,0.04) 0%, transparent 100%)",
-          }}>
+          <motion.div
+            initial={false}
+            animate={{
+              height: activeTab === "home" ? "auto" : 0,
+              opacity: activeTab === "home" ? 1 : 0,
+              paddingTop: activeTab === "home" ? "20px" : "0px",
+              paddingBottom: activeTab === "home" ? "20px" : "0px",
+            }}
+            transition={{ type: "spring", stiffness: 140, damping: 20 }}
+            className="overflow-hidden flex flex-col items-center w-full"
+            style={{
+              borderBottom: activeTab === "home" ? "1px solid rgba(0,212,255,0.08)" : "none",
+              background: "linear-gradient(180deg, rgba(0,212,255,0.04) 0%, transparent 100%)",
+            }}
+          >
             {/* Voice Orb */}
             <VoiceOrb
               size="md"
@@ -87,10 +104,23 @@ export function AppShell({ activeTab, onChangeTab, onVoiceOpen, children }: AppS
               </div>
               <div className="text-[10px] text-slate-500 mt-0.5 font-mono">AI Operating System</div>
             </div>
-          </div>
+          </motion.div>
 
           {/* System Clock */}
-          <div className="px-4 py-3" style={{ borderBottom: "1px solid rgba(0,212,255,0.06)" }}>
+          <motion.div
+            initial={false}
+            animate={{
+              height: activeTab === "home" ? "auto" : 0,
+              opacity: activeTab === "home" ? 1 : 0,
+              paddingTop: activeTab === "home" ? "12px" : "0px",
+              paddingBottom: activeTab === "home" ? "12px" : "0px",
+            }}
+            transition={{ type: "spring", stiffness: 140, damping: 20 }}
+            className="overflow-hidden px-4 w-full"
+            style={{
+              borderBottom: activeTab === "home" ? "1px solid rgba(0,212,255,0.06)" : "none",
+            }}
+          >
             <div className="rounded-lg px-3 py-2.5" style={{
               background: "rgba(0,212,255,0.04)",
               border: "1px solid rgba(0,212,255,0.1)",
@@ -103,10 +133,23 @@ export function AppShell({ activeTab, onChangeTab, onVoiceOpen, children }: AppS
               </div>
               <div className="text-center text-[10px] text-slate-500 font-mono mt-0.5">{dateStr}</div>
             </div>
-          </div>
+          </motion.div>
 
           {/* System Load */}
-          <div className="px-4 py-3" style={{ borderBottom: "1px solid rgba(0,212,255,0.06)" }}>
+          <motion.div
+            initial={false}
+            animate={{
+              height: activeTab === "home" ? "auto" : 0,
+              opacity: activeTab === "home" ? 1 : 0,
+              paddingTop: activeTab === "home" ? "12px" : "0px",
+              paddingBottom: activeTab === "home" ? "12px" : "0px",
+            }}
+            transition={{ type: "spring", stiffness: 140, damping: 20 }}
+            className="overflow-hidden px-4 w-full"
+            style={{
+              borderBottom: activeTab === "home" ? "1px solid rgba(0,212,255,0.06)" : "none",
+            }}
+          >
             <div className="flex items-center justify-between mb-1.5">
               <span className="jarvis-label">SYS LOAD</span>
               <span className="font-mono text-[10px]" style={{ color: "#00d4ff" }}>{sysLoad.toFixed(0)}%</span>
@@ -131,7 +174,7 @@ export function AppShell({ activeTab, onChangeTab, onVoiceOpen, children }: AppS
                 <span>OK</span>
               </div>
             </div>
-          </div>
+          </motion.div>
 
           {/* Navigation */}
           <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
@@ -209,7 +252,7 @@ export function AppShell({ activeTab, onChangeTab, onVoiceOpen, children }: AppS
           {children}
 
           {/* Mobile bottom nav */}
-          <nav className="fixed inset-x-2 bottom-2 z-30 grid grid-cols-6 gap-1.5 rounded-xl p-2 backdrop-blur-2xl md:hidden" style={{
+          <nav className="fixed inset-x-2 bottom-2 z-30 flex items-center overflow-x-auto gap-1.5 rounded-xl p-2 backdrop-blur-2xl md:hidden no-scrollbar" style={{
             background: "rgba(0,8,20,0.95)",
             border: "1px solid rgba(0,212,255,0.12)",
             boxShadow: "0 -4px 30px rgba(0,0,0,0.5)",
@@ -221,7 +264,7 @@ export function AppShell({ activeTab, onChangeTab, onVoiceOpen, children }: AppS
                   key={item.id}
                   type="button"
                   onClick={() => onChangeTab(item.id)}
-                  className="flex flex-col items-center justify-center gap-1 rounded-lg px-1 py-2 text-[9px] transition-all"
+                  className="flex flex-col items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 text-[9px] transition-all shrink-0 min-w-[55px]"
                   style={isActive ? {
                     background: `rgba(0,212,255,0.08)`,
                     border: `1px solid rgba(0,212,255,0.2)`,

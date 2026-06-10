@@ -100,15 +100,28 @@ export function VoiceCommandPanel({ onAddTask, onAddNote, onAddReminder, onNavig
     const synth = window.speechSynthesis;
     if (!synth) return;
     synth.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
+    const utterance = new SpeechSynthesisUtterance(text.slice(0, 1500));
     utterance.lang = lang === 'bn' ? 'bn-BD' : 'en-US';
-    utterance.rate = 1.05;
-    utterance.pitch = 0.9;
+    utterance.rate = 0.98;
+    utterance.pitch = 1.08; // gorgeous, soft female voice pitch
+    
     const voices = synth.getVoices();
-    const preferred = voices.find(v =>
+    const preferred = voices.find(v => {
+      const nameLower = v.name.toLowerCase();
+      const isBengali = v.lang.startsWith('bn') || nameLower.includes('bengali') || nameLower.includes('bangla') || nameLower.includes('বাংলা');
+      return isBengali && (
+        nameLower.includes('sabina') || 
+        nameLower.includes('kalpana') || 
+        nameLower.includes('sanjukta') || 
+        nameLower.includes('female') ||
+        nameLower.includes('online') ||
+        nameLower.includes('google')
+      );
+    }) || voices.find(v => 
       v.lang.startsWith(lang === 'bn' ? 'bn' : 'en') &&
       (v.name.includes('Google') || v.name.includes('Neural') || v.name.includes('Natural'))
     ) || voices.find(v => v.lang.startsWith(lang === 'bn' ? 'bn' : 'en'));
+    
     if (preferred) utterance.voice = preferred;
     synth.speak(utterance);
   }, [lang]);

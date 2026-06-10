@@ -2027,6 +2027,81 @@ while True:
                 </div>
               </div>
 
+              {/* Continuous Background Run Optimization Guide */}
+              <div className="bg-gradient-to-br from-indigo-950/30 to-slate-900/40 border border-slate-800/80 rounded-2xl p-6 shadow-[0_0_25px_rgba(99,102,241,0.05)]">
+                <h3 className="text-sm font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-indigo-400 uppercase tracking-wider mb-5 flex items-center gap-2">
+                  <Activity className="w-4.5 h-4.5 text-cyan-400 animate-pulse" />
+                  {lang === 'bn' ? '⚡ নিওরাকে ব্যাকগ্রাউন্ডে সবসময় সচল রাখুন (পিসি ও ব্রাউজার গাইড)' : '⚡ Run Neora in Continuous Background (PC & Browser Guide)'}
+                </h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs leading-relaxed text-slate-350">
+                  {/* PC Background execution */}
+                  <div className="bg-slate-950/60 border border-slate-900 rounded-xl p-5 space-y-3">
+                    <h4 className="font-bold text-white flex items-center gap-2 border-b border-slate-800/80 pb-2">
+                      <Laptop className="w-4 h-4 text-cyan-400" />
+                      <span>{lang === 'bn' ? '১. কম্পিউটারের ব্যাকগ্রাউন্ডে চালানো' : '1. Run Silently on PC Background'}</span>
+                    </h4>
+                    <p className="text-slate-400 text-[11px]">
+                      {lang === 'bn'
+                        ? 'আপনার পিসি রিস্টার্ট হলেও নিওরা যাতে ব্যাকগ্রাউন্ডে চলে এবং স্ক্রিনশট ও কমান্ড হ্যান্ডেল করতে পারে:'
+                        : 'To keep Neora monitoring and executing desktop automated workflows silently without console block windows:'}
+                    </p>
+                    <div className="space-y-2 pt-1 font-mono text-[10.5px]">
+                      <div className="space-y-1">
+                        <span className="text-slate-500 text-[9px] block">➔ Windows CMD (As Background Service):</span>
+                        <code className="block bg-slate-950 p-2 border border-slate-850 text-cyan-400 rounded">
+                          pythonw neora_agent.py
+                        </code>
+                      </div>
+                      <div className="space-y-1">
+                        <span className="text-slate-500 text-[9px] block">➔ macOS / Linux Terminal:</span>
+                        <code className="block bg-slate-950 p-2 border border-slate-850 text-cyan-400 rounded">
+                          nohup python neora_agent.py &
+                        </code>
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-indigo-400/90 leading-normal">
+                      {lang === 'bn'
+                        ? '✦ টিপস: আপনি "start-all.bat" স্ক্রিপ্টটি ডাবল ক্লিক করে এক ক্লিকে অফলাইন ব্রোকার উইন্ডো এবং ব্যাকগ্রাউন্ড স্ক্রিপ্ট একসঙ্গে সচল করতে পারেন।'
+                        : '✦ TIP: You can double-click "start-all.bat" in the root directory to instantly boot up both the web services and client loopbacks.'}
+                    </p>
+                  </div>
+
+                  {/* Browser performance optimization */}
+                  <div className="bg-slate-950/60 border border-slate-900 rounded-xl p-5 space-y-3">
+                    <h4 className="font-bold text-white flex items-center gap-2 border-b border-slate-800/80 pb-2">
+                      <Eye className="w-4 h-4 text-indigo-400" />
+                      <span>{lang === 'bn' ? '২. ব্রাউজারের ব্যাকগ্রাউন্ড অপ্টিমাইজেশন' : '2. Keep Browser Active in Background'}</span>
+                    </h4>
+                    <p className="text-slate-400 text-[11px]">
+                      {lang === 'bn'
+                        ? 'ক্রোম বা ব্রাউজার যাতে মিনিমাইজ করা বা অন্য ট্যাব চালানো অবস্থাতেও নিওরাকে সুপ্ত না করে ফেলে:'
+                        : 'Configure Chrome or Microsoft Edge to prevent putting Neora to sleep when minimized or backgrounded:'}
+                    </p>
+                    <ul className="list-disc pl-4 space-y-1.5 text-slate-400 text-[11px]">
+                      <li>
+                        <strong>{lang === 'bn' ? 'মেমরি সেভার নিষ্ক্রিয় করুন' : 'Disable Memory Saver'}:</strong>{' '}
+                        {lang === 'bn'
+                          ? 'ক্রোম সেটিংস ➔ "System and Performance" এ গিয়ে "Memory Saver" অপশনটি বন্ধ করুন যাতে ট্যাবটি সচল থাকে।'
+                          : 'Go to Chrome Settings ➔ "System & Performance" and turn off "Memory Saver" for this app tab.'}
+                      </li>
+                      <li>
+                        <strong>{lang === 'bn' ? 'মাইক্রোফোন অনুমতি অনুমতি' : 'Always Allow Microphone'}:</strong>{' '}
+                        {lang === 'bn'
+                          ? 'ব্রাউজার অ্যাড্রেস বারের লক আইকনে ক্লিক করে মাইক্রোফোনের অনুমতি "সর্বদা অন" রাখুন।'
+                          : 'Click the Lock icon in the address bar and set Microphone to "Always Allow" to keep listen loops online.'}
+                      </li>
+                      <li>
+                        <strong>{lang === 'bn' ? 'PWA হিসেবে ইনস্টল করুন' : 'Install as Desktop app (PWA)'}:</strong>{' '}
+                        {lang === 'bn'
+                          ? 'অ্যাড্রেস বারের ডানদিকে "Install Neora" এ ক্লিক করুন। এটি আলাদা উইন্ডো হিসেবে ব্যাকগ্রাউন্ডে অনায়াসে চলবে।'
+                          : 'Click "Install App" in Chrome address bar to open Neora in its own standalone headless window.'}
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
               {/* Standard Step-by-Step Instructions */}
               <div className="bg-slate-900/40 border border-slate-900 rounded-2xl p-6">
                 <h3 className="text-sm font-bold text-white uppercase tracking-wider mb-4 flex items-center gap-2">
