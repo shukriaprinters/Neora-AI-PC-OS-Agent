@@ -1,7 +1,7 @@
 ﻿{
-    "finishedAt":  "2026-06-10T19:49:10.2547543+06:00",
+    "finishedAt":  "2026-06-11T02:13:02.2321525+06:00",
     "result":  "failed",
-    "startedAt":  "Wed 06/10/2026 19:46:05.55",
+    "startedAt":  "Thu 06/11/2026  2:12:30.01",
     "stage":  "agent-wait",
     "notes":  "Agent did not come online in time."
 }

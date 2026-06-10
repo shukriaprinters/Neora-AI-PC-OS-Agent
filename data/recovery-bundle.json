@@ -1,5 +1,5 @@
 {
-  "exportedAt": "2026-06-10T13:53:30.143Z",
+  "exportedAt": "2026-06-10T21:05:51.247Z",
   "memory": [
     {
       "id": "mem-test",
@@ -7,38 +7,38 @@
       "value": "chrome",
       "category": "preference",
       "importance": 5,
-      "createdAt": "2026-06-08T14:28:52.466Z",
-      "updatedAt": "2026-06-08T14:28:52.466Z"
+      "createdAt": "2026-06-10T21:05:44.128Z",
+      "updatedAt": "2026-06-10T21:05:44.128Z"
     }
   ],
   "plans": [
     {
-      "id": "plan-v53tdxw",
+      "id": "plan-7ghwtyb",
       "goal": "open notepad and write a memo",
       "steps": [
         {
-          "id": "step-h7xjlz3",
+          "id": "step-0r1rkej",
           "kind": "shell",
-          "title": "Launch allowlisted app",
+          "title": "Launch app / execute binary",
           "payload": "notepad",
           "status": "pending"
         },
         {
-          "id": "step-b6aebw8",
+          "id": "step-ktf1cx6",
           "kind": "tool_call",
-          "title": "Type requested text",
+          "title": "Type text content",
           "payload": "Hello, boss! This note was automatically typed by Neora.",
           "status": "pending"
         },
         {
-          "id": "step-17ay5ag",
+          "id": "step-2ed250c",
           "kind": "tool_call",
           "title": "Press keyboard shortcut",
           "payload": "enter",
           "status": "pending"
         },
         {
-          "id": "step-z31a5wd",
+          "id": "step-x0h1wvc",
           "kind": "verify",
           "title": "Verify outcome",
           "payload": "Confirm result and summarize",
@@ -46,21 +46,21 @@
         }
       ],
       "status": "pending",
-      "createdAt": "2026-06-08T14:28:52.501Z",
-      "updatedAt": "2026-06-08T14:28:52.501Z"
+      "createdAt": "2026-06-10T21:05:44.270Z",
+      "updatedAt": "2026-06-10T21:05:44.270Z"
     }
   ],
   "conversations": [
     {
-      "id": "sum-9d3ljot",
+      "id": "sum-051mr7d",
       "title": "Test session",
       "summary": "Neora can now persist context.",
-      "updatedAt": "2026-06-08T14:28:52.484Z"
+      "updatedAt": "2026-06-10T21:05:44.254Z"
     }
   ],
   "os": {
-    "status": "online",
-    "lastPing": "2026-06-10T19:53:22.660264",
+    "status": "offline",
+    "lastPing": null,
     "queue": [],
     "history": []
   }

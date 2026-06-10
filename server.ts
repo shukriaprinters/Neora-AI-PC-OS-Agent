@@ -12,9 +12,12 @@ import { buildNeoraActions, classifyNeoraPrompt } from "./src/lib/neoraCommand";
 import { appendConversationSummary, readNeoraStore, upsertMemory, upsertPlan, writeNeoraStore } from "./src/lib/neoraStore";
 import { buildNeoraPlan } from "./src/lib/neoraPlanner";
 const exec = promisify(execCb);
+const fsp = fs.promises;
 
 // Live SSE Log stream listeners
 const logClients: any[] = [];
+
+const MAX_LOG_CLIENTS = 50;
 
 function pushAgentLog(logLine: string) {
   osAgentState.logs.push(logLine);
@@ -22,14 +25,33 @@ function pushAgentLog(logLine: string) {
     osAgentState.logs.shift();
   }
   const sseData = `data: ${JSON.stringify({ type: "log", log: logLine })}\n\n`;
-  for (const client of logClients) {
+  for (let i = logClients.length - 1; i >= 0; i--) {
+    const client = logClients[i];
     try {
+      if (client.res.finished || client.res.writableEnded) {
+        logClients.splice(i, 1);
+        continue;
+      }
       client.res.write(sseData);
-    } catch (_) {}
+    } catch {
+      logClients.splice(i, 1);
+    }
+  }
+  while (logClients.length > MAX_LOG_CLIENTS) {
+    logClients.shift();
+  }
+  while (logClients.length > MAX_LOG_CLIENTS) {
+    logClients.shift();
   }
 }
 
-// Strict Whitelist Validator
+function isPathWithinWorkspace(targetPath: string, workspaceRoot: string): boolean {
+  const resolvedTarget = path.resolve(targetPath);
+  const resolvedRoot = path.resolve(workspaceRoot).replace(/\\$/, '') + path.sep;
+  return resolvedTarget === resolvedRoot.replace(/\\$/, '') || resolvedTarget.startsWith(resolvedRoot);
+}
+
+const WORKSPACE_ROOT = path.resolve(process.cwd());
 const ALLOWED_EXECUTABLES = [
   "photoshop", "illustrator", "code", "vscode", "notepad", "notepad++", 
   "winword", "excel", "chrome", "msedge", "calc", "mspaint", "explorer", 
@@ -1290,11 +1312,13 @@ app.post("/api/os/rerun-failed/:commandId", (req, res) => {
 });
 
 app.get("/api/memory", (req, res) => {
+  if (!requireAgentToken(req, res)) return;
   const store = readNeoraStore();
   res.json({ status: "success", memories: store.memories, summaries: store.conversationSummaries });
 });
 
 app.post("/api/memory", (req, res) => {
+  if (!requireAgentToken(req, res)) return;
   const { key, value, category, importance, id } = req.body || {};
   if (!key || !value) {
     return res.status(400).json({ error: "Missing key or value" });
@@ -1310,6 +1334,7 @@ app.post("/api/memory", (req, res) => {
 });
 
 app.delete("/api/memory/:id", (req, res) => {
+  if (!requireAgentToken(req, res)) return;
   const { id } = req.params;
   const store = readNeoraStore();
   const nextMemories = store.memories.filter((item) => item.id !== id);
@@ -1323,6 +1348,7 @@ app.delete("/api/memory/:id", (req, res) => {
 });
 
 app.get("/api/recovery/bundle", (req, res) => {
+  if (!requireAgentToken(req, res)) return;
   const store = readNeoraStore();
   const payload = {
     status: "success",
@@ -1341,6 +1367,7 @@ app.get("/api/recovery/bundle", (req, res) => {
 });
 
 app.post("/api/recovery/bundle", (req, res) => {
+  if (!requireAgentToken(req, res)) return;
   const passphrase = String(req.body?.passphrase || req.body?.secret || "").trim() || RECOVERY_SECRET;
   let payload = req.body;
   if (req.body?.format === "neora-recovery-v1") {
@@ -1476,9 +1503,8 @@ app.post("/api/chat-ollama", async (req, res) => {
 app.get("/api/os/browser", (req, res) => {
   try {
     const requestedPath = (req.query.path as string) || ".";
-    // Prevent directory traversal
     const safePath = path.resolve(process.cwd(), requestedPath);
-    if (!safePath.startsWith(process.cwd())) {
+    if (!isPathWithinWorkspace(safePath, WORKSPACE_ROOT)) {
       return res.status(403).json({ error: "Access Denied: Path outside workspace sandbox." });
     }
 
@@ -1545,7 +1571,7 @@ app.get("/api/os/browser/content", (req, res) => {
     }
 
     const safePath = path.resolve(process.cwd(), requestedFile);
-    if (!safePath.startsWith(process.cwd())) {
+    if (!isPathWithinWorkspace(safePath, WORKSPACE_ROOT)) {
       return res.status(403).json({ error: "Access Denied: Path outside workspace sandbox." });
     }
 

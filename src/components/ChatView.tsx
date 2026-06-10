@@ -93,12 +93,10 @@ export function ChatView({
   const [ollamaModels, setOllamaModels] = useState<any[]>([]);
   const [selectedOllamaModel, setSelectedOllamaModel] = useState<string>('llama3');
   const healthState = statusEndpoint ? 'offline' : 'healthy';
-  const healthChipClass =
+  const healthChipClass: string =
     healthState === 'healthy'
       ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-      : healthState === 'degraded'
-        ? 'bg-amber-500/10 text-amber-300 border-amber-500/20'
-        : 'bg-red-500/10 text-red-400 border-red-500/20';
+      : 'bg-red-500/10 text-red-400 border-red-500/20';
 
   const checkOllamaStatus = async () => {
     try {
@@ -1661,11 +1659,9 @@ export function ChatView({
 
           <div className="flex items-center justify-between mb-2">
             <span className={`px-2 py-0.5 rounded text-[8px] font-mono font-bold uppercase border ${healthChipClass}`}>
-              {healthState === 'healthy'
-                ? 'healthy /api/health'
-                : healthState === 'degraded'
-                  ? `degraded ${statusEndpoint || '/api/health'}`
-                  : `offline ${statusEndpoint || '/api/health'}`}
+               {healthState === 'healthy'
+                 ? 'healthy'
+                 : 'offline'}
             </span>
             <span className="text-[9px] font-mono text-slate-500">
               {healthState === 'healthy' ? '/api/health' : (statusEndpoint || '/api/health')}
@@ -1909,7 +1905,7 @@ export function ChatView({
           <div className="flex items-center justify-between mb-2">
             <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wide">Network Server Response:</span>
             <span className={`px-2 py-0.5 rounded text-[8px] font-mono font-bold uppercase border ${healthChipClass}`}>
-              {healthState === 'healthy' ? 'online' : 'degraded'}
+              {healthState === 'healthy' ? 'online' : 'offline'}
             </span>
           </div>
           {ollamaStatus !== 'not_installed' && (

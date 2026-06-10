@@ -6,38 +6,38 @@
       "value": "chrome",
       "category": "preference",
       "importance": 5,
-      "createdAt": "2026-06-08T14:28:52.466Z",
-      "updatedAt": "2026-06-08T14:28:52.466Z"
+      "createdAt": "2026-06-10T21:22:13.707Z",
+      "updatedAt": "2026-06-10T21:22:13.707Z"
     }
   ],
   "plans": [
     {
-      "id": "plan-v53tdxw",
+      "id": "plan-84zfcgd",
       "goal": "open notepad and write a memo",
       "steps": [
         {
-          "id": "step-h7xjlz3",
+          "id": "step-iu98rh8",
           "kind": "shell",
-          "title": "Launch allowlisted app",
+          "title": "Launch app / execute binary",
           "payload": "notepad",
           "status": "pending"
         },
         {
-          "id": "step-b6aebw8",
+          "id": "step-m7ki7bb",
           "kind": "tool_call",
-          "title": "Type requested text",
+          "title": "Type text content",
           "payload": "Hello, boss! This note was automatically typed by Neora.",
           "status": "pending"
         },
         {
-          "id": "step-17ay5ag",
+          "id": "step-no54xsv",
           "kind": "tool_call",
           "title": "Press keyboard shortcut",
           "payload": "enter",
           "status": "pending"
         },
         {
-          "id": "step-z31a5wd",
+          "id": "step-zd93plc",
           "kind": "verify",
           "title": "Verify outcome",
           "payload": "Confirm result and summarize",
@@ -45,16 +45,16 @@
         }
       ],
       "status": "pending",
-      "createdAt": "2026-06-08T14:28:52.501Z",
-      "updatedAt": "2026-06-08T14:28:52.501Z"
+      "createdAt": "2026-06-10T21:22:13.737Z",
+      "updatedAt": "2026-06-10T21:22:13.737Z"
     }
   ],
   "conversationSummaries": [
     {
-      "id": "sum-9d3ljot",
+      "id": "sum-5jw5aqk",
       "title": "Test session",
       "summary": "Neora can now persist context.",
-      "updatedAt": "2026-06-08T14:28:52.484Z"
+      "updatedAt": "2026-06-10T21:22:13.723Z"
     }
   ]
 }
