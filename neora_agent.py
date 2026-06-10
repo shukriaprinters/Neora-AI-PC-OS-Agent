@@ -429,6 +429,45 @@ def find_executable(command_text: str) -> str:
         target_exe += ".exe"
 
     if sys.platform == "win32":
+        import glob
+
+        # 0. High-speed multi-drive wildcard globbing for Adobe Photoshop and Illustrator
+        # This completely avoids slow or permission-blocked full-recursive os.walk traversals.
+        if target_exe.lower() == "photoshop.exe":
+            for drive in ["C:", "D:", "E:", "F:", "G:"]:
+                for folder in ["Program Files", "Program Files (x86)", "Adobe", "Programs", ""]:
+                    base_path = os.path.join(f"{drive}\\", folder) if folder else f"{drive}\\"
+                    patterns = [
+                        os.path.join(base_path, "Adobe", "Adobe Photoshop *", "Photoshop.exe"),
+                        os.path.join(base_path, "Adobe", "*Photoshop*", "Photoshop.exe"),
+                        os.path.join(base_path, "*Photoshop*", "Photoshop.exe"),
+                    ]
+                    for pattern in patterns:
+                        try:
+                            matches = glob.glob(pattern)
+                            if matches:
+                                return matches[0]
+                        except Exception:
+                            pass
+
+        if target_exe.lower() == "illustrator.exe":
+            for drive in ["C:", "D:", "E:", "F:", "G:"]:
+                for folder in ["Program Files", "Program Files (x86)", "Adobe", "Programs", ""]:
+                    base_path = os.path.join(f"{drive}\\", folder) if folder else f"{drive}\\"
+                    patterns = [
+                        os.path.join(base_path, "Adobe", "Adobe Illustrator *", "Support Files", "Contents", "Windows", "Illustrator.exe"),
+                        os.path.join(base_path, "Adobe", "*Illustrator*", "Support Files", "Contents", "Windows", "Illustrator.exe"),
+                        os.path.join(base_path, "Adobe", "*Illustrator*", "*Illustrator.exe"),
+                        os.path.join(base_path, "*Illustrator*", "Illustrator.exe"),
+                    ]
+                    for pattern in patterns:
+                        try:
+                            matches = glob.glob(pattern)
+                            if matches:
+                                return matches[0]
+                        except Exception:
+                            pass
+
         # 1. Look in Windows Registry (App Paths)
         try:
             import winreg
@@ -453,18 +492,20 @@ def find_executable(command_text: str) -> str:
             "C:\\Program Files (x86)"
         ]
 
-        # Specially search Adobe directories for Photoshop and Illustrator
+        # Specially search Adobe directories for Photoshop and Illustrator with try/except protection inside os.walk
         if "adobe" in target_exe.lower() or target_exe.lower() in ["photoshop.exe", "illustrator.exe"]:
             for pf in program_files:
                 if not pf:
                     continue
                 adobe_dir = os.path.join(pf, "Adobe")
                 if os.path.exists(adobe_dir):
-                    # We can look for matches
-                    for root, dirs, files in os.walk(adobe_dir):
-                        for f in files:
-                            if f.lower() == target_exe.lower():
-                                return os.path.join(root, f)
+                    try:
+                        for root, dirs, files in os.walk(adobe_dir, onerror=lambda e: None):
+                            for f in files:
+                                if f.lower() == target_exe.lower():
+                                    return os.path.join(root, f)
+                    except Exception:
+                        pass
 
         # Look in other common folders
         for pf in program_files:
@@ -916,6 +957,17 @@ def main():
 
     # Start the continuous hot hands-free microphone vocal listener sequence in background
     start_handsfree_voice_listener()
+
+    # Dynamic delay vocal greeting on desktop startup representing Neora Active state
+    def announce_startup():
+        time.sleep(1.2)
+        # Speak Bengali greeting
+        speak_local("হ্যালো বস! নিওরা লোকাল পিসি রানিং রয়েছে এবং কন্ট্রোল রুমের সাথে কানেক্ট হয়েছে। আমি সম্পূর্ণ সচল।")
+        time.sleep(6.2)
+        # Speak English greeting
+        speak_local("Hello Boss! Neora local PC operating agent is now running and connected to server. Fully active and ready for your voice commands!")
+    
+    threading.Thread(target=announce_startup, daemon=True).start()
 
     last_ping_time = 0.0
     backoff_seconds = POLL_INTERVAL
