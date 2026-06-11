@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 
 $patterns = @(
   'tsx server.ts',
-  'neora_agent.py'
+  'neora_agent'
 )
 
 $procs = Get-CimInstance Win32_Process | Where-Object {

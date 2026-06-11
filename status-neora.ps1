@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 
 $checks = @(
   @{ Name = 'Server'; Match = 'tsx server.ts' },
-  @{ Name = 'Agent'; Match = 'neora_agent.py' }
+  @{ Name = 'Agent'; Match = 'neora_agent' }
 )
 
 foreach ($check in $checks) {

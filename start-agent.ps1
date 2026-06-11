@@ -13,8 +13,11 @@ if (-not $env:NEORA_BROKER_URL) {
   $env:NEORA_BROKER_URL = 'http://127.0.0.1:3000'
 }
 
-if (-not (Test-Path '.\neora_agent.py')) {
+$agentScript = '.\neora_agent.py'
+if (Test-Path '.\neora_agent_enhanced.py') {
+  $agentScript = '.\neora_agent_enhanced.py'
+} elseif (-not (Test-Path '.\neora_agent.py')) {
   throw 'neora_agent.py not found.'
 }
 
-python .\neora_agent.py
+python $agentScript

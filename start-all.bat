@@ -120,7 +120,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$root = $env:NEORA_ROOT;" ^
   "$out = Join-Path $root 'logs\agent.out.log';" ^
   "$err = Join-Path $root 'logs\agent.err.log';" ^
-  "$args = '/c cd /d \"' + $root + '\" && set NEORA_AGENT_TOKEN=' + $env:NEORA_AGENT_TOKEN + '&& set NEORA_BROKER_URL=' + $env:NEORA_BROKER_URL + '&& set NEORA_HEADLESS=' + $env:NEORA_HEADLESS + '&& python neora_agent.py';" ^
+  "$args = '/c cd /d \"' + $root + '\" && set NEORA_AGENT_TOKEN=' + $env:NEORA_AGENT_TOKEN + '&& set NEORA_BROKER_URL=' + $env:NEORA_BROKER_URL + '&& set NEORA_HEADLESS=' + $env:NEORA_HEADLESS + '&& python neora_agent_enhanced.py';" ^
   "Start-Process -FilePath 'cmd.exe' -ArgumentList $args -WorkingDirectory $root -WindowStyle Minimized -RedirectStandardOutput $out -RedirectStandardError $err"
 
 echo Waiting for agent to come online...

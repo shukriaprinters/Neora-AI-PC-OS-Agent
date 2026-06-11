@@ -32,7 +32,11 @@ $agentOut = Join-Path $logDir 'agent.out.log'
 $agentErr = Join-Path $logDir 'agent.err.log'
 
 Start-Process -FilePath 'cmd.exe' -ArgumentList '/c', 'npm run dev' -WorkingDirectory $PSScriptRoot -WindowStyle Hidden -RedirectStandardOutput $serverOut -RedirectStandardError $serverErr | Out-Null
-Start-Process -FilePath 'python' -ArgumentList '.\neora_agent.py' -WorkingDirectory $PSScriptRoot -WindowStyle Hidden -RedirectStandardOutput $agentOut -RedirectStandardError $agentErr | Out-Null
+$agentScript = '.\neora_agent.py'
+if (Test-Path '.\neora_agent_enhanced.py') {
+  $agentScript = '.\neora_agent_enhanced.py'
+}
+Start-Process -FilePath 'python' -ArgumentList $agentScript -WorkingDirectory $PSScriptRoot -WindowStyle Hidden -RedirectStandardOutput $agentOut -RedirectStandardError $agentErr | Out-Null
 
 Write-Host 'Neora server and agent started.'
 Write-Host "Server logs: $serverOut"
