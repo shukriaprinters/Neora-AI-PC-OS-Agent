@@ -17,14 +17,14 @@ const FilterLabView = React.lazy(() => import('./components/FilterLabView').then
 const RoadmapView = React.lazy(() => import('./components/RoadmapView').then((m) => ({ default: m.RoadmapView })));
 const OsAgentView = React.lazy(() => import('./components/OsAgentView').then((m) => ({ default: m.OsAgentView })));
 const VSCodeView = React.lazy(() => import('./components/vscode/VSCodeView').then((m) => ({ default: m.VSCodeView })));
+const TvView = React.lazy(() => import('./components/TvView').then((m) => ({ default: m.TvView })));
 import { SECTIONS, RAW_MASTER_PROMPT } from './masterPromptText';
 import { Task, Reminder, Note, Memory } from './types';
 import { TRANSLATIONS } from './translations';
-import { neoraDelete, neoraGet, neoraPost } from './lib/neoraApi';
 import {
   MessageSquare, Cpu, Sliders, DollarSign, Clipboard,
   Languages, Terminal, BookOpen, Key, LogOut, Filter, Milestone, Laptop,
-  Download, Search, Undo, X, Activity, CircleAlert, Upload
+  Download, Search, Undo, X, Activity, CircleAlert, Upload, Tv
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -38,7 +38,7 @@ export default function App() {
   }, [lang]);
 
   // Persist activeTab to localStorage
-  const [activeTab, setActiveTab] = useState<'home' | 'chat' | 'autonomy' | 'productivity' | 'invoice' | 'dev' | 'blueprint' | 'filterLab' | 'roadmap' | 'osAgent' | 'vscode'>(() => {
+  const [activeTab, setActiveTab] = useState<'home' | 'chat' | 'autonomy' | 'productivity' | 'invoice' | 'dev' | 'blueprint' | 'filterLab' | 'roadmap' | 'osAgent' | 'vscode' | 'tv'>(() => {
     return (localStorage.getItem('neora_active_tab') || 'home') as any;
   });
   
@@ -618,19 +618,20 @@ export default function App() {
         borderBottom: "1px solid rgba(0,212,255,0.08)",
         backdropFilter: "blur(16px)",
       }}>
-        {([
-          { id: 'home', label: lang === 'bn' ? 'ড্যাশবোর্ড' : 'DASHBOARD', icon: Activity, color: '#00d4ff' },
-          { id: 'chat', label: t.navChat, icon: MessageSquare, color: '#00d4ff' },
-          { id: 'autonomy', label: t.navAutonomy, icon: Sliders, color: '#1a9fff' },
-          { id: 'productivity', label: t.navProductivity, icon: Clipboard, color: '#7c3aed' },
-          { id: 'invoice', label: t.navInvoice, icon: DollarSign, color: '#f5a623' },
-          { id: 'dev', label: t.navDev, icon: Terminal, color: '#f5a623' },
-          { id: 'osAgent', label: t.navOsAgent, icon: Laptop, color: '#00ff88' },
-          { id: 'filterLab', label: t.navFilterLab, icon: Filter, color: '#00d4ff' },
-          { id: 'roadmap', label: t.navRoadmap, icon: Milestone, color: '#1a9fff' },
-          { id: 'blueprint', label: t.navSpecs, icon: BookOpen, color: '#00d4ff' },
-          { id: 'vscode', label: 'VS Code', icon: Terminal, color: '#00d4ff' },
-        ] as { id: any; label: string; icon: any; color: string }[]).map(({ id, label, icon: Icon, color }) => {
+{([
+           { id: 'home', label: lang === 'bn' ? 'ড্যাশবোর্ড' : 'DASHBOARD', icon: Activity, color: '#00d4ff' },
+           { id: 'chat', label: t.navChat, icon: MessageSquare, color: '#00d4ff' },
+           { id: 'autonomy', label: t.navAutonomy, icon: Sliders, color: '#1a9fff' },
+           { id: 'productivity', label: t.navProductivity, icon: Clipboard, color: '#7c3aed' },
+           { id: 'invoice', label: t.navInvoice, icon: DollarSign, color: '#f5a623' },
+           { id: 'dev', label: t.navDev, icon: Terminal, color: '#f5a623' },
+           { id: 'osAgent', label: t.navOsAgent, icon: Laptop, color: '#00ff88' },
+           { id: 'filterLab', label: t.navFilterLab, icon: Filter, color: '#00d4ff' },
+           { id: 'roadmap', label: t.navRoadmap, icon: Milestone, color: '#1a9fff' },
+           { id: 'blueprint', label: t.navSpecs, icon: BookOpen, color: '#00d4ff' },
+           { id: 'vscode', label: 'VS Code', icon: Terminal, color: '#00d4ff' },
+           { id: 'tv', label: lang === 'bn' ? 'টিভি' : 'TV', icon: Tv, color: '#f5a623' },
+         ] as { id: any; label: string; icon: any; color: string }[]).map(({ id, label, icon: Icon, color }) => {
           const isActive = activeTab === id;
           return (
             <button
@@ -914,10 +915,14 @@ export default function App() {
            </div>
          )}
 
-         {activeTab === 'vscode' && (
-           <VSCodeView />
-         )}
-       </main>}
+{activeTab === 'vscode' && (
+            <VSCodeView />
+          )}
+
+          {activeTab === 'tv' && (
+            <TvView lang={lang} />
+          )}
+        </main>}
 
       {/* --- UNDO TOAST NOTIFICATION SYSTEM (5-SECOND DISMISS) --- */}
       <AnimatePresence>

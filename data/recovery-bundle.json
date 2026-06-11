@@ -1,5 +1,5 @@
 {
-  "exportedAt": "2026-06-10T21:05:51.247Z",
+  "exportedAt": "2026-06-11T22:28:21.940Z",
   "memory": [
     {
       "id": "mem-test",
@@ -7,38 +7,38 @@
       "value": "chrome",
       "category": "preference",
       "importance": 5,
-      "createdAt": "2026-06-10T21:05:44.128Z",
-      "updatedAt": "2026-06-10T21:05:44.128Z"
+      "createdAt": "2026-06-10T21:22:13.707Z",
+      "updatedAt": "2026-06-10T21:22:13.707Z"
     }
   ],
   "plans": [
     {
-      "id": "plan-7ghwtyb",
+      "id": "plan-84zfcgd",
       "goal": "open notepad and write a memo",
       "steps": [
         {
-          "id": "step-0r1rkej",
+          "id": "step-iu98rh8",
           "kind": "shell",
           "title": "Launch app / execute binary",
           "payload": "notepad",
           "status": "pending"
         },
         {
-          "id": "step-ktf1cx6",
+          "id": "step-m7ki7bb",
           "kind": "tool_call",
           "title": "Type text content",
           "payload": "Hello, boss! This note was automatically typed by Neora.",
           "status": "pending"
         },
         {
-          "id": "step-2ed250c",
+          "id": "step-no54xsv",
           "kind": "tool_call",
           "title": "Press keyboard shortcut",
           "payload": "enter",
           "status": "pending"
         },
         {
-          "id": "step-x0h1wvc",
+          "id": "step-zd93plc",
           "kind": "verify",
           "title": "Verify outcome",
           "payload": "Confirm result and summarize",
@@ -46,22 +46,187 @@
         }
       ],
       "status": "pending",
-      "createdAt": "2026-06-10T21:05:44.270Z",
-      "updatedAt": "2026-06-10T21:05:44.270Z"
+      "createdAt": "2026-06-10T21:22:13.737Z",
+      "updatedAt": "2026-06-10T21:22:13.737Z"
     }
   ],
   "conversations": [
     {
-      "id": "sum-051mr7d",
+      "id": "sum-5jw5aqk",
       "title": "Test session",
       "summary": "Neora can now persist context.",
-      "updatedAt": "2026-06-10T21:05:44.254Z"
+      "updatedAt": "2026-06-10T21:22:13.723Z"
     }
   ],
   "os": {
     "status": "offline",
-    "lastPing": null,
-    "queue": [],
-    "history": []
+    "lastPing": "2026-06-12T03:47:47.386299",
+    "queue": [
+      {
+        "id": "cmd-quick-chhxu7s",
+        "prompt": "Launch application: photoshop",
+        "actions": [
+          {
+            "action": "execute_cmd",
+            "param": "photoshop"
+          },
+          {
+            "action": "take_screenshot",
+            "param": ""
+          }
+        ],
+        "status": "pending",
+        "timestamp": "3:47:57 AM",
+        "classification": "os-command",
+        "retryCount": 1,
+        "result": "Watchdog requeued after stale run timeout (30000ms)."
+      }
+    ],
+    "history": [
+      {
+        "id": "cmd-quick-l7ohqr9",
+        "prompt": "Launch application: chrome",
+        "timestamp": "3:48:19 AM",
+        "status": "completed",
+        "actionsCount": 2,
+        "classification": "os-command",
+        "result": "✓ Launched: chrome\n✓ Screenshot captured"
+      },
+      {
+        "id": "cmd-quick-nlrfvi4",
+        "prompt": "Launch application: photoshop",
+        "timestamp": "3:48:13 AM",
+        "status": "completed",
+        "actionsCount": 2,
+        "classification": "os-command",
+        "result": "✗ Exec failed: Command failed: cmd.exe /c start \"\" \"photoshop\"\n\n✓ Screenshot captured"
+      },
+      {
+        "id": "cmd-quick-23sms4g",
+        "prompt": "Launch application: winword",
+        "timestamp": "3:48:17 AM",
+        "status": "completed",
+        "actionsCount": 2,
+        "classification": "os-command",
+        "result": "✗ Exec failed: Command failed: cmd.exe /c start \"\" \"winword\"\n\n✓ Screenshot captured"
+      },
+      {
+        "id": "cmd-quick-byzcqlk",
+        "prompt": "Launch application: illustrator",
+        "timestamp": "3:48:44 AM",
+        "status": "completed",
+        "actionsCount": 2,
+        "classification": "os-command",
+        "result": "✗ Exec failed: Command failed: cmd.exe /c start \"\" \"illustrator\"\n\n✓ Screenshot captured"
+      },
+      {
+        "id": "cmd-ozao0l4",
+        "prompt": "open football match",
+        "timestamp": "3:50:28 AM",
+        "status": "completed",
+        "actionsCount": 2,
+        "classification": "os-command",
+        "result": "✓ Opened: https://www.sonyliv.com\n✓ Screenshot captured"
+      },
+      {
+        "id": "cmd-3biga95",
+        "prompt": "open football match",
+        "timestamp": "3:50:29 AM",
+        "status": "completed",
+        "actionsCount": 2,
+        "classification": "os-command",
+        "result": "✓ Opened: https://www.sonyliv.com\n✓ Screenshot captured"
+      },
+      {
+        "id": "cmd-8pog8h7",
+        "prompt": "open tv",
+        "timestamp": "3:52:26 AM",
+        "status": "completed",
+        "actionsCount": 2,
+        "classification": "os-command",
+        "result": "✓ Opened: https://www.tv8bihar.com\n✓ Screenshot captured"
+      },
+      {
+        "id": "cmd-obt6pah",
+        "prompt": "https://www.hotstar.com",
+        "timestamp": "3:52:57 AM",
+        "status": "completed",
+        "actionsCount": 2,
+        "classification": "os-command",
+        "result": "✓ Opened: https://www.hotstar.com\n✓ Screenshot captured"
+      },
+      {
+        "id": "cmd-0p5xp8z",
+        "prompt": "https://www.espn.in",
+        "timestamp": "3:53:12 AM",
+        "status": "completed",
+        "actionsCount": 2,
+        "classification": "os-command",
+        "result": "✓ Opened: https://www.espn.in\n✓ Screenshot captured"
+      },
+      {
+        "id": "cmd-quick-1a6vg00",
+        "prompt": "Launch application: illustrator",
+        "timestamp": "3:53:57 AM",
+        "status": "completed",
+        "actionsCount": 2,
+        "classification": "os-command",
+        "result": "✗ Exec failed: Command failed: cmd.exe /c start \"\" \"illustrator\"\n\n✓ Screenshot captured"
+      },
+      {
+        "id": "cmd-dge7pui",
+        "prompt": "open photoshop, wait 5.5 seconds, press ctrl+n, wait 1.5 seconds, press enter, type \"Shukria premium poster header text\", save file as project.psd, take a screenshot",
+        "timestamp": "3:55:53 AM",
+        "status": "completed",
+        "actionsCount": 11,
+        "classification": "os-command",
+        "result": "✗ Exec failed: Command failed: cmd.exe /c start \"\" \"photoshop\"\n\n? Unknown action: wait\n✓ Key: ctrl+n\n? Unknown action: wait\n✓ Key: enter\n? Unknown action: wait\n✓ Typed: Shukria Premium Digital Banner\n? Unknown action: wait\n? Unknown action: save_file_as\n? Unknown action: wait\n✓ Screenshot captured"
+      },
+      {
+        "id": "cmd-quick-vh05nh2",
+        "prompt": "Launch application: photoshop",
+        "timestamp": "3:56:36 AM",
+        "status": "completed",
+        "actionsCount": 2,
+        "classification": "os-command",
+        "result": "✗ Exec failed: Command failed: cmd.exe /c start \"\" \"photoshop\"\n\n✓ Screenshot captured"
+      },
+      {
+        "id": "cmd-quick-wzqqn2n",
+        "prompt": "Launch application: winword",
+        "timestamp": "3:57:05 AM",
+        "status": "completed",
+        "actionsCount": 2,
+        "classification": "os-command",
+        "result": "✗ Exec failed: Command failed: cmd.exe /c start \"\" \"winword\"\n\n✓ Screenshot captured"
+      },
+      {
+        "id": "cmd-quick-s78x0j2",
+        "prompt": "Launch application: chrome",
+        "timestamp": "3:58:47 AM",
+        "status": "completed",
+        "actionsCount": 2,
+        "classification": "os-command",
+        "result": "✓ Launched: chrome\n✓ Screenshot captured"
+      },
+      {
+        "id": "cmd-quick-5ywbbtr",
+        "prompt": "Launch application: notepad",
+        "timestamp": "3:58:51 AM",
+        "status": "completed",
+        "actionsCount": 2,
+        "classification": "os-command",
+        "result": "✓ Launched: notepad\n✓ Screenshot captured"
+      },
+      {
+        "id": "cmd-quick-ifra3yp",
+        "prompt": "Launch application: excel",
+        "timestamp": "3:58:54 AM",
+        "status": "completed",
+        "actionsCount": 2,
+        "classification": "os-command",
+        "result": "✗ Exec failed: Command failed: cmd.exe /c start \"\" \"excel\"\n\n✓ Screenshot captured"
+      }
+    ]
   }
 }

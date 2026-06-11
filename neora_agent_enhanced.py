@@ -115,17 +115,45 @@ def find_exe(name):
         target += ".exe"
     if sys.platform == "win32":
         import glob
-        # Adobe fast-path
+        import shutil
+        # Adobe fast-path - broader search patterns
         if target.lower() == "photoshop.exe":
-            for pat in [r"C:\Program Files\Adobe\*\Photoshop.exe", r"C:\Program Files (x86)\Adobe\*\Photoshop.exe"]:
-                m = glob.glob(pat)
+            patterns = [
+                r"C:\Program Files\Adobe\*\Photoshop.exe",
+                r"C:\Program Files (x86)\Adobe\*\Photoshop.exe",
+                r"C:\Program Files\Adobe\**\Photoshop.exe",
+                r"C:\*Photoshop*\Photoshop.exe",
+            ]
+            for pat in patterns:
+                m = glob.glob(pat, recursive=True)
                 if m:
                     return m[0]
+            # Also try registry and PATH
+            r = shutil.which("photoshop") or shutil.which("Photoshop")
+            if r:
+                return r
         if target.lower() == "illustrator.exe":
-            for pat in [r"C:\Program Files\Adobe\Adobe Illustrator *\Support Files\Contents\Windows\Illustrator.exe"]:
-                m = glob.glob(pat)
+            patterns = [
+                r"C:\Program Files\Adobe\Adobe Illustrator *\Support Files\Contents\Windows\Illustrator.exe",
+                r"C:\Program Files\Adobe\**\Illustrator.exe",
+                r"C:\*Illustrator*\Illustrator.exe",
+                r"C:\Program Files (x86)\Adobe\**\Illustrator.exe",
+            ]
+            for pat in patterns:
+                m = glob.glob(pat, recursive=True)
                 if m:
                     return m[0]
+            # Try alternatives - some installs have different structure
+            alt_patterns = [
+                r"C:\Program Files\Adobe\Adobe Illustrator **\Illustrator.exe",
+            ]
+            for pat in alt_patterns:
+                m = glob.glob(pat, recursive=True)
+                if m:
+                    return m[0]
+            r = shutil.which("illustrator") or shutil.which("Illustrator")
+            if r:
+                return r
         # Registry
         try:
             import winreg
@@ -147,6 +175,9 @@ def find_exe(name):
 
 def launch(cmd, logs):
     clean = cmd.replace('"', '').replace("'", "").strip()
+    # Resolve the executable path using find_exe
+    resolved = find_exe(clean)
+    clean = resolved if resolved else clean
     base = os.path.basename(clean).lower()
     ok = (base in ALLOWED_EXECUTABLES or base.replace(".exe", "") in ALLOWED_EXECUTABLES
           or clean.lower() in ALLOWED_EXECUTABLES
@@ -228,11 +259,13 @@ def parse_command(text):
     low = text.lower()
     actions = []
 
-    # DESIGN (Photoshop / Illustrator)
-    design_kw = ["design", "banner", "poster", "graphic", "draw", "logo", " brochure", "flyer", "ডিজাইন", "পোস্টার", "ব্যানার"]
-    app = "illustrator" if "illustrator" in low else "photoshop"
-    is_design = any(k in low for k in design_kw) or app in low
+    # DESIGN (Photoshop / Illustrator) - check both English and Bengali names
+    design_kw = ["design", "banner", "poster", "graphic", "draw", "logo", " brochure", "flyer", "ডিজাইন", "পোস্টার", "ব্যানার", "লোগো"]
+    has_ps = "photoshop" in low or "ফটোশপ" in text
+    has_ai = "illustrator" in low or "ইলাস্ট্রেটর" in text
+    is_design = any(k in low or k in text for k in design_kw) or has_ps or has_ai
     if is_design:
+        app = "illustrator" if has_ai else ("photoshop" if has_ps else "photoshop")
         actions += [
             {"action": "execute_cmd", "param": app},
             {"action": "wait", "param": "5.0"},
@@ -242,28 +275,45 @@ def parse_command(text):
             {"action": "wait", "param": "2.0"},
         ]
         desc = text
-        for sep in [" with ", " about ", " নিয়ে "]:
-            if sep in low:
-                desc = text[low.index(sep) + len(sep):].strip()
+        for sep in [" with ", " about ", " নিয়ে ", " দিয়ে "]:
+            if sep in low or sep in text:
+                desc = text[low.index(sep) + len(sep):].strip() if sep in low else text[text.index(sep) + len(sep):].strip()
                 break
         actions.append({"action": "type_text", "param": desc or "New design by Neora"})
         actions.append({"action": "wait", "param": "2.0"})
-        save = re.search(r"(?:save|সেভ)\s+([a-zA-Z0-9_\-\.]+)", low)
+        save = re.search(r"(?:save|সেভ)\s+([a-zA-Z0-9_\-\.]+)", low) or re.search(r"(?:সেভ)\s+([a-zA-Z0-9_\-\.]+)", text)
         fname = (save.group(1) if save else ("neora_design.ai" if app == "illustrator" else "neora_design.psd"))
         actions.append({"action": "save_file_as", "param": fname})
         actions.append({"action": "wait", "param": "2.0"})
         actions.append({"action": "take_screenshot", "param": ""})
         return actions
 
-    # OPEN APP
-    for kw in ["open", "launch", "run", "start", "kholo", "chalu", "calo"]:
-        if kw in low:
-            rest = re.split(rf"\b{re.escape(kw)}\b", text, maxsplit=1)
+    # OPEN APP - Bengali support
+    english_open_kws = ["open", "launch", "run", "start", "kholo", "chalu", "calo"]
+    bengali_open_kws = ["খোলো", "খুলো", "চালু", "খুলন", "খোলন", "চালু করো"]
+    all_open_kws = english_open_kws + bengali_open_kws
+    for kw in all_open_kws:
+        if kw in text:
+            rest = re.split(rf"\b{re.escape(kw)}\b", text, maxsplit=1) if kw in english_open_kws else re.split(rf"{re.escape(kw)}", text, maxsplit=1)
             if len(rest) > 1:
                 app_name = rest[1].strip().strip(".,!").lower()
                 if app_name:
                     return [
                         {"action": "execute_cmd", "param": app_name},
+                        {"action": "wait", "param": "3.0"},
+                        {"action": "take_screenshot", "param": ""},
+                    ]
+    
+    # App-first patterns (e.g., "ফটোশপ চালু করো", "ইলাস্ট্রেটর খুলো")
+    app_first_kws = ["চালু করো", "খুলো", "খোলো", "খুলন"]
+    for kw in app_first_kws:
+        if kw in text:
+            parts = text.split(kw)
+            if len(parts) > 1:
+                app_part = parts[0].strip()
+                if app_part:
+                    return [
+                        {"action": "execute_cmd", "param": app_part},
                         {"action": "wait", "param": "3.0"},
                         {"action": "take_screenshot", "param": ""},
                     ]
@@ -274,7 +324,11 @@ def parse_command(text):
         return [{"action": "open_browser", "param": url.group(1)}, {"action": "wait", "param": "3.0"}]
 
     for site, u in {"youtube": "https://www.youtube.com", "facebook": "https://www.facebook.com",
-                    "google": "https://www.google.com", "github": "https://github.com"}.items():
+                    "google": "https://www.google.com", "github": "https://github.com",
+                    "tv": "https://www.tv8bihar.com", "টিভি": "https://www.tv8bihar.com", "লিভ টিভি": "https://www.tv8bihar.com",
+                    "football": "https://www.sonyliv.com", "fifa": "https://www.sonyliv.com", "ফুটবল": "https://www.sonyliv.com", "ফিফা": "https://www.sonyliv.com",
+                    "sports": "https://www.espn.in", "স্পোর্টস": "https://www.espn.in",
+                    "news": "https://www.bdnews24.com", "নিউস": "https://www.bdnews24.com"}.items():
         if site in low:
             return [{"action": "open_browser", "param": u}, {"action": "wait", "param": "3.0"}]
 
@@ -288,6 +342,51 @@ def parse_command(text):
     # SCREENSHOT
     if any(k in low for k in ["screenshot", "স্ক্রিনশট"]):
         return [{"action": "take_screenshot", "param": ""}]
+
+    # LIVE TV & SPORTS - Free streaming channels
+    tv_kw = ["tv", "টিভি", "লিভ টিভি", "watch tv", "চ্যানেল", "চ্যানেল দেখো", "চ্যানেল খুলো"]
+    sports_kw = ["football", "fifa", "ফুটবল", "ফিফা", "ফিফা ম্যাচ", "স্পোর্টস", "খেলা", "ক্রিকেট"]
+    if any(k in low for k in tv_kw) or any(k in low for k in sports_kw):
+        # Check for specific channel/match
+        btv_match = "btv" in low or "বিটিভি" in text or "বিটিভি" in text.lower()
+        sony_match = "sony" in low or "সোনি" in text or "sony" in text.lower()
+        hotstar_match = "hotstar" in low or "হটস্টার" in text
+        espn_match = "espn" in low or "এসপিএসএন" in text
+        
+        url = "https://www.tv8bihar.com"  # Default free channel
+        if btv_match:
+            url = "https://www.btvbd.com/live"
+        elif hotstar_match:
+            url = "https://www.hotstar.com"
+        elif sony_match:
+            url = "https://www.sonyliv.com"
+        elif espn_match:
+            url = "https://www.espn.in"
+        
+        return [{"action": "open_browser", "param": url}, {"action": "wait", "param": "3.0"}]
+
+# Direct app name recognition (Bengali & English)
+    bengali_apps = {
+        "ফটোশপ": "photoshop", "ইলাস্ট্রেটর": "illustrator", "নোটপ্যাড": "notepad",
+        "ক্যালকুলেটর": "calc", "পেইন্ট": "mspaint", "ক্রোম": "chrome",
+        "ওয়ার্ড": "winword", "এক্সেল": "excel", "ভিএসকোড": "code"
+    }
+    for bengali_name, eng_name in bengali_apps.items():
+        if bengali_name in text:
+            return [
+                {"action": "execute_cmd", "param": eng_name},
+                {"action": "wait", "param": "3.0"},
+                {"action": "take_screenshot", "param": ""},
+            ]
+    
+    # English app names
+    for app in ["photoshop", "illustrator", "notepad", "calc", "mspaint", "chrome", "winword", "excel", "code"]:
+        if app in low:
+            return [
+                {"action": "execute_cmd", "param": app},
+                {"action": "wait", "param": "3.0"},
+                {"action": "take_screenshot", "param": ""},
+            ]
 
     return [{"action": "take_screenshot", "param": ""}]
 
