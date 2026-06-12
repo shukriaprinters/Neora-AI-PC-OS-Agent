@@ -17,10 +17,13 @@ const FilterLabView = React.lazy(() => import('./components/FilterLabView').then
 const RoadmapView = React.lazy(() => import('./components/RoadmapView').then((m) => ({ default: m.RoadmapView })));
 const OsAgentView = React.lazy(() => import('./components/OsAgentView').then((m) => ({ default: m.OsAgentView })));
 const VSCodeView = React.lazy(() => import('./components/vscode/VSCodeView').then((m) => ({ default: m.VSCodeView })));
-const TvView = React.lazy(() => import('./components/TvView').then((m) => ({ default: m.TvView })));
+const WebOSSimulator = React.lazy(() => import('./components/WebOSSimulator').then((m) => ({ default: m.WebOSSimulator })));
+const NeoraTV = React.lazy(() => import('./components/NeoraTV').then((m) => ({ default: m.NeoraTV })));
+const HostPCControl = React.lazy(() => import('./components/HostPCControl').then((m) => ({ default: m.HostPCControl })));
 import { SECTIONS, RAW_MASTER_PROMPT } from './masterPromptText';
 import { Task, Reminder, Note, Memory } from './types';
 import { TRANSLATIONS } from './translations';
+import { neoraDelete, neoraGet, neoraPost } from './lib/neoraApi';
 import {
   MessageSquare, Cpu, Sliders, DollarSign, Clipboard,
   Languages, Terminal, BookOpen, Key, LogOut, Filter, Milestone, Laptop,
@@ -38,7 +41,7 @@ export default function App() {
   }, [lang]);
 
   // Persist activeTab to localStorage
-  const [activeTab, setActiveTab] = useState<'home' | 'chat' | 'autonomy' | 'productivity' | 'invoice' | 'dev' | 'blueprint' | 'filterLab' | 'roadmap' | 'osAgent' | 'vscode' | 'tv'>(() => {
+  const [activeTab, setActiveTab] = useState<'home' | 'chat' | 'neoraTv' | 'pcController' | 'autonomy' | 'productivity' | 'invoice' | 'dev' | 'blueprint' | 'filterLab' | 'roadmap' | 'osAgent' | 'vscode' | 'webOs'>(() => {
     return (localStorage.getItem('neora_active_tab') || 'home') as any;
   });
   
@@ -618,20 +621,20 @@ export default function App() {
         borderBottom: "1px solid rgba(0,212,255,0.08)",
         backdropFilter: "blur(16px)",
       }}>
-{([
-           { id: 'home', label: lang === 'bn' ? 'ড্যাশবোর্ড' : 'DASHBOARD', icon: Activity, color: '#00d4ff' },
-           { id: 'chat', label: t.navChat, icon: MessageSquare, color: '#00d4ff' },
-           { id: 'autonomy', label: t.navAutonomy, icon: Sliders, color: '#1a9fff' },
-           { id: 'productivity', label: t.navProductivity, icon: Clipboard, color: '#7c3aed' },
-           { id: 'invoice', label: t.navInvoice, icon: DollarSign, color: '#f5a623' },
-           { id: 'dev', label: t.navDev, icon: Terminal, color: '#f5a623' },
-           { id: 'osAgent', label: t.navOsAgent, icon: Laptop, color: '#00ff88' },
-           { id: 'filterLab', label: t.navFilterLab, icon: Filter, color: '#00d4ff' },
-           { id: 'roadmap', label: t.navRoadmap, icon: Milestone, color: '#1a9fff' },
-           { id: 'blueprint', label: t.navSpecs, icon: BookOpen, color: '#00d4ff' },
-           { id: 'vscode', label: 'VS Code', icon: Terminal, color: '#00d4ff' },
-           { id: 'tv', label: lang === 'bn' ? 'টিভি' : 'TV', icon: Tv, color: '#f5a623' },
-         ] as { id: any; label: string; icon: any; color: string }[]).map(({ id, label, icon: Icon, color }) => {
+        {([
+          { id: 'home', label: lang === 'bn' ? 'ড্যাশবোর্ড' : 'DASHBOARD', icon: Activity, color: '#00d4ff' },
+          { id: 'chat', label: t.navChat, icon: MessageSquare, color: '#00d4ff' },
+          { id: 'neoraTv', label: lang === 'bn' ? 'নিওরা টিভি' : 'NEORA TV', icon: Tv, color: '#ff007c' },
+          { id: 'autonomy', label: t.navAutonomy, icon: Sliders, color: '#1a9fff' },
+          { id: 'productivity', label: t.navProductivity, icon: Clipboard, color: '#7c3aed' },
+          { id: 'invoice', label: t.navInvoice, icon: DollarSign, color: '#f5a623' },
+          { id: 'dev', label: t.navDev, icon: Terminal, color: '#f5a623' },
+          { id: 'osAgent', label: t.navOsAgent, icon: Laptop, color: '#00ff88' },
+          { id: 'filterLab', label: t.navFilterLab, icon: Filter, color: '#00d4ff' },
+          { id: 'roadmap', label: t.navRoadmap, icon: Milestone, color: '#1a9fff' },
+          { id: 'blueprint', label: t.navSpecs, icon: BookOpen, color: '#00d4ff' },
+          { id: 'vscode', label: 'VS Code', icon: Terminal, color: '#00d4ff' },
+        ] as { id: any; label: string; icon: any; color: string }[]).map(({ id, label, icon: Icon, color }) => {
           const isActive = activeTab === id;
           return (
             <button
@@ -814,6 +817,18 @@ export default function App() {
 
       {/* Main Content — hidden on Dashboard tab */}
       {activeTab !== 'home' && <main id="main-content" className="flex-1 flex min-h-0 overflow-hidden">
+        {activeTab === 'neoraTv' && (
+          <NeoraTV
+            lang={lang}
+          />
+        )}
+
+        {activeTab === 'pcController' && (
+          <HostPCControl
+            lang={lang}
+          />
+        )}
+
         {activeTab === 'chat' && (
           <ChatView
             lang={lang}
@@ -889,6 +904,12 @@ export default function App() {
           />
         )}
 
+        {activeTab === 'webOs' && (
+          <WebOSSimulator
+            lang={lang}
+          />
+        )}
+
         {activeTab === 'filterLab' && (
           <FilterLabView
             lang={lang}
@@ -915,14 +936,10 @@ export default function App() {
            </div>
          )}
 
-{activeTab === 'vscode' && (
-            <VSCodeView />
-          )}
-
-          {activeTab === 'tv' && (
-            <TvView lang={lang} />
-          )}
-        </main>}
+         {activeTab === 'vscode' && (
+           <VSCodeView />
+         )}
+       </main>}
 
       {/* --- UNDO TOAST NOTIFICATION SYSTEM (5-SECOND DISMISS) --- */}
       <AnimatePresence>

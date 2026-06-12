@@ -153,163 +153,86 @@ async function executeOsCommandDirectly(cmd: OsCommand): Promise<void> {
           }
           break;
         }
-case "execute_cmd": {
-           pushAgentLog(`[${ts()}] ▶ Initiating shell execution: ${action.param}`);
-           try {
-             if (process.platform === "win32") {
-               // On Windows, use cmd /c start to launch applications
-               const winCmd = `cmd.exe /c start "" "${action.param}"`;
-               await exec(winCmd, { timeout: 15000 });
-               pushAgentLog(`[${ts()}] ✓ Launched application: ${action.param}`);
-               results.push(`✓ Launched: ${action.param}`);
-             } else {
-               // Unix/Linux execution
-               const p = execCb(action.param, { timeout: 15000 });
-               let outBuffer = "";
-               if (p.stdout) {
-                 p.stdout.on("data", (chunk) => {
-                   const text = String(chunk);
-                   outBuffer += text;
-                   const lines = text.split("\n");
-                   lines.forEach(l => {
-                     const tl = l.trim();
-                     if (tl) pushAgentLog(`[stdout] ${tl}`);
-                   });
-                 });
-               }
-               if (p.stderr) {
-                 p.stderr.on("data", (chunk) => {
-                   const text = String(chunk);
-                   outBuffer += text;
-                   const lines = text.split("\n");
-                   lines.forEach(l => {
-                     const tl = l.trim();
-                     if (tl) pushAgentLog(`[stderr] ${tl}`);
-                   });
-                 });
-               }
-               const exitCode = await new Promise<number>((resolve) => {
-                 p.on("close", (code) => {
-                   resolve(code ?? 0);
-                 });
-               });
-               pushAgentLog(`[${ts()}] ✓ Exec completed with exit code: ${exitCode}`);
-               results.push(`✓ Ran: ${action.param}\n(Exit code: ${exitCode})\n${outBuffer.slice(0, 300)}`);
-             }
-           } catch (e: any) {
-             pushAgentLog(`[${ts()}] ✗ Exec failed: ${e.message}`);
-             results.push(`✗ Exec failed: ${e.message}`);
-           }
-           break;
-         }
-case "open_browser": {
-           try {
-             if (process.platform === "win32") {
-               execCb(`cmd.exe /c start "" "${action.param}"`);
-             } else {
-               await exec(`xdg-open "${action.param}" 2>/dev/null || sensible-browser "${action.param}" 2>/dev/null || true`, { timeout: 6000 });
-             }
-             results.push(`✓ Opened: ${action.param}`);
-             pushAgentLog(`[${ts()}] ✓ Browser: ${action.param}`);
-           } catch {
-             results.push(`⚠ Browser open attempted: ${action.param}`);
-           }
-           break;
-         }
-case "take_screenshot": {
-           try {
-             let screenshotPath = "/tmp/neora-screen.png";
-             if (process.platform === "win32") {
-               const dataDir = path.join(process.cwd(), "data");
-               if (!fs.existsSync(dataDir)) {
-                 fs.mkdirSync(dataDir, { recursive: true });
-               }
-               screenshotPath = path.join(dataDir, "neora-screen.png");
-               const psScript = `[System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms') | Out-Null; [System.Reflection.Assembly]::LoadWithPartialName('System.Drawing') | Out-Null; $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds; $bmp = New-Object System.Drawing.Bitmap $screen.Width, $screen.Height; $g = [System.Drawing.Graphics]::FromImage($bmp); $g.CopyFromScreen($screen.Location, [System.Drawing.Point]::Empty, $screen.Size); $bmp.Save('${screenshotPath}'); $g.Dispose(); $bmp.Dispose()`;
-               await exec(`powershell -NoProfile -Command "${psScript}"`, { timeout: 10000 });
-             } else {
-               await exec(`scrot "${screenshotPath}" 2>/dev/null || import -window root "${screenshotPath}" 2>/dev/null || true`, { timeout: 8000 });
-             }
-             if (fs.existsSync(screenshotPath)) {
-               const b64 = fs.readFileSync(screenshotPath).toString("base64");
-               osAgentState.currentScreenshot = `data:image/png;base64,${b64}`;
-               results.push(`✓ Screenshot captured`);
-               pushAgentLog(`[${ts()}] ✓ Screenshot captured to ${screenshotPath}`);
-             } else {
-               results.push(`⚠ Screenshot: not available in this environment`);
-               pushAgentLog(`[${ts()}] ⚠ Screenshot file not found at ${screenshotPath}`);
-             }
-           } catch (e: any) {
-             results.push(`⚠ Screenshot: unavailable`);
-             pushAgentLog(`[${ts()}] ⚠ Screenshot failed: ${e.message}`);
-           }
-           break;
-         }
-case "press_key": {
-           try {
-             if (process.platform === "win32") {
-               // Convert key combo to SendKeys format: ^ for ctrl, % for alt, + for shift
-               let keyCombo = action.param.toLowerCase();
-               // Handle key combinations
-               keyCombo = keyCombo.replace(/ctrl\+/g, "^")
-                                 .replace(/shift\+/g, "+")
-                                 .replace(/alt\+/g, "%")
-                                 .replace(/win\+/g, "#");
-               // Handle special keys
-               keyCombo = keyCombo.replace(/enter/g, "{ENTER}")
-                                 .replace(/space/g, " ")
-                                 .replace(/tab/g, "{TAB}")
-                                 .replace(/escape/g, "{ESC}")
-                                 .replace(/backspace/g, "{BACKSPACE}")
-                                 .replace(/delete/g, "{DELETE}");
-               // Escape single quotes for PowerShell
-               const psCombo = keyCombo.replace(/'/g, "''");
-               await exec(`powershell -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('${psCombo}')"`, { timeout: 4000 });
-               results.push(`✓ Key: ${action.param}`);
-               pushAgentLog(`[${ts()}] ✓ Sent key: ${action.param}`);
-             } else {
-               await exec(`xdotool key ${action.param}`, { timeout: 4000 });
-               results.push(`✓ Key: ${action.param}`);
-             }
-           } catch (e: any) {
-             results.push(`⚠ Key press attempted: ${action.param}`);
-             pushAgentLog(`[${ts()}] ⚠ Key press error: ${e.message}`);
-           }
-           break;
-         }
-case "type_text": {
-           try {
-             if (process.platform === "win32") {
-               // Escape single quotes for PowerShell and use SendKeys for typing
-               const psText = action.param.replace(/'/g, "''").replace(/"/g, '``');
-               const psScript = `[System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms') | Out-Null; [System.Windows.Forms.SendKeys]::SendWait('${psText}')`;
-               await exec(`powershell -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('${psText}')"`, { timeout: 4000 });
-               results.push(`✓ Typed: ${action.param.slice(0, 50)}`);
-               pushAgentLog(`[${ts()}] ✓ Typed text: ${action.param.slice(0, 50)}`);
-             } else {
-               const escaped = action.param.replace(/"/g, '\\"');
-               await exec(`xdotool type --clearmodifiers -- "${escaped}"`, { timeout: 4000 });
-               results.push(`✓ Typed: ${action.param}`);
-             }
-           } catch (e: any) {
-             results.push(`⚠ Type text attempted: ${action.param.slice(0, 30)}`);
-             pushAgentLog(`[${ts()}] ⚠ Type text error: ${e.message}`);
-           }
-           break;
-         }
-case "alert_msg": {
-           try {
-             if (process.platform === "win32") {
-               const escaped = action.param.replace(/'/g, "''").replace(/"/g, '``');
-               await exec(`powershell -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.MessageBox]::Show('${escaped}', 'Neora Agent')"`, { timeout: 4000 });
-             } else {
-               const escaped = action.param.replace(/"/g, '\\"');
-               await exec(`notify-send "Neora Agent" "${escaped}" 2>/dev/null || true`, { timeout: 4000 });
-             }
-           } catch { /* ignore */ }
-           results.push(`✓ Alert: ${action.param}`);
-           break;
-         }
+        case "execute_cmd": {
+          pushAgentLog(`[${ts()}] ▶ Initiating shell execution: ${action.param}`);
+          const p = execCb(action.param, { timeout: 15000 });
+          
+          let outBuffer = "";
+          if (p.stdout) {
+            p.stdout.on("data", (chunk) => {
+              const text = String(chunk);
+              outBuffer += text;
+              const lines = text.split("\n");
+              lines.forEach(l => {
+                const tl = l.trim();
+                if (tl) pushAgentLog(`[stdout] ${tl}`);
+              });
+            });
+          }
+          if (p.stderr) {
+            p.stderr.on("data", (chunk) => {
+              const text = String(chunk);
+              outBuffer += text;
+              const lines = text.split("\n");
+              lines.forEach(l => {
+                const tl = l.trim();
+                if (tl) pushAgentLog(`[stderr] ${tl}`);
+              });
+            });
+          }
+
+          const exitCode = await new Promise<number>((resolve) => {
+            p.on("close", (code) => {
+              resolve(code ?? 0);
+            });
+          });
+
+          pushAgentLog(`[${ts()}] ✓ Exec completed with exit code: ${exitCode}`);
+          results.push(`✓ Ran: ${action.param}\n(Exit code: ${exitCode})\n${outBuffer.slice(0, 300)}`);
+          break;
+        }
+        case "open_browser": {
+          await exec(`xdg-open "${action.param}" 2>/dev/null || sensible-browser "${action.param}" 2>/dev/null || true`, { timeout: 6000 });
+          results.push(`✓ Opened: ${action.param}`);
+          pushAgentLog(`[${ts()}] ✓ Browser: ${action.param}`);
+          break;
+        }
+        case "take_screenshot": {
+          try {
+            await exec("scrot /tmp/neora-screen.png 2>/dev/null || import -window root /tmp/neora-screen.png 2>/dev/null || true", { timeout: 8000 });
+            if (fs.existsSync("/tmp/neora-screen.png")) {
+              const b64 = fs.readFileSync("/tmp/neora-screen.png").toString("base64");
+              osAgentState.currentScreenshot = `data:image/png;base64,${b64}`;
+              results.push(`✓ Screenshot captured`);
+            } else {
+              results.push(`⚠ Screenshot: not available in this environment`);
+            }
+          } catch { results.push(`⚠ Screenshot: unavailable`); }
+          break;
+        }
+        case "press_key": {
+          try {
+            await exec(`xdotool key ${action.param}`, { timeout: 4000 });
+            results.push(`✓ Key: ${action.param}`);
+          } catch { results.push(`⚠ Key press (needs xdotool on PC): ${action.param}`); }
+          break;
+        }
+        case "type_text": {
+          try {
+            const escaped = action.param.replace(/"/g, '\\"');
+            await exec(`xdotool type --clearmodifiers -- "${escaped}"`, { timeout: 4000 });
+            results.push(`✓ Typed: ${action.param}`);
+          } catch { results.push(`⚠ Type text (needs xdotool on PC): ${action.param}`); }
+          break;
+        }
+        case "alert_msg": {
+          try {
+            const escaped = action.param.replace(/"/g, '\\"');
+            await exec(`notify-send "Neora Agent" "${escaped}" 2>/dev/null || true`, { timeout: 4000 });
+          } catch { /* ignore */ }
+          results.push(`✓ Alert: ${action.param}`);
+          break;
+        }
         case "git_sync": {
           const strategy = action.param.trim().toLowerCase();
           pushAgentLog(`[${ts()}] Git Sync started locally on host (${strategy})...`);

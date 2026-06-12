@@ -12,12 +12,6 @@ const browserUrls: Array<{ terms: string[]; url: string }> = [
   { terms: ["google", "গুগল"], url: "https://www.google.com" },
   { terms: ["github", "গিটহাব"], url: "https://github.com" },
   { terms: ["gmail", "জিমেইল"], url: "https://mail.google.com" },
-  // Live TV & Sports Streaming
-  { terms: ["tv", "live tv", "watch tv", "টিভি", "লিভ টিভি", "চ্যানেল"], url: "https://www.tv8bihar.com" },
-  { terms: ["football", "soccer", "fifa", "ফুটবল", "ফিফা", "ফুটবল ম্যাচ"], url: "https://www.sonyliv.com" },
-  { terms: ["cricket", "ক্রিকেট"], url: "https://www.hotstar.com" },
-  { terms: ["sports", "স্পোর্টস", "খেলা"], url: "https://www.espn.in" },
-  { terms: ["news", "নিউস", "সংবাদ"], url: "https://www.bdnews24.com" },
 ];
 
 const appLaunchers: Array<{ terms: string[]; command: string }> = [
@@ -254,7 +248,7 @@ export function isLikelyOsCommand(prompt: string): boolean {
   return (
     /https?:\/\/[^\s]+/.test(normalized) ||
     (hasVerb && hasApp) ||
-    (/(^|\s)(open|launch|run|start|চালু|রান|খুলুন|খোলো|চালু করো|খুলো করো)\s+/.test(normalized)) ||
+    (/(^|\s)(open|launch|run|start|চালু|রান|খুলুন|খোলো)\s+/.test(normalized)) ||
     (normalized.includes("screenshot") || normalized.includes("স্ক্রিনশট")) ||
     (normalized.includes("save file") || normalized.includes("save as") || normalized.includes("সেভ"))
   );
@@ -265,9 +259,18 @@ export function classifyNeoraPrompt(prompt: string): NeoraCommandClassification 
     return "rejected";
   }
 
-  // Check for OS commands first (before falling back to chat)
   if (isLikelyOsCommand(prompt)) {
     return "os-command";
+  }
+
+  const normalized = prompt.toLowerCase();
+  if (
+    normalized.includes("task") ||
+    normalized.includes("remind") ||
+    normalized.includes("note") ||
+    /[\u0980-\u09FF]/.test(prompt)
+  ) {
+    return "chat";
   }
 
   return "chat";

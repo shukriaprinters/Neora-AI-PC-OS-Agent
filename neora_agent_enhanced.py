@@ -24,6 +24,10 @@ ALLOWED_EXECUTABLES = {
     "winword", "word", "excel", "powerpoint", "powerpnt",
     "photoshop", "illustrator", "aftereffects", "premiere",
     "indesign", "coreldraw", "vscode", "code", "git",
+    "git.exe", "docker", "docker.exe", "npm", "npm.cmd", "yarn", "yarn.cmd",
+    "python", "python.exe", "node", "node.exe", "figma", "figma.exe", "blender", "blender.exe",
+    "slack", "slack.exe", "discord", "discord.exe", "zoom", "zoom.exe", "obs", "obs.exe",
+    "putty", "putty.exe", "winscp", "winscp.exe", "postman", "postman.exe"
 }
 
 # ── safe print ──
@@ -95,11 +99,53 @@ def set_clipboard(text):
                 ctypes.windll.user32.CloseClipboard()
     return False
 
+def find_via_windows_shortcuts(name):
+    if sys.platform != "win32":
+        return None
+    try:
+        import subprocess
+        paths = [
+            os.path.expandvars(r"%ProgramData%\Microsoft\Windows\Start Menu\Programs"),
+            os.path.expandvars(r"%AppData%\Microsoft\Windows\Start Menu\Programs")
+        ]
+        name_lower = name.lower()
+        lnk_files = []
+        for p in paths:
+            if os.path.exists(p):
+                for root, dirs, files in os.walk(p):
+                    for f in files:
+                        if f.lower().endswith(".lnk") and name_lower in f.lower():
+                            lnk_files.append(os.path.join(root, f))
+        if lnk_files:
+            lnk_files.sort(key=lambda s: len(os.path.basename(s)))
+            best_lnk = lnk_files[0]
+            escaped_lnk = best_lnk.replace('"', '`"')
+            ps_cmd = f'$sh = New-Object -ComObject WScript.Shell; Write-Output $sh.CreateShortcut("{escaped_lnk}").TargetPath'
+            res = subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd], capture_output=True, text=True, timeout=3)
+            target_path = ""
+            if res.stdout:
+                lines = [l.strip() for l in res.stdout.splitlines() if l.strip()]
+                if lines:
+                    target_path = lines[-1]
+            if target_path and os.path.exists(target_path):
+                return target_path
+            if os.path.exists(best_lnk):
+                return best_lnk
+    except Exception:
+        pass
+    return None
+
 def find_exe(name):
     clean = name.replace('"', '').replace("'", "").strip()
     if os.path.isabs(clean) and os.path.exists(clean):
         return clean
     base = os.path.basename(clean).lower().replace(".exe", "")
+    
+    # Try start-menu shortcut matching first for high-accuracy and custom installs
+    shortcut_match = find_via_windows_shortcuts(base)
+    if shortcut_match:
+        return shortcut_match
+
     mapping = {
         "photoshop": "Photoshop.exe", "illustrator": "Illustrator.exe",
         "word": "winword.exe", "winword": "winword.exe", "excel": "excel.exe",
@@ -115,45 +161,41 @@ def find_exe(name):
         target += ".exe"
     if sys.platform == "win32":
         import glob
-        import shutil
-        # Adobe fast-path - broader search patterns
+        # Adobe high-speed multi-drive wildcard globbing
         if target.lower() == "photoshop.exe":
-            patterns = [
-                r"C:\Program Files\Adobe\*\Photoshop.exe",
-                r"C:\Program Files (x86)\Adobe\*\Photoshop.exe",
-                r"C:\Program Files\Adobe\**\Photoshop.exe",
-                r"C:\*Photoshop*\Photoshop.exe",
-            ]
-            for pat in patterns:
-                m = glob.glob(pat, recursive=True)
-                if m:
-                    return m[0]
-            # Also try registry and PATH
-            r = shutil.which("photoshop") or shutil.which("Photoshop")
-            if r:
-                return r
+            for drive in ["C:", "D:", "E:", "F:", "G:"]:
+                for folder in ["Program Files", "Program Files (x86)", "Adobe", "Programs", ""]:
+                    base_path = os.path.join(f"{drive}\\", folder) if folder else f"{drive}\\"
+                    patterns = [
+                        os.path.join(base_path, "Adobe", "Adobe Photoshop *", "Photoshop.exe"),
+                        os.path.join(base_path, "Adobe", "*Photoshop*", "Photoshop.exe"),
+                        os.path.join(base_path, "*Photoshop*", "Photoshop.exe"),
+                    ]
+                    for pattern in patterns:
+                        try:
+                            matches = glob.glob(pattern)
+                            if matches:
+                                return matches[0]
+                        except Exception:
+                            pass
+
         if target.lower() == "illustrator.exe":
-            patterns = [
-                r"C:\Program Files\Adobe\Adobe Illustrator *\Support Files\Contents\Windows\Illustrator.exe",
-                r"C:\Program Files\Adobe\**\Illustrator.exe",
-                r"C:\*Illustrator*\Illustrator.exe",
-                r"C:\Program Files (x86)\Adobe\**\Illustrator.exe",
-            ]
-            for pat in patterns:
-                m = glob.glob(pat, recursive=True)
-                if m:
-                    return m[0]
-            # Try alternatives - some installs have different structure
-            alt_patterns = [
-                r"C:\Program Files\Adobe\Adobe Illustrator **\Illustrator.exe",
-            ]
-            for pat in alt_patterns:
-                m = glob.glob(pat, recursive=True)
-                if m:
-                    return m[0]
-            r = shutil.which("illustrator") or shutil.which("Illustrator")
-            if r:
-                return r
+            for drive in ["C:", "D:", "E:", "F:", "G:"]:
+                for folder in ["Program Files", "Program Files (x86)", "Adobe", "Programs", ""]:
+                    base_path = os.path.join(f"{drive}\\", folder) if folder else f"{drive}\\"
+                    patterns = [
+                        os.path.join(base_path, "Adobe", "Adobe Illustrator *", "Support Files", "Contents", "Windows", "Illustrator.exe"),
+                        os.path.join(base_path, "Adobe", "*Illustrator*", "Support Files", "Contents", "Windows", "Illustrator.exe"),
+                        os.path.join(base_path, "Adobe", "*Illustrator*", "*Illustrator.exe"),
+                        os.path.join(base_path, "*Illustrator*", "Illustrator.exe"),
+                    ]
+                    for pattern in patterns:
+                        try:
+                            matches = glob.glob(pattern)
+                            if matches:
+                                return matches[0]
+                        except Exception:
+                            pass
         # Registry
         try:
             import winreg
@@ -175,9 +217,6 @@ def find_exe(name):
 
 def launch(cmd, logs):
     clean = cmd.replace('"', '').replace("'", "").strip()
-    # Resolve the executable path using find_exe
-    resolved = find_exe(clean)
-    clean = resolved if resolved else clean
     base = os.path.basename(clean).lower()
     ok = (base in ALLOWED_EXECUTABLES or base.replace(".exe", "") in ALLOWED_EXECUTABLES
           or clean.lower() in ALLOWED_EXECUTABLES
@@ -185,8 +224,21 @@ def launch(cmd, logs):
     if not ok:
         logs.append(f"BLOCKED: {clean}")
         return False
+
+    # Try detached background process with native cwd first on Windows
+    if sys.platform == "win32" and os.path.exists(clean):
+        try:
+            # Critical bugfix: Always launch heavyweight graphic design tools (such as Photoshop, Illustrator)
+            # with cwd set to their installation directory, and DETACHED_PROCESS flag (0x00000008) so they never block the queue!
+            app_dir = os.path.dirname(clean)
+            subprocess.Popen([clean], shell=False, cwd=app_dir, creationflags=0x00000008)
+            logs.append(f"✓ Launched Windows app detached with native cwd: '{clean}'")
+            return True
+        except Exception as e:
+            logs.append(f"Direct detached launch failed: {e}. Trying fallbacks...")
+
     for strategy in [
-        lambda: (sys.platform == "win32" and os.path.exists(clean)) and subprocess.Popen([clean], shell=False),
+        lambda: (sys.platform == "win32" and os.path.exists(clean)) and subprocess.Popen([clean], shell=False, cwd=os.path.dirname(clean), creationflags=0x00000008),
         lambda: subprocess.Popen(clean, shell=False, cwd=str(WORKSPACE_DIR)),
         lambda: subprocess.Popen(f'cmd.exe /c start "" "{clean}"', shell=True),
     ]:
@@ -259,13 +311,11 @@ def parse_command(text):
     low = text.lower()
     actions = []
 
-    # DESIGN (Photoshop / Illustrator) - check both English and Bengali names
-    design_kw = ["design", "banner", "poster", "graphic", "draw", "logo", " brochure", "flyer", "ডিজাইন", "পোস্টার", "ব্যানার", "লোগো"]
-    has_ps = "photoshop" in low or "ফটোশপ" in text
-    has_ai = "illustrator" in low or "ইলাস্ট্রেটর" in text
-    is_design = any(k in low or k in text for k in design_kw) or has_ps or has_ai
+    # DESIGN (Photoshop / Illustrator)
+    design_kw = ["design", "banner", "poster", "graphic", "draw", "logo", " brochure", "flyer", "ডিজাইন", "পোস্টার", "ব্যানার"]
+    app = "illustrator" if "illustrator" in low else "photoshop"
+    is_design = any(k in low for k in design_kw) or app in low
     if is_design:
-        app = "illustrator" if has_ai else ("photoshop" if has_ps else "photoshop")
         actions += [
             {"action": "execute_cmd", "param": app},
             {"action": "wait", "param": "5.0"},
@@ -275,45 +325,28 @@ def parse_command(text):
             {"action": "wait", "param": "2.0"},
         ]
         desc = text
-        for sep in [" with ", " about ", " নিয়ে ", " দিয়ে "]:
-            if sep in low or sep in text:
-                desc = text[low.index(sep) + len(sep):].strip() if sep in low else text[text.index(sep) + len(sep):].strip()
+        for sep in [" with ", " about ", " নিয়ে "]:
+            if sep in low:
+                desc = text[low.index(sep) + len(sep):].strip()
                 break
         actions.append({"action": "type_text", "param": desc or "New design by Neora"})
         actions.append({"action": "wait", "param": "2.0"})
-        save = re.search(r"(?:save|সেভ)\s+([a-zA-Z0-9_\-\.]+)", low) or re.search(r"(?:সেভ)\s+([a-zA-Z0-9_\-\.]+)", text)
+        save = re.search(r"(?:save|সেভ)\s+([a-zA-Z0-9_\-\.]+)", low)
         fname = (save.group(1) if save else ("neora_design.ai" if app == "illustrator" else "neora_design.psd"))
         actions.append({"action": "save_file_as", "param": fname})
         actions.append({"action": "wait", "param": "2.0"})
         actions.append({"action": "take_screenshot", "param": ""})
         return actions
 
-    # OPEN APP - Bengali support
-    english_open_kws = ["open", "launch", "run", "start", "kholo", "chalu", "calo"]
-    bengali_open_kws = ["খোলো", "খুলো", "চালু", "খুলন", "খোলন", "চালু করো"]
-    all_open_kws = english_open_kws + bengali_open_kws
-    for kw in all_open_kws:
-        if kw in text:
-            rest = re.split(rf"\b{re.escape(kw)}\b", text, maxsplit=1) if kw in english_open_kws else re.split(rf"{re.escape(kw)}", text, maxsplit=1)
+    # OPEN APP
+    for kw in ["open", "launch", "run", "start", "kholo", "chalu", "calo"]:
+        if kw in low:
+            rest = re.split(rf"\b{re.escape(kw)}\b", text, maxsplit=1)
             if len(rest) > 1:
                 app_name = rest[1].strip().strip(".,!").lower()
                 if app_name:
                     return [
                         {"action": "execute_cmd", "param": app_name},
-                        {"action": "wait", "param": "3.0"},
-                        {"action": "take_screenshot", "param": ""},
-                    ]
-    
-    # App-first patterns (e.g., "ফটোশপ চালু করো", "ইলাস্ট্রেটর খুলো")
-    app_first_kws = ["চালু করো", "খুলো", "খোলো", "খুলন"]
-    for kw in app_first_kws:
-        if kw in text:
-            parts = text.split(kw)
-            if len(parts) > 1:
-                app_part = parts[0].strip()
-                if app_part:
-                    return [
-                        {"action": "execute_cmd", "param": app_part},
                         {"action": "wait", "param": "3.0"},
                         {"action": "take_screenshot", "param": ""},
                     ]
@@ -324,11 +357,7 @@ def parse_command(text):
         return [{"action": "open_browser", "param": url.group(1)}, {"action": "wait", "param": "3.0"}]
 
     for site, u in {"youtube": "https://www.youtube.com", "facebook": "https://www.facebook.com",
-                    "google": "https://www.google.com", "github": "https://github.com",
-                    "tv": "https://www.tv8bihar.com", "টিভি": "https://www.tv8bihar.com", "লিভ টিভি": "https://www.tv8bihar.com",
-                    "football": "https://www.sonyliv.com", "fifa": "https://www.sonyliv.com", "ফুটবল": "https://www.sonyliv.com", "ফিফা": "https://www.sonyliv.com",
-                    "sports": "https://www.espn.in", "স্পোর্টস": "https://www.espn.in",
-                    "news": "https://www.bdnews24.com", "নিউস": "https://www.bdnews24.com"}.items():
+                    "google": "https://www.google.com", "github": "https://github.com"}.items():
         if site in low:
             return [{"action": "open_browser", "param": u}, {"action": "wait", "param": "3.0"}]
 
@@ -342,51 +371,6 @@ def parse_command(text):
     # SCREENSHOT
     if any(k in low for k in ["screenshot", "স্ক্রিনশট"]):
         return [{"action": "take_screenshot", "param": ""}]
-
-    # LIVE TV & SPORTS - Free streaming channels
-    tv_kw = ["tv", "টিভি", "লিভ টিভি", "watch tv", "চ্যানেল", "চ্যানেল দেখো", "চ্যানেল খুলো"]
-    sports_kw = ["football", "fifa", "ফুটবল", "ফিফা", "ফিফা ম্যাচ", "স্পোর্টস", "খেলা", "ক্রিকেট"]
-    if any(k in low for k in tv_kw) or any(k in low for k in sports_kw):
-        # Check for specific channel/match
-        btv_match = "btv" in low or "বিটিভি" in text or "বিটিভি" in text.lower()
-        sony_match = "sony" in low or "সোনি" in text or "sony" in text.lower()
-        hotstar_match = "hotstar" in low or "হটস্টার" in text
-        espn_match = "espn" in low or "এসপিএসএন" in text
-        
-        url = "https://www.tv8bihar.com"  # Default free channel
-        if btv_match:
-            url = "https://www.btvbd.com/live"
-        elif hotstar_match:
-            url = "https://www.hotstar.com"
-        elif sony_match:
-            url = "https://www.sonyliv.com"
-        elif espn_match:
-            url = "https://www.espn.in"
-        
-        return [{"action": "open_browser", "param": url}, {"action": "wait", "param": "3.0"}]
-
-# Direct app name recognition (Bengali & English)
-    bengali_apps = {
-        "ফটোশপ": "photoshop", "ইলাস্ট্রেটর": "illustrator", "নোটপ্যাড": "notepad",
-        "ক্যালকুলেটর": "calc", "পেইন্ট": "mspaint", "ক্রোম": "chrome",
-        "ওয়ার্ড": "winword", "এক্সেল": "excel", "ভিএসকোড": "code"
-    }
-    for bengali_name, eng_name in bengali_apps.items():
-        if bengali_name in text:
-            return [
-                {"action": "execute_cmd", "param": eng_name},
-                {"action": "wait", "param": "3.0"},
-                {"action": "take_screenshot", "param": ""},
-            ]
-    
-    # English app names
-    for app in ["photoshop", "illustrator", "notepad", "calc", "mspaint", "chrome", "winword", "excel", "code"]:
-        if app in low:
-            return [
-                {"action": "execute_cmd", "param": app},
-                {"action": "wait", "param": "3.0"},
-                {"action": "take_screenshot", "param": ""},
-            ]
 
     return [{"action": "take_screenshot", "param": ""}]
 
@@ -451,6 +435,36 @@ def execute(action, param):
                 time.sleep(1.5)
                 return [f"Saved as: {param}"]
             return ["Headless"]
+        if action == "create_dir":
+            target_path = WORKSPACE_DIR / param
+            target_path.mkdir(parents=True, exist_ok=True)
+            return [f"Created directory: {param}"]
+        if action == "delete_file":
+            target_path = WORKSPACE_DIR / param
+            if target_path.exists() and target_path.is_file():
+                target_path.unlink()
+                return [f"Deleted file: {param}"]
+            return [f"File not found or skip: {param}"]
+        if action == "list_files":
+            target_path = WORKSPACE_DIR / (param or ".")
+            if target_path.exists() and target_path.is_dir():
+                items = [f.name + ("/" if f.is_dir() else "") for f in target_path.iterdir()]
+                return [f"LS: {', '.join(items[:30])}"]
+            return ["Directory not found"]
+        if action == "run_script":
+            script_path = WORKSPACE_DIR / param
+            if script_path.exists() and script_path.suffix in (".py", ".bat", ".sh", ".ps1"):
+                executor = [sys.executable, str(script_path)] if script_path.suffix == ".py" else [str(script_path)]
+                res = subprocess.run(executor, cwd=str(WORKSPACE_DIR), capture_output=True, text=True, timeout=10)
+                return [f"Script Return: {res.returncode}", f"Stdout: {res.stdout[:200]}"]
+            return ["Script binary not found"]
+        if action == "mouse_move":
+            if PYAUTOGUI:
+                parts = [p.strip() for p in param.split(",") if p.strip()]
+                if len(parts) >= 2:
+                    pyautogui.moveTo(int(parts[0]), int(parts[1]), duration=0.5)
+                    return [f"MouseMove: {param}"]
+            return ["GUI unavailable"]
         if action == "take_screenshot":
             return ["Screenshot queued"]
         if action == "alert_msg":

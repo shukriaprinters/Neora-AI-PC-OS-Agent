@@ -120,6 +120,11 @@ ALLOWED_EXECUTABLES = {
     "excel.exe",
     "powerpnt.exe",
     "powerpoint.exe",
+    # Modern developer, design, and productivity applications
+    "git", "git.exe", "docker", "docker.exe", "npm", "npm.cmd", "yarn", "yarn.cmd",
+    "python", "python.exe", "node", "node.exe", "figma", "figma.exe", "blender", "blender.exe",
+    "slack", "slack.exe", "discord", "discord.exe", "zoom", "zoom.exe", "obs", "obs.exe",
+    "putty", "putty.exe", "winscp", "winscp.exe", "postman", "postman.exe"
 }
 
 print = _safe_print  # noqa: A001
@@ -393,6 +398,43 @@ def write_file_action(param: str):
     return target_path
 
 
+def find_via_windows_shortcuts(name: str) -> str | None:
+    if sys.platform != "win32":
+        return None
+    try:
+        import subprocess
+        paths = [
+            os.path.expandvars(r"%ProgramData%\Microsoft\Windows\Start Menu\Programs"),
+            os.path.expandvars(r"%AppData%\Microsoft\Windows\Start Menu\Programs")
+        ]
+        name_lower = name.lower()
+        lnk_files = []
+        for p in paths:
+            if os.path.exists(p):
+                for root, dirs, files in os.walk(p):
+                    for f in files:
+                        if f.lower().endswith(".lnk") and name_lower in f.lower():
+                            lnk_files.append(os.path.join(root, f))
+        if lnk_files:
+            lnk_files.sort(key=lambda s: len(os.path.basename(s)))
+            best_lnk = lnk_files[0]
+            escaped_lnk = best_lnk.replace('"', '`"')
+            ps_cmd = f'$sh = New-Object -ComObject WScript.Shell; Write-Output $sh.CreateShortcut("{escaped_lnk}").TargetPath'
+            res = subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd], capture_output=True, text=True, timeout=3)
+            target_path = ""
+            if res.stdout:
+                lines = [l.strip() for l in res.stdout.splitlines() if l.strip()]
+                if lines:
+                    target_path = lines[-1]
+            if target_path and os.path.exists(target_path):
+                return target_path
+            if os.path.exists(best_lnk):
+                return best_lnk
+    except Exception:
+        pass
+    return None
+
+
 def find_executable(command_text: str) -> str:
     """
     Tries to resolve a command name / nickname or partial path to a fully qualified,
@@ -404,6 +446,11 @@ def find_executable(command_text: str) -> str:
 
     name_lower = os.path.basename(clean).lower()
     name_no_ext = name_lower.replace(".exe", "")
+
+    # Check Windows Start Menu shortcuts first
+    shortcut_match = find_via_windows_shortcuts(name_no_ext)
+    if shortcut_match:
+        return shortcut_match
 
     # Mapping nicknames/names to standard binary executable names
     app_map = {
@@ -656,15 +703,18 @@ def execute_instruction(action, param):
                     # 1. Try direct execute (using lists for space compatibility)
                     try:
                         if sys.platform == "win32" and os.path.exists(clean_cmd):
-                            subprocess.Popen([clean_cmd], shell=False)
+                            # Critical bugfix: Always set cwd to application directory and use DETACHED_PROCESS creation flag on Windows
+                            app_dir = os.path.dirname(clean_cmd)
+                            subprocess.Popen([clean_cmd], shell=False, cwd=app_dir, creationflags=0x00000008)
                             launched = True
-                            logs.append(f"✓ Launched Windows app from resolved path: '{clean_cmd}'")
+                            logs.append(f"✓ Launched Windows app from resolved path: '{clean_cmd}' with detached context")
                         elif sys.platform == "darwin" and clean_cmd.endswith(".app"):
                             subprocess.Popen(["open", clean_cmd])
                             launched = True
                             logs.append(f"✓ Opened macOS App Bundle: '{clean_cmd}'")
                         else:
-                            subprocess.Popen([clean_cmd], shell=False, cwd=str(WORKSPACE_DIR))
+                            cwd_dir = os.path.dirname(clean_cmd) if os.path.isabs(clean_cmd) else str(WORKSPACE_DIR)
+                            subprocess.Popen([clean_cmd], shell=False, cwd=cwd_dir)
                             launched = True
                             logs.append(f"✓ Launched process directly: '{clean_cmd}'")
                     except Exception as e:
@@ -881,6 +931,85 @@ def execute_instruction(action, param):
                 logs.append(f"Executed Save File As dialog paste for: '{clean_path}'")
             else:
                 logs.append(f"Save File As skipped: GUI mode is inactive for path ({clean_path})")
+
+        elif action == "create_dir":
+            clean_path = param.replace('"', '').replace("'", "").strip()
+            target_path = safe_join(WORKSPACE_DIR, clean_path)
+            target_path.mkdir(parents=True, exist_ok=True)
+            logs.append(f"✓ Created directory structures at path: '{target_path.name}'")
+
+        elif action == "delete_file":
+            clean_path = param.replace('"', '').replace("'", "").strip()
+            target_path = safe_join(WORKSPACE_DIR, clean_path)
+            if target_path.exists():
+                if target_path.is_file():
+                    target_path.unlink()
+                    logs.append(f"✓ Deleted workspace file: '{clean_path}'")
+                else:
+                    raise IsADirectoryError("Refusing to delete a directory to prevent telemetry loss.")
+            else:
+                logs.append(f"File already clean (does not exist): '{clean_path}'")
+
+        elif action == "list_files":
+            clean_path = param.replace('"', '').replace("'", "").strip() or "."
+            target_path = safe_join(WORKSPACE_DIR, clean_path)
+            if target_path.exists() and target_path.is_dir():
+                items = [f.name + ("/" if f.is_dir() else "") for f in target_path.iterdir()]
+                logs.append(f"✓ Directory items listed: {', '.join(items[:50])}")
+            else:
+                raise FileNotFoundError(f"Requested directory path not found: {clean_path}")
+
+        elif action == "run_script":
+            clean_path = param.replace('"', '').replace("'", "").strip()
+            script_path = safe_join(WORKSPACE_DIR, clean_path)
+            if script_path.exists() and script_path.suffix in (".py", ".bat", ".sh", ".ps1"):
+                logs.append(f"Launching script executor: {script_path.name}...")
+                executor = []
+                if script_path.suffix == ".py":
+                    executor = [sys.executable, str(script_path)]
+                elif sys.platform == "win32":
+                    if script_path.suffix == ".ps1":
+                        executor = ["powershell", "-NoProfile", "-File", str(script_path)]
+                    else:
+                        executor = [str(script_path)]
+                else:
+                    executor = ["bash", str(script_path)]
+                
+                res = subprocess.run(executor, cwd=str(WORKSPACE_DIR), capture_output=True, text=True, timeout=12)
+                logs.append(f"Stdout: {res.stdout.strip()[:600]}")
+                if res.stderr:
+                    logs.append(f"Stderr: {res.stderr.strip()[:300]}")
+                logs.append(f"✓ Script run finished with code: {res.returncode}")
+            else:
+                raise FileNotFoundError(f"Valid executable script file not found: {clean_path}")
+
+        elif action == "mouse_move":
+            if HEADLESS_MODE or not PYAUTOGUI_AVAILABLE:
+                logs.append("Skipped mouse move in headless/no-gui mode")
+            else:
+                parts = [p.strip() for p in param.split(",") if p.strip()]
+                if len(parts) >= 2:
+                    try:
+                        x, y = int(parts[0]), int(parts[1])
+                        pyautogui.moveTo(x, y, duration=0.6)
+                        logs.append(f"✓ Moved cursor smoothly to coordinates: ({x}, {y})")
+                    except ValueError:
+                        logs.append("Invalid mouse move coordinate inputs")
+
+        elif action == "get_active_window":
+            if sys.platform == "win32":
+                try:
+                    import ctypes
+                    hwnd = ctypes.windll.user32.GetForegroundWindow()
+                    length = ctypes.windll.user32.GetWindowTextLengthW(hwnd)
+                    buff = ctypes.create_unicode_buffer(length + 1)
+                    ctypes.windll.user32.GetWindowTextW(hwnd, buff, length + 1)
+                    title = buff.value
+                    logs.append(f"✓ Active window detected: '{title}'")
+                except Exception as e:
+                    logs.append(f"Could not read active window title: {e}")
+            else:
+                logs.append("Active window detection is supported on Windows environments")
 
         elif action == "take_screenshot":
             if HEADLESS_MODE:

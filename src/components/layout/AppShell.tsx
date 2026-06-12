@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import {
   Brain, LayoutDashboard, MessageSquare, Monitor,
   Settings, Workflow, Activity, Zap, Shield, ChevronRight, LayoutGrid,
-  DollarSign, Filter, Milestone, BookOpen
+  DollarSign, Filter, Milestone, BookOpen, Laptop, Tv, Sliders
 } from "lucide-react";
 import { NebulaBackground } from "../NebulaBackground";
 import { VoiceOrb } from "../VoiceOrb";
@@ -11,10 +11,13 @@ import { motion } from "motion/react";
 const navItems = [
   { id: "home",         label: "Dashboard",   icon: LayoutGrid,      color: "#00d4ff" },
   { id: "chat",         label: "Neural Chat", icon: MessageSquare,   color: "#00d4ff" },
+  { id: "neoraTv",      label: "Neora TV",    icon: Tv,              color: "#ff007c" },
+  { id: "pcController", label: "PC Control",  icon: Sliders,         color: "#38bdf8" },
   { id: "autonomy",     label: "Automation",  icon: Workflow,        color: "#1a9fff" },
   { id: "productivity", label: "Memory",      icon: Brain,           color: "#7c3aed" },
   { id: "invoice",      label: "Earning",     icon: DollarSign,      color: "#f5a623" },
   { id: "osAgent",      label: "OS Agent",    icon: Monitor,         color: "#00ff88" },
+  { id: "webOs",        label: "Neora PC",    icon: Laptop,          color: "#00ff88" },
   { id: "filterLab",    label: "Filter Lab",  icon: Filter,          color: "#00d4ff" },
   { id: "roadmap",      label: "Roadmap",     icon: Milestone,       color: "#1a9fff" },
   { id: "blueprint",    label: "Specs",       icon: BookOpen,        color: "#00d4ff" },

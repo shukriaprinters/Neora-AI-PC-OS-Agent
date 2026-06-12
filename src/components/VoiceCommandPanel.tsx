@@ -91,10 +91,13 @@ export function VoiceCommandPanel({ onAddTask, onAddNote, onAddReminder, onNavig
   const [transcript, setTranscript] = useState('');
   const [feedback, setFeedback] = useState<{ msg: string; ok: boolean } | null>(null);
   const [recent, setRecent] = useState<RecentCmd[]>([]);
-  const [bars, setBars] = useState([0.3, 0.5, 0.8, 0.4, 0.6, 0.9, 0.3, 0.7]);
+  const [bars, setBars] = useState<number[]>(new Array(32).fill(0.12));
   const [supported, setSupported] = useState(true);
   const recognitionRef = useRef<any>(null);
-  const barsTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const animationRef = useRef<number | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   const speakFeedback = useCallback((text: string) => {
     const synth = window.speechSynthesis;
@@ -126,6 +129,90 @@ export function VoiceCommandPanel({ onAddTask, onAddNote, onAddReminder, onNavig
     synth.speak(utterance);
   }, [lang]);
 
+  const startVisualizer = useCallback(async () => {
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContextClass) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => null);
+        if (stream) {
+          streamRef.current = stream;
+          const ctx = new AudioContextClass();
+          audioContextRef.current = ctx;
+          const analyser = ctx.createAnalyser();
+          analyser.fftSize = 64; // Creates 32 bin frequencies
+          analyserRef.current = analyser;
+          const source = ctx.createMediaStreamSource(stream);
+          source.connect(analyser);
+        }
+      }
+    } catch (err) {
+      console.warn("Real-time Mic Audio Stream Context disabled:", err);
+    }
+
+    if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    
+    let startTime = Date.now();
+    const tick = () => {
+      const elapsed = (Date.now() - startTime) / 1000;
+      if (analyserRef.current) {
+        const bufferLength = analyserRef.current.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        analyserRef.current.getByteFrequencyData(dataArray);
+
+        const nextBars = Array.from({ length: 32 }, (_, i) => {
+          const val = dataArray[i] !== undefined ? dataArray[i] / 255 : 0;
+          const bell = Math.sin((i / 31) * Math.PI); // center bell curve modulator
+          return Math.max(0.12, val * 1.6 * (bell * 0.75 + 0.25) + Math.sin(elapsed * 12 + i * 0.4) * 0.04);
+        });
+        setBars(nextBars);
+      } else {
+        // Multi-harmonic procedurally Synthesized Audio Waveform
+        const nextBars = Array.from({ length: 32 }, (_, i) => {
+          const wave1 = Math.sin(elapsed * 10 + i * 0.25) * 0.32;
+          const wave2 = Math.cos(elapsed * 15 - i * 0.4) * 0.18;
+          const wave3 = Math.sin(elapsed * 5 + i * 0.7) * 0.12;
+          const bell = Math.sin((i / 31) * Math.PI);
+          return Math.max(0.12, (0.45 + wave1 + wave2 + wave3) * bell);
+        });
+        setBars(nextBars);
+      }
+      animationRef.current = requestAnimationFrame(tick);
+    };
+
+    animationRef.current = requestAnimationFrame(tick);
+  }, []);
+
+  const stopVisualizer = useCallback(() => {
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+      animationRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
+    }
+    analyserRef.current = null;
+
+    let startTime = Date.now();
+    const settle = () => {
+      const elapsed = (Date.now() - startTime) / 1000;
+      if (elapsed > 0.8) {
+        setBars(new Array(32).fill(0.12));
+        return;
+      }
+      setBars(prev => prev.map(h => {
+        const targetRest = 0.12 + Math.sin(elapsed * 4 + Math.random()) * 0.02;
+        return h * 0.78 + targetRest * 0.22;
+      }));
+      animationRef.current = requestAnimationFrame(settle);
+    };
+    animationRef.current = requestAnimationFrame(settle);
+  }, []);
+
   useEffect(() => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { setSupported(false); return; }
@@ -145,12 +232,12 @@ export function VoiceCommandPanel({ onAddTask, onAddNote, onAddReminder, onNavig
 
     recognition.onend = () => {
       setIsListening(false);
-      if (barsTimerRef.current) clearInterval(barsTimerRef.current);
+      stopVisualizer();
     };
 
     recognition.onerror = () => {
       setIsListening(false);
-      if (barsTimerRef.current) clearInterval(barsTimerRef.current);
+      stopVisualizer();
     };
 
     recognitionRef.current = recognition;
@@ -160,7 +247,7 @@ export function VoiceCommandPanel({ onAddTask, onAddNote, onAddReminder, onNavig
         setTranscript('');
         setFeedback(null);
         setIsListening(true);
-        animateBars();
+        startVisualizer();
         recognition.start();
       } catch (err) {
         console.warn("Auto-start mic recognition failed or blocked:", err);
@@ -170,30 +257,25 @@ export function VoiceCommandPanel({ onAddTask, onAddNote, onAddReminder, onNavig
     return () => { 
       clearTimeout(timer);
       recognition.abort(); 
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
-  }, [lang]);
-
-  const animateBars = useCallback(() => {
-    barsTimerRef.current = setInterval(() => {
-      setBars(prev => prev.map(() => 0.15 + Math.random() * 0.85));
-    }, 120);
-  }, []);
+  }, [lang, startVisualizer, stopVisualizer]);
 
   const startListening = useCallback(() => {
     if (!recognitionRef.current || isListening) return;
     setTranscript('');
     setFeedback(null);
     setIsListening(true);
-    animateBars();
+    startVisualizer();
     recognitionRef.current.start();
-  }, [isListening, animateBars]);
+  }, [isListening, startVisualizer]);
 
   const stopListening = useCallback(() => {
     if (!recognitionRef.current) return;
     recognitionRef.current.stop();
     setIsListening(false);
-    if (barsTimerRef.current) clearInterval(barsTimerRef.current);
-  }, []);
+    stopVisualizer();
+  }, [stopVisualizer]);
 
   useEffect(() => {
     if (!isListening && transcript.trim()) {
@@ -372,20 +454,28 @@ export function VoiceCommandPanel({ onAddTask, onAddNote, onAddReminder, onNavig
               }
             </button>
 
-            {/* Waveform bars */}
-            <div className="flex items-end gap-0.5 h-10">
-              {bars.map((h, i) => (
-                <div
-                  key={i}
-                  className="w-1.5 rounded-full transition-all"
-                  style={{
-                    height: `${h * 40}px`,
-                    background: BAR_COLOR,
-                    boxShadow: isListening ? `0 0 4px ${BAR_COLOR}` : 'none',
-                    transitionDuration: isListening ? '120ms' : '400ms',
-                  }}
-                />
-              ))}
+            {/* Real-time fluid 3D equalized audio waveform bars */}
+            <div className="flex items-center justify-center gap-[3px] h-14 w-full px-4 rounded-xl" style={{ background: 'rgba(0,10,32,0.4)', border: '1px solid rgba(0,212,255,0.06)' }}>
+              {bars.map((h, i) => {
+                const centerOffset = Math.abs(i - 15.5) / 16;
+                const r = Math.floor(0 + centerOffset * 40);
+                const g = Math.floor(212 + (1 - centerOffset) * 43);
+                const b = Math.floor(255 - centerOffset * 30);
+                const color = isListening ? `rgb(${r},${g},${b})` : 'rgba(0,212,255,0.18)';
+                return (
+                  <div
+                    key={i}
+                    className="w-[4px] rounded-full transition-all duration-75"
+                    style={{
+                      height: `${Math.max(3, h * 46)}px`,
+                      background: color,
+                      boxShadow: isListening ? `0 0 10px rgba(${r},${g},${b},0.6)` : 'none',
+                      opacity: isListening ? 0.95 : 0.4,
+                      transform: `scaleY(${isListening ? 1 : 0.8})`,
+                    }}
+                  />
+                );
+              })}
             </div>
 
             {/* Status text */}

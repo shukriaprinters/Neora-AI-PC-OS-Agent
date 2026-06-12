@@ -1,8 +1,7 @@
 ﻿{
-    "broker":  "http://127.0.0.1:3000",
-    "stage":  "complete",
-    "result":  "success",
-    "startedAt":  "Fri 06/12/2026  3:19:02.86",
-    "token":  "NEORA-X7-AGENT",
-    "finishedAt":  "2026-06-12T03:19:28.3679038+06:00"
+    "finishedAt":  "2026-06-11T02:13:02.2321525+06:00",
+    "result":  "failed",
+    "startedAt":  "Thu 06/11/2026  2:12:30.01",
+    "stage":  "agent-wait",
+    "notes":  "Agent did not come online in time."
 }
