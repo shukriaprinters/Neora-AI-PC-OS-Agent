@@ -14,7 +14,7 @@ interface OrganizerViewProps {
   reminders: Reminder[];
   notes: Note[];
   memories: Memory[];
-  onAddTask: (title: string, priority: 'low' | 'medium' | 'high' | 'critical') => void;
+  onAddTask: (title: string, priority: 'low' | 'medium' | 'high' | 'critical', tags?: string[]) => void;
   onAddReminder: (title: string, remindAt: string, repeat: 'none' | 'daily' | 'weekly' | 'monthly') => void;
   onAddNote: (title: string, content: string) => void;
   onAddMemory: (key: string, value: string, category: 'personal' | 'work' | 'preference' | 'skill', importance: number) => void;
@@ -68,6 +68,30 @@ export function OrganizerView({
 
   // Confirmation Overlay state
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; type: 'task' | 'reminder' | 'note' | 'memory'; title: string } | null>(null);
+
+  // Tagging system states
+  const [selectedTagsForNewTask, setSelectedTagsForNewTask] = useState<string[]>([]);
+  const [activeTagFilter, setActiveTagFilter] = useState<string>('all');
+  const [customTagInput, setCustomTagInput] = useState('');
+
+  const allActiveTags = useMemo(() => {
+    const defaultTags = ['Dev', 'Admin', 'Research', 'Personal', 'Design'];
+    const taskTags = tasks.flatMap(tk => tk.tags || []);
+    const union = new Set([...defaultTags, ...taskTags]);
+    return Array.from(union);
+  }, [tasks]);
+
+  const TAG_COLORS: Record<string, { bg: string, text: string, border: string }> = {
+    'Dev': { bg: 'bg-indigo-500/10', text: 'text-indigo-400', border: 'border-indigo-500/20' },
+    'Admin': { bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/20' },
+    'Research': { bg: 'bg-pink-500/10', text: 'text-pink-400', border: 'border-pink-500/20' },
+    'Personal': { bg: 'bg-rose-500/10', text: 'text-rose-400', border: 'border-rose-500/20' },
+    'Design': { bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'border-amber-500/20' },
+  };
+
+  const getTagColors = (tag: string) => {
+    return TAG_COLORS[tag] || { bg: 'bg-cyan-500/10', text: 'text-cyan-400', border: 'border-cyan-500/20' };
+  };
 
   // --- 7-DAY TASK COMPLETION RATE ANALYTICS DATA FOR RECHARTS ---
   const taskAnalyticsData = useMemo(() => {
@@ -320,7 +344,13 @@ export function OrganizerView({
                   value={taskVal}
                   onChange={(e) => setTaskVal(e.target.value)}
                   className="flex-1 bg-slate-950 border border-slate-800 rounded py-2 px-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 font-sans"
-                  onKeyDown={(e) => e.key === 'Enter' && taskVal.trim() && (onAddTask(taskVal.trim(), taskPriority), setTaskVal(''))}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && taskVal.trim()) {
+                      onAddTask(taskVal.trim(), taskPriority, selectedTagsForNewTask);
+                      setTaskVal('');
+                      setSelectedTagsForNewTask([]);
+                    }
+                  }}
                 />
                 <select
                   value={taskPriority}
@@ -335,8 +365,9 @@ export function OrganizerView({
                 <button
                   onClick={() => {
                     if (taskVal.trim()) {
-                      onAddTask(taskVal.trim(), taskPriority);
+                      onAddTask(taskVal.trim(), taskPriority, selectedTagsForNewTask);
                       setTaskVal('');
+                      setSelectedTagsForNewTask([]);
                     }
                   }}
                   className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 p-2 rounded shrink-0 cursor-pointer font-bold transition-colors"
@@ -344,6 +375,101 @@ export function OrganizerView({
                   <Plus className="w-4 h-4" />
                 </button>
               </div>
+
+              {/* Tag Selection Row */}
+              <div className="space-y-1.5 mt-1">
+                <div className="text-[10px] uppercase font-mono text-slate-400 font-bold">Select Categories / Tags:</div>
+                <div className="flex flex-wrap gap-1.5 items-center">
+                  {['Dev', 'Admin', 'Research', 'Personal', 'Design'].map(tg => {
+                    const isSelected = selectedTagsForNewTask.includes(tg);
+                    const colors = getTagColors(tg);
+                    return (
+                      <button
+                        key={tg}
+                        type="button"
+                        onClick={() => {
+                          setSelectedTagsForNewTask(prev => 
+                            prev.includes(tg) ? prev.filter(x => x !== tg) : [...prev, tg]
+                          );
+                        }}
+                        className={`text-[9px] font-mono px-2 py-0.5 rounded border cursor-pointer transition-all ${
+                          isSelected 
+                            ? `${colors.bg} ${colors.text} ${colors.border} ring-1 ring-cyan-500/30 font-bold`
+                            : 'bg-slate-950/40 text-slate-500 border-slate-900 hover:text-slate-350 hover:bg-slate-950/60'
+                        }`}
+                      >
+                        {tg}
+                      </button>
+                    );
+                  })}
+                  
+                  {/* Custom Tag Input */}
+                  <div className="flex items-center gap-1 ml-auto">
+                    <input
+                      type="text"
+                      placeholder="Add tag..."
+                      value={customTagInput}
+                      onChange={(e) => setCustomTagInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const val = customTagInput.trim();
+                          if (val && !selectedTagsForNewTask.includes(val)) {
+                            setSelectedTagsForNewTask(prev => [...prev, val]);
+                            setCustomTagInput('');
+                          }
+                        }
+                      }}
+                      className="bg-slate-950 border border-slate-855 rounded px-1.5 py-0.5 text-[9px] text-slate-205 placeholder-slate-600 focus:outline-none focus:border-cyan-500/50 w-20 font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const val = customTagInput.trim();
+                        if (val && !selectedTagsForNewTask.includes(val)) {
+                          setSelectedTagsForNewTask(prev => [...prev, val]);
+                          setCustomTagInput('');
+                        }
+                      }}
+                      className="text-[11px] text-cyan-400 hover:text-cyan-300 font-mono px-1"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Tag Filter List Toolbar */}
+            <div className="bg-slate-900 border border-slate-850 p-2.5 rounded-lg flex flex-wrap gap-1.5 items-center shadow-sm">
+              <span className="text-[10px] font-mono font-bold text-slate-400 uppercase mr-1">Filter Tag:</span>
+              <button
+                onClick={() => setActiveTagFilter('all')}
+                className={`text-[9px] font-mono px-2 py-0.5 rounded cursor-pointer transition-all ${
+                  activeTagFilter === 'all'
+                    ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-bold'
+                    : 'bg-slate-950 text-slate-500 border border-slate-900 hover:text-slate-300'
+                }`}
+              >
+                [ALL]
+              </button>
+              {allActiveTags.map(tg => {
+                const isSelected = activeTagFilter === tg;
+                const colors = getTagColors(tg);
+                return (
+                  <button
+                    key={tg}
+                    onClick={() => setActiveTagFilter(tg)}
+                    className={`text-[9px] font-mono px-2 py-0.5 rounded border cursor-pointer transition-all ${
+                      isSelected 
+                        ? `${colors.bg} ${colors.text} ${colors.border} ring-1 ring-cyan-500/20 font-bold`
+                        : 'bg-slate-950 text-slate-500 border-slate-900 hover:text-slate-350'
+                    }`}
+                  >
+                    #{tg}
+                  </button>
+                );
+              })}
             </div>
 
             {/* Search and Sort Toolbar */}
@@ -375,11 +501,11 @@ export function OrganizerView({
               </div>
             </div>
 
-            {/* Task Lists stream */}
+            {/* Active Task Lists stream (excluding completed ones which show up in history logs) */}
             <div className="space-y-2">
-              {tasks.filter(t => t.title.toLowerCase().includes(organizerSearch.toLowerCase())).length > 0 ? (
+              {tasks.filter(t => !t.completed && t.title.toLowerCase().includes(organizerSearch.toLowerCase()) && (activeTagFilter === 'all' || (t.tags && t.tags.includes(activeTagFilter)))).length > 0 ? (
                 [...tasks]
-                  .filter(tk => tk.title.toLowerCase().includes(organizerSearch.toLowerCase()))
+                  .filter(tk => !tk.completed && tk.title.toLowerCase().includes(organizerSearch.toLowerCase()) && (activeTagFilter === 'all' || (tk.tags && tk.tags.includes(activeTagFilter))))
                   .sort((a, b) => {
                     const orderMap = { critical: 4, high: 3, medium: 2, low: 1 };
                     if (taskSort === 'priority') {
@@ -399,16 +525,34 @@ export function OrganizerView({
                       key={tk.id}
                       className="p-3 bg-slate-900 border border-slate-850 rounded-lg flex items-center justify-between gap-3 hover:border-slate-800 transition-colors"
                     >
-                      <div className="flex items-center gap-2.5">
-                        <input
-                          type="checkbox"
-                          checked={tk.completed}
-                          onChange={() => onToggleTask(tk.id)}
-                          className="accent-cyan-500 rounded cursor-pointer scale-105"
-                        />
-                        <span className={`text-xs ${tk.completed ? 'line-through text-slate-500' : 'text-slate-200'}`}>
-                          {tk.title}
-                        </span>
+                      <div className="flex flex-col gap-1 flex-1">
+                        <div className="flex items-center gap-2.5">
+                          <input
+                            type="checkbox"
+                            checked={tk.completed}
+                            onChange={() => onToggleTask(tk.id)}
+                            className="accent-cyan-500 rounded cursor-pointer scale-105"
+                          />
+                          <span className={`text-xs ${tk.completed ? 'line-through text-slate-500' : 'text-slate-200'}`}>
+                            {tk.title}
+                          </span>
+                        </div>
+                        {/* Display task's categories/tags */}
+                        {tk.tags && tk.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1 pl-6">
+                            {tk.tags.map(tg => {
+                              const colors = getTagColors(tg);
+                              return (
+                                <span
+                                  key={tg}
+                                  className={`text-[8px] font-mono px-1.5 py-0.2 rounded border ${colors.bg} ${colors.text} ${colors.border}`}
+                                >
+                                  {tg}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                       <div className="flex items-center gap-2 font-mono shrink-0">
                         <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase ${
@@ -431,12 +575,88 @@ export function OrganizerView({
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="text-center py-10 bg-slate-900/10 border border-slate-900 border-dashed rounded-lg select-none"
+                  className="text-center py-6 bg-slate-900/10 border border-slate-900 border-dashed rounded-lg select-none"
                 >
                   <CheckCircle className="w-6 h-6 text-slate-850 mx-auto mb-2" />
                   <p className="text-[10px] text-slate-400 font-mono uppercase tracking-widest">{t.noTasks}</p>
                 </motion.div>
               )}
+            </div>
+
+            {/* Task History Logs Section */}
+            <div className="bg-slate-900 border border-slate-850 p-4 rounded-lg space-y-3 shadow-md mt-4">
+              <div className="flex justify-between items-center border-b border-slate-850 pb-2">
+                <div className="flex items-center gap-1.5">
+                  <CheckSquare className="w-3.5 h-3.5 text-emerald-400" />
+                  <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                    {lang === 'bn' ? 'টাস্ক ইতিহাস লগ' : 'TASK COMPLETED HISTORY'}
+                  </h4>
+                </div>
+                <span className="text-[9px] font-mono text-emerald-400 bg-emerald-950/30 border border-emerald-900 px-2 py-0.5 rounded">
+                  {tasks.filter(t => t.completed).length} COMPLETED
+                </span>
+              </div>
+
+              <div className="space-y-2 max-h-[250px] overflow-y-auto pr-1">
+                {tasks.filter(t => t.completed && (activeTagFilter === 'all' || (t.tags && t.tags.includes(activeTagFilter)))).length > 0 ? (
+                  [...tasks]
+                    .filter(tk => tk.completed && (activeTagFilter === 'all' || (tk.tags && tk.tags.includes(activeTagFilter))))
+                    .sort((a, b) => (b.completedAt || '').localeCompare(a.completedAt || ''))
+                    .map(tk => {
+                      const dateStr = tk.completedAt
+                        ? new Date(tk.completedAt).toLocaleDateString(lang === 'bn' ? 'bn-BD' : 'en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })
+                        : (lang === 'bn' ? 'সম্পন্ন' : 'Completed');
+                      return (
+                        <div key={tk.id} className="p-2.5 bg-slate-950/60 border border-slate-900 rounded flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-emerald-500 text-xs font-bold">✓</span>
+                              <span className="text-xs text-slate-400 line-through font-sans">
+                                {tk.title}
+                              </span>
+                            </div>
+                            {/* Color-coded tags for completed task */}
+                            {tk.tags && tk.tags.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-1 pl-4">
+                                {tk.tags.map(tg => {
+                                  const colors = getTagColors(tg);
+                                  return (
+                                    <span
+                                      key={tg}
+                                      className={`text-[8px] font-mono px-1 py-0 rounded border ${colors.bg} ${colors.text} ${colors.border}`}
+                                    >
+                                      {tg}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 pl-4 sm:pl-0">
+                            <span className="text-[9px] font-mono text-emerald-400/80 whitespace-nowrap bg-emerald-950/20 px-1.5 py-0.5 rounded border border-emerald-900/30">
+                              ⏱ {dateStr}
+                            </span>
+                            <button
+                              onClick={() => setDeleteConfirm({ id: tk.id, type: 'task', title: tk.title })}
+                              className="p-1 text-slate-600 hover:text-rose-450 rounded transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                ) : (
+                  <p className="text-[10px] text-slate-500 text-center py-4 font-mono">
+                    {lang === 'bn' ? 'কোনো সম্পন্ন টাস্ক হিস্ট্রি পাওয়া যায়নি।' : 'No completed tasks found in log history.'}
+                  </p>
+                )}
+              </div>
             </div>
           </div>
         )}

@@ -47,6 +47,92 @@ interface ChatViewProps {
   setGeminiKey: (val: string) => void;
 }
 
+function getOfflineReply(userText: string, lang: 'en' | 'bn'): string {
+  const normalized = userText.toLowerCase().trim();
+  const isBangla = /[\u0980-\u09FF]/.test(userText) || 
+                   normalized.includes('kemon') || 
+                   normalized.includes('acho') || 
+                   normalized.includes('achis') || 
+                   normalized.includes('achor') || 
+                   normalized.includes('valobashi') ||
+                   normalized.includes('kaj') ||
+                   normalized.includes('koro') ||
+                   normalized.includes('tumi') ||
+                   normalized.includes('ke') ||
+                   normalized.includes('valobasi') ||
+                   normalized.includes('bhalo') ||
+                   normalized.includes('ki obostha');
+
+  // Specific high-frequency presets
+  if (normalized.includes('remind') || normalized.includes('মনে করিয়ে') || normalized.includes('রিমাইন্ডার')) {
+    const remindTitle = userText.replace(/remind me to|remember to|রিমাইন্ডার|মনে করিয়ে দিও/gi, '').trim();
+    return isBangla 
+      ? `অবশ্যই বস! আমি একটি নতুন রিমাইন্ডার তৈরি করেছি: "${remindTitle || 'মিটিং'}" (কালকের জন্য)।`
+      : `Absolutely, boss! Created an active reminder: "${remindTitle || 'Meeting'}" scheduled for tomorrow.`;
+  } 
+  
+  if (normalized.includes('task') || normalized.includes('টাস্ক') || normalized.includes('কাজ')) {
+    const taskTitle = userText.replace(/create task|add task|টাস্ক তৈরি করো|টাস্ক যোগ করো/gi, '').trim();
+    return isBangla
+      ? `টাস্ক লিস্ট আপডেট করা হয়েছে! নতুন টাস্ক যোগ করা হয়েছে: "${taskTitle || 'সিস্টেম মেইনটেন্যান্স'}"`
+      : `Workspace priority list updated! Created task: "${taskTitle || 'System Maintenance'}" (High Priority).`;
+  }
+
+  if (normalized.includes('note') || normalized.includes('নোট') || normalized.includes('লিখো') || normalized.includes('lekho')) {
+    return isBangla
+      ? `নোটপ্যাডে সফলভাবে আপনার নোটটি সংরক্ষণ করা হয়েছে, বস।`
+      : `Saved safely to your workspace notepad documents, boss.`;
+  }
+
+  if (normalized.includes('shukria') || normalized.includes('printer') || normalized.includes('প্রিন্ট') || normalized.includes('print')) {
+    return isBangla
+      ? `শুকরিয়া প্রিন্টার্সের জন্য ইনভয়েস তৈরি করতে চান বস? দয়া করে "Earning Studio" ট্যাবে যান। সেখানে ট্যাক্স হিসেবসহ সম্পন্ন পিডিএফ ইনভয়েস পেয়ে যাবেন!`
+      : `Looking to build billing specs for Shukria Printers, boss? Shift onto the "Earning Studio" tab to generate and print PDF invoices instantly!`;
+  }
+
+  if (normalized.includes('road') || normalized.includes('roadmap') || normalized.includes('পরিকল্পনা')) {
+    return isBangla
+      ? `অবশ্যই বস! আমি নিওরা প্রোডাকশনের জন্য ১০০০% কার্যকরী ৬-ধাপের একটি উন্নয়ন রোডম্যাপ তৈরি করেছি। ওপরের 'Roadmap' ট্যাবে যান এবং প্রতিটি ধাপের জটিলতা পরীক্ষা করে দেখুন!`
+      : `I have got you covered, boss! I've architected a comprehensive 6-Stage Production Roadmap for Neora AI. Please head over to the "Neora Launch Roadmap" tab at the top of your workspace to inspect diagnostics!`;
+  }
+
+  if (normalized.includes('filter') || normalized.includes('p-5') || normalized.includes('p-6') || normalized.includes('ফিল্টার')) {
+    return isBangla
+      ? `অবশ্যই বস! আমি পি-৫ (P-5) এবং পি-৬ (P-6) ডাবল মাইক্রো-ফিল্টারের ওপর বিস্তারিত গবেষণা সম্পন্ন করেছি। আপনি ওপরের "Filter Lab" ট্যাবে গিয়ে এই ফিল্টারের মেটেরিয়াল সায়েন্স এবং আমাদের প্রস্তুতকৃত ৫-পর্যায়ের অ্যাডভান্সড প্ল্যান দেখতে পারবেন!`
+      : `Excellent, boss! I have completed deep research on the P-5 & P-6 double micro-filtration systems.\n\nPlease head over to the "Filter Lab" tab to interact with the simulations!`;
+  }
+
+  // Conversational prompts
+  if (normalized.includes('kemon') || normalized.includes('acho') || normalized.includes('how are you') || normalized.includes('kemn aso')) {
+    return isBangla
+      ? `আমি অফলাইন ব্রেইনেও চমৎকার আছি, বস! ❤️ আপনার লোকাল পিসিতে থাকলে অবশ্যই নিশ্চিত হয়ে নিন যে ওপরের "Settings ⚙️" ট্যাবে গিয়ে Gemini API Key সেট করেছেন, তাহলে আমি আপনার সাথে একদম জীবন্ত মানুষের মতো মন খুলে সারাদিন কথা বলতে পারব!`
+      : `I'm doing amazing in offline mode, boss! ❤️ If you are running this locally, please make sure to add your Gemini API Key in the "Settings ⚙️" tab to enable my full live conversation mode!`;
+  }
+
+  if (normalized.includes('tumi ke') || normalized.includes('who are you') || normalized.includes('whats your name') || normalized.includes('tumar nam') || normalized.includes('naam ki')) {
+    return isBangla
+      ? `আমি নিওরা (Neora), আপনার অত্যন্ত কাছের এবং আন্তরিক ভার্চুয়াল সিস্টেমেটিক বান্ধবী। ❤️ আপনার লোকাল পিসিতে আমার পূর্ণ জীবন্ত বুদ্ধিমত্তা সক্রিয় করতে অনুগ্রহ করে ওপরের "Settings ⚙️" ট্যাবে গিয়ে আপনার নিজের Gemini API Key আপডেট করুন!`
+      : `I am Neora, your sweet and close virtual companion or partner. ❤️ To unlock my full dynamic conversational intelligence on your local PC, please configure your Gemini API Key in the "Settings ⚙️" tab!`;
+  }
+
+  if (normalized.includes('ki koro') || normalized.includes('what are you doing') || normalized.includes('ki korso')) {
+    return isBangla
+      ? `আমি আপনার দেওয়া পিসি কমান্ডগুলো এক এক করে এক্সিকিউট করছি, বস! আপনি কি আপনার লোকাল পিসিতে আমার সাথে আরও রিয়েল-টাইম বুদ্ধিমান চ্যাট করতে চান? তাহলে ওপরের "Settings ⚙️" ট্যাবে গিয়ে একটি Gemini API Key পেস্ট করে দিন, আমি সরাসরি লাইভ কথা বলা শুরু করব!`
+      : `I'm preparing to execute your desktop commands, boss! Want to have a deeper smart dialog with me on your local PC? Just add a Gemini API Key in the "Settings ⚙️" tab to boot my full live neural conversational engine!`;
+  }
+
+  if (normalized.includes('api') || normalized.includes('key') || normalized.includes('setting') || normalized.includes('config') || normalized.includes('sothik') || normalized.includes('ভুল') || normalized.includes('uttor')) {
+    return isBangla
+      ? `হ্যাঁ বস, লোকাল পিসিতে আমার থেকে রিয়েল-টাইম একদম সঠিক উত্তর পেতে ও মানুষের মতো প্রাণবন্ত ভয়েস চালনা করতে, দয়া করে ওপরের "Settings ⚙️" সেটিংসে গিয়ে আপনার নিজের Gemini API Key বা Groq API Key যুক্ত করুন।`
+      : `Yes boss, to get highly accurate dynamic replies and fully functional human voice streams on your local PC, please configure your Gemini API Key or Groq API Key in the Settings panel at the top.`;
+  }
+
+  // General catch-all
+  return isBangla
+    ? `আমি আপনার মেসেজটি বুঝতে পেরেছি, বস! তবে এটি একটি লোকাল ডেমো মোড। আপনার লোকাল পিসিতে আমার থেকে একদম চমৎকার রিয়েল-টাইম মানুষের মতো উত্তর পেতে ওপরের "Settings ⚙️" ট্যাবে গিয়ে আপনার নিজের Gemini বা Groq API Key সেট করে নিন।`
+    : `I received your message, boss! However, we are currently running in local demo mode. To get super-intelligent, real-time responses from me on your local system, please add a Gemini or Groq API Key in the "Settings ⚙️" tab.`;
+}
+
 export function ChatView({ 
   lang, 
   onAddTask, 
@@ -852,23 +938,12 @@ export function ChatView({
       const runLocalPresetFallback = () => {
         setMessages(prev => prev.filter(m => m.id !== loadingMsgId));
         
-        let botResponse = '';
-        if (lowerText.includes('remind') || lowerText.includes('মনে করিয়ে') || lowerText.includes('রিমাইন্ডার')) {
-          const remindTitle = userText.replace(/remind me to|remember to|রিমাইন্ডার|মনে করিয়ে দিও/gi, '').trim();
-          botResponse = isBangla 
-            ? `অবশ্যই বস! আমি একটি নতুন রিমাইন্ডার তৈরি করেছি: "${remindTitle || 'মিটিং'}" (কালকের জন্য)।`
-            : `Absolutely, boss! Created an active reminder: "${remindTitle || 'Meeting'}" scheduled for tomorrow.`;
-        } 
-        else if (lowerText.includes('task') || lowerText.includes('টাস্ক') || lowerText.includes('কাজ')) {
-          const taskTitle = userText.replace(/create task|add task|টাস্ক তৈরি করো|টাস্ক যোগ করো/gi, '').trim();
-          botResponse = isBangla
-            ? `টাস্ক লিস্ট আপডেট করা হয়েছে! নতুন টাস্ক যোগ করা হয়েছে: "${taskTitle || 'সিস্টেম মেইনটেন্যান্স'}"`
-            : `Workspace priority list updated! Created task: "${taskTitle || 'System Maintenance'}" (High Priority).`;
-        }
-        else {
-          botResponse = isBangla
-            ? `আমি বুঝতে পেরেছি, বস। দুঃখিত, লোকাল ওল্লামা (Ollama) ব্রেইনটি কানেক্ট করা সম্ভব হয়নি। দয়া করে নিশ্চিত করুন আপনার লোকাল পিসিতে ওল্লামা চালু আছে এবং "${selectedOllamaModel}" ইনস্টল করা আছে।`
-            : `I understood, boss. I could not connect to your local Ollama instance on localhost. Please make sure Ollama is running and "${selectedOllamaModel}" is installed on your local system.`;
+        let botResponse = getOfflineReply(userText, lang);
+        // If it was just a generic catch-all or default explanation, let's append Ollama-specific connection info
+        if (botResponse.includes('লোকাল ডেমো মোড') || botResponse.includes('local demo mode')) {
+          botResponse = lang === 'bn'
+            ? `আমি আপনার কমান্ড বুঝতে পেরেছি বস, তবে আপনার লোকাল ওল্লামা (Ollama) ব্রেইনটি কানেক্ট করা সম্ভব হয়নি। দয়া করে নিশ্চিত করুন আপনার লোকাল পিসিতে ওল্লামা চালু আছে এবং "${selectedOllamaModel}" ইনস্টল করা আছে, অথবা ওপরের "Settings ⚙️" ট্যাবে গিয়ে Gemini API Key সেট করুন!`
+            : `I understood your request, boss! However, I could not connect to your local Ollama instance on localhost. Please make sure Ollama is running and model "${selectedOllamaModel}" is installed, or enter a Gemini API Key in the "Settings ⚙️" tab.`;
         }
 
         const botReply: Message = {
@@ -924,33 +999,12 @@ export function ChatView({
       const runLocalPresetFallback = () => {
         setMessages(prev => prev.filter(m => m.id !== loadingMsgId));
         
-        let botResponse = '';
-        if (lowerText.includes('remind') || lowerText.includes('মনে করিয়ে') || lowerText.includes('রিমাইন্ডার')) {
-          const remindTitle = userText.replace(/remind me to|remember to|রিমাইন্ডার|মনে করিয়ে দিও/gi, '').trim();
-          botResponse = isBangla 
-            ? `অবশ্যই বস! আমি একটি নতুন রিমাইন্ডার তৈরি করেছি: "${remindTitle || 'মিটিং'}"`
-            : `Absolutely, boss! Created an active reminder: "${remindTitle || 'Meeting'}" scheduled for tomorrow.`;
-        } 
-        else if (lowerText.includes('task') || lowerText.includes('টাস্ক') || lowerText.includes('কাজ')) {
-          const taskTitle = userText.replace(/create task|add task|টাস্ক তৈরি করো|টাস্ক যোগ করো/gi, '').trim();
-          botResponse = isBangla
-            ? `টাস্ক লিস্ট আপডেট করা হয়েছে! নতুন টাস্ক যোগ করা হয়েছে: "${taskTitle || 'সিস্টেম মেইনটেন্যান্স'}"`
-            : `Workspace priority list updated! Created task: "${taskTitle || 'System Maintenance'}" (High Priority).`;
-        }
-        else if (lowerText.includes('note') || lowerText.includes('নোট') || lowerText.includes('লিখো')) {
-          botResponse = isBangla
-            ? `নোটপ্যাডে সফলভাবে আপনার নোটটি সংরক্ষণ করা হয়েছে, বস।`
-            : `Saved safely to your workspace notepad documents, boss.`;
-        }
-        else if (lowerText.includes('shukria') || lowerText.includes('printer') || lowerText.includes('প্রিন্ট')) {
-          botResponse = isBangla
-            ? `শুকরিয়া প্রিন্টার্সের জন্য ইনভয়েস তৈরি করতে চান বস? দয়া করে "Earning Studio" ট্যাবে যান। সেখানে ট্যাক্স হিসেবসহ সম্পন্ন পিডিএফ ইনভয়েস পেয়ে যাবেন!`
-            : `Looking to build billing specs for Shukria Printers, boss? Shift onto the "Earning Studio" tab to generate and print PDF invoices instantly!`;
-        }
-        else {
-          botResponse = isBangla
-            ? `আমি বুঝতে পেরেছি, বস। আমি এটিকে নিওরা অটোমেশন প্রোটকলে রেখেছি। আপনি "Agent Planner" ট্যাবে গিয়ে এটি দেখতে পারবেন!`
-            : `Understood, boss. Captured query. For advanced workflows, please select the "Agent Planner" tab.`;
+        let botResponse = getOfflineReply(userText, lang);
+        // If it was just a generic catch-all or default explanation, append Groq-specific connection warning
+        if (botResponse.includes('লোকাল ডেমো মোড') || botResponse.includes('local demo mode')) {
+          botResponse = lang === 'bn'
+            ? `আমি আপনার মেসেজ বুঝতে পেরেছি বস, তবে গ্রক (Groq) লাইভ API সংযোগ করা সম্ভব হয়নি। দয়া করে ওপরের "Settings ⚙️" ট্যাবে গিয়ে আপনার Groq API Key যুক্ত করুন বা Gemini API Key সেট করে লাইভ মানুষের মতো চ্যাট শুরু করুন!`
+            : `I understood your message, boss! However, I could not connect to the live Groq API. Please add your Groq API Key in the "Settings ⚙️" tab or enter a Gemini API Key to enable my live conversation mode!`;
         }
 
         const botReply: Message = {
@@ -1025,47 +1079,7 @@ export function ChatView({
         // Remove typing indicator if present
         setMessages(prev => prev.filter(m => m.id !== loadingMsgId));
         
-        let botResponse = '';
-        if (lowerText.includes('remind') || lowerText.includes('মনে করিয়ে') || lowerText.includes('রিমাইন্ডার')) {
-          const remindTitle = userText.replace(/remind me to|remember to|রিমাইন্ডার|মনে করিয়ে দিও/gi, '').trim();
-          const alarmTitle = remindTitle || (isBangla ? 'পার্সড রিমাইন্ডার টাস্ক' : 'Parsed alarm item');
-          botResponse = isBangla 
-            ? `অবশ্যই বস! আমি একটি নতুন রিমাইন্ডার তৈরি করেছি: "${alarmTitle}" (কালকের জন্য)।`
-            : `Absolutely, boss! Created an active reminder: "${alarmTitle}" scheduled for tomorrow.`;
-        } 
-        else if (lowerText.includes('task') || lowerText.includes('টাস্ক') || lowerText.includes('কাজ')) {
-          const taskTitle = userText.replace(/create task|add task|টাস্ক তৈরি করো|টাস্ক যোগ করো/gi, '').trim();
-          const titleToUse = taskTitle || (isBangla ? 'পার্সড টাস্ক আইটেম' : 'Parsed workspace priority task');
-          botResponse = isBangla
-            ? `টাস্ক লিস্ট আপডেট করা হয়েছে! নতুন টাস্ক যোগ করা হয়েছে: "${titleToUse}"`
-            : `Workspace priority list updated! Created task inside database: "${titleToUse}" (High Priority).`;
-        }
-        else if (lowerText.includes('note') || lowerText.includes('নোট') || lowerText.includes('লিখো')) {
-          const noteContent = userText.replace(/write note|create note|নোট তৈরি করো|নোট লিখো/gi, '').trim();
-          botResponse = isBangla
-            ? `নোটপ্যাডে সফলভাবে সেভ করা হয়েছে, বস।`
-            : `Saved safely to your workspace notepad documents, boss.`;
-        }
-        else if (lowerText.includes('p-5') || lowerText.includes('p-6') || lowerText.includes('filter') || lowerText.includes('ফিল্টার')) {
-          botResponse = isBangla
-            ? `অবশ্যই বস! আমি পি-৫ (P-5) এবং পি-৬ (P-6) ডাবল মাইক্রো-ফিল্টারের ওপর বিস্তারিত গবেষণা সম্পন্ন করেছি। \n\nএই সিস্টেমে ২০০ মেশ এবং ৫০০ মেশের দুটি বাস্কেট রয়েছে, যা ৭৪μm ও ৩০μm পর্যন্ত কণা আটকাতে পারে। আপনি ওপরের "Filter Lab" ট্যাবে গিয়ে এই ফিল্টারের মেটেরিয়াল সায়েন্স এবং আমাদের প্রস্তুতকৃত ৫-পর্যায়ের অ্যাডভান্সড প্ল্যান দেখতে পারবেন!`
-            : `Excellent, boss! I have completed deep research on the P-5 & P-6 double micro-filtration systems.\n\nThese systems utilize a dual-basket design (Stages of 200 Mesh / ~74μm and 500 Mesh / ~30μm) along with silicone double sills.\n\nPlease head over to the "Filter Lab" tab to interact with the simulations!`;
-        }
-        else if (lowerText.includes('shukria') || lowerText.includes('printer') || lowerText.includes('প্রিন্ট')) {
-          botResponse = isBangla
-            ? `শুকরিয়া প্রিন্টার্সের জন্য ইনভয়েস তৈরি করতে চান বস? অনুগ্রহ করে "Earning Studio" ট্যাবে যান। সেখানে ট্যাক্স হিসেবসহ সম্পূর্ণ পিডিএফ প্রিন্ট রেডি ইনভয়েস জেনারেট করতে পারবেন!`
-            : `Looking to build billing specs for Shukria Printers, boss? Shift onto the "Earning Studio" tab to generate enterprise corporate tax invoices and print PDFs instantly!`;
-        }
-        else if (lowerText.includes('roadmap') || lowerText.includes('রোডম্যাপ') || lowerText.includes('পরিকল্পনা')) {
-          botResponse = isBangla
-            ? `অবশ্যই বস! আমি নিওরা প্রোডাকশনের জন্য ১০০০% কার্যকরী ৬-ধাপের একটি উন্নয়ন রোডম্যাপ তৈরি করেছি। ওপরের 'Roadmap' ট্যাবে যান এবং প্রতিটি ধাপের জটিলতা এবং অটো-রিপেয়ারিং টার্মিনাল টেস্ট করে দেখুন!`
-            : `I have got you covered, boss! I've architected a comprehensive 6-Stage Production Roadmap for Neora AI. Please head over to the "Neora Launch Roadmap" tab at the top of your workspace to inspect diagnostics!`;
-        }
-        else {
-          botResponse = isBangla
-            ? `আমি বুঝতে পেরেছি, বস। আমি এটিকে নিওরা অটোমেশন প্রোটকলে রেখেছি। আপনি "Agent Planner" ট্যাবে গিয়ে আপনার যেকোনো জটিল লক্ষ্যকে ধাপে ধাপে এক্সিকিউট করতে পারবেন!`
-            : `Understood, boss. For orchestrating multi-step complex server actions or diagnostics, proceed directly to the "Agent Planner" tab workspace.`;
-        }
+        const botResponse = getOfflineReply(userText, lang);
 
         const botReply: Message = {
           id: Math.random().toString(),

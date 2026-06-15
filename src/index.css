@@ -552,3 +552,10 @@ body, #root {
   height: 1px;
   background: linear-gradient(90deg, transparent, rgba(0, 212, 255, 0.3), transparent);
 }
+
+@keyframes shimmer-scan {
+  0% { transform: translateX(-150%) skewX(-15deg); }
+  50% { transform: translateX(150%) skewX(-15deg); }
+  100% { transform: translateX(150%) skewX(-15deg); }
+}
+

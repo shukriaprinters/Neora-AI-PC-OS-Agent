@@ -20,6 +20,7 @@ const VSCodeView = React.lazy(() => import('./components/vscode/VSCodeView').the
 const WebOSSimulator = React.lazy(() => import('./components/WebOSSimulator').then((m) => ({ default: m.WebOSSimulator })));
 const NeoraTV = React.lazy(() => import('./components/NeoraTV').then((m) => ({ default: m.NeoraTV })));
 const HostPCControl = React.lazy(() => import('./components/HostPCControl').then((m) => ({ default: m.HostPCControl })));
+const MemoriesGraphView = React.lazy(() => import('./components/MemoriesGraphView').then((m) => ({ default: m.MemoriesGraphView })));
 import { SECTIONS, RAW_MASTER_PROMPT } from './masterPromptText';
 import { Task, Reminder, Note, Memory } from './types';
 import { TRANSLATIONS } from './translations';
@@ -27,9 +28,131 @@ import { neoraDelete, neoraGet, neoraPost } from './lib/neoraApi';
 import {
   MessageSquare, Cpu, Sliders, DollarSign, Clipboard,
   Languages, Terminal, BookOpen, Key, LogOut, Filter, Milestone, Laptop,
-  Download, Search, Undo, X, Activity, CircleAlert, Upload, Tv
+  Download, Search, Undo, X, Activity, CircleAlert, Upload, Tv, Share2,
+  Volume2, VolumeX, Music
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from 'recharts';
+
+class AmbientHumManager {
+  private ctx: AudioContext | null = null;
+  private masterGain: GainNode | null = null;
+  private osc1: OscillatorNode | null = null;
+  private osc2: OscillatorNode | null = null;
+  private lfo: OscillatorNode | null = null;
+  private filter: BiquadFilterNode | null = null;
+  private periodicTimer: any = null;
+
+  start(volume: number) {
+    this.stop();
+    try {
+      this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      
+      // Master gain
+      this.masterGain = this.ctx.createGain();
+      this.masterGain.gain.setValueAtTime(volume * 0.15, this.ctx.currentTime); // keep max scaling very low and pleasant
+      
+      // Filter sweep
+      this.filter = this.ctx.createBiquadFilter();
+      this.filter.type = 'lowpass';
+      this.filter.frequency.setValueAtTime(125, this.ctx.currentTime);
+      this.filter.Q.setValueAtTime(4, this.ctx.currentTime);
+      
+      // Deep fundamental pitch (A0 / 55Hz)
+      this.osc1 = this.ctx.createOscillator();
+      this.osc1.type = 'triangle';
+      this.osc1.frequency.setValueAtTime(55, this.ctx.currentTime);
+      
+      // Shimmer pitch (A1 / 110.3Hz for binaural beating)
+      this.osc2 = this.ctx.createOscillator();
+      this.osc2.type = 'sine';
+      this.osc2.frequency.setValueAtTime(110.3, this.ctx.currentTime);
+      
+      // LFO to sweep filter frequency for respiratory soundscape feel
+      this.lfo = this.ctx.createOscillator();
+      this.lfo.type = 'sine';
+      this.lfo.frequency.setValueAtTime(0.08, this.ctx.currentTime); // Very slow 12 second sweep
+      
+      const lfoGain = this.ctx.createGain();
+      lfoGain.gain.setValueAtTime(45, this.ctx.currentTime); // Modulate by 45Hz
+      
+      // Connections
+      this.lfo.connect(lfoGain);
+      lfoGain.connect(this.filter.frequency);
+      
+      this.osc1.connect(this.filter);
+      this.osc2.connect(this.filter);
+      this.filter.connect(this.masterGain);
+      this.masterGain.connect(this.ctx.destination);
+      
+      // Play
+      this.osc1.start(0);
+      this.osc2.start(0);
+      this.lfo.start(0);
+
+      // Periodically trigger extremely soft, resonant modular spacial "stardust pings"
+      this.periodicTimer = setInterval(() => {
+        this.triggerPing();
+      }, 7000); // every 7 seconds
+
+    } catch (e) {
+      console.warn('Web Audio API not supported or blocked:', e);
+    }
+  }
+
+  private triggerPing() {
+    if (!this.ctx || !this.filter || !this.masterGain) return;
+    try {
+      const pingOsc = this.ctx.createOscillator();
+      const pingGain = this.ctx.createGain();
+      const pingFilter = this.ctx.createBiquadFilter();
+
+      pingFilter.type = 'bandpass';
+      // Pick dynamic harmonic notes of A (220, 330, 440, 660, 880 Hz)
+      const pitches = [220, 330, 440, 660, 880];
+      const randomPitch = pitches[Math.floor(Math.random() * pitches.length)];
+      
+      pingOsc.type = 'sine';
+      pingOsc.frequency.setValueAtTime(randomPitch, this.ctx.currentTime);
+      pingFilter.frequency.setValueAtTime(randomPitch, this.ctx.currentTime);
+      pingFilter.Q.setValueAtTime(8, this.ctx.currentTime);
+      
+      pingGain.gain.setValueAtTime(0, this.ctx.currentTime);
+      // Soft attack, ultra-long decaying envelope
+      pingGain.gain.linearRampToValueAtTime(0.02, this.ctx.currentTime + 1.5);
+      pingGain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + 5.5);
+
+      pingOsc.connect(pingFilter);
+      pingFilter.connect(pingGain);
+      pingGain.connect(this.ctx.destination);
+
+      pingOsc.start(0);
+      pingOsc.stop(this.ctx.currentTime + 6.0);
+    } catch {}
+  }
+
+  setVolume(volume: number) {
+    if (this.masterGain && this.ctx) {
+      this.masterGain.gain.linearRampToValueAtTime(volume * 0.15, this.ctx.currentTime + 0.1);
+    }
+  }
+
+  stop() {
+    clearInterval(this.periodicTimer);
+    try {
+      if (this.osc1) { this.osc1.stop(); this.osc1.disconnect(); }
+      if (this.osc2) { this.osc2.stop(); this.osc2.disconnect(); }
+      if (this.lfo) { this.lfo.stop(); this.lfo.disconnect(); }
+      if (this.ctx) { this.ctx.close(); }
+    } catch {}
+    this.ctx = null;
+    this.masterGain = null;
+    this.osc1 = null;
+    this.osc2 = null;
+    this.lfo = null;
+    this.filter = null;
+  }
+}
 
 export default function App() {
   const [lang, setLang] = useState<'en' | 'bn'>(() => {
@@ -40,8 +163,47 @@ export default function App() {
     localStorage.setItem('neora_lang', lang);
   }, [lang]);
 
+  // Ambient sound states
+  const ambientManager = React.useRef<AmbientHumManager | null>(null);
+  const [ambientPlaying, setAmbientPlaying] = useState<boolean>(() => {
+    return localStorage.getItem('neora_ambient_playing') === 'true';
+  });
+  const [ambientVolume, setAmbientVolume] = useState<number>(() => {
+    const val = localStorage.getItem('neora_ambient_volume');
+    return val !== null ? parseFloat(val) : 0.3;
+  });
+
+  // Track state changes to turn audio on/off
+  React.useEffect(() => {
+    if (!ambientManager.current) {
+      ambientManager.current = new AmbientHumManager();
+    }
+    if (ambientPlaying) {
+      ambientManager.current.start(ambientVolume);
+    } else {
+      ambientManager.current.stop();
+    }
+    localStorage.setItem('neora_ambient_playing', ambientPlaying.toString());
+  }, [ambientPlaying]);
+
+  React.useEffect(() => {
+    if (ambientManager.current && ambientPlaying) {
+      ambientManager.current.setVolume(ambientVolume);
+    }
+    localStorage.setItem('neora_ambient_volume', ambientVolume.toString());
+  }, [ambientVolume, ambientPlaying]);
+
+  // Clean play on unmount
+  React.useEffect(() => {
+    return () => {
+      if (ambientManager.current) {
+        ambientManager.current.stop();
+      }
+    };
+  }, []);
+
   // Persist activeTab to localStorage
-  const [activeTab, setActiveTab] = useState<'home' | 'chat' | 'neoraTv' | 'pcController' | 'autonomy' | 'productivity' | 'invoice' | 'dev' | 'blueprint' | 'filterLab' | 'roadmap' | 'osAgent' | 'vscode' | 'webOs'>(() => {
+  const [activeTab, setActiveTab] = useState<'home' | 'chat' | 'neoraTv' | 'pcController' | 'autonomy' | 'productivity' | 'memoriesGraph' | 'invoice' | 'dev' | 'blueprint' | 'filterLab' | 'roadmap' | 'osAgent' | 'vscode' | 'webOs'>(() => {
     return (localStorage.getItem('neora_active_tab') || 'home') as any;
   });
   
@@ -176,6 +338,64 @@ export default function App() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [globalSearchVal, setGlobalSearchVal] = useState('');
 
+  // --- DASHBOARD REAL-TIME SYNCING & FILTER STATES ---
+  const [isSyncingDb, setIsSyncingDb] = useState(false);
+  const [selectedDashboardPriorities, setSelectedDashboardPriorities] = useState<('low' | 'medium' | 'high' | 'critical')[]>(['critical', 'high', 'medium', 'low']);
+
+  interface HolographicVoiceToast {
+    id: string;
+    message: string;
+    undo: () => void;
+  }
+  const [voiceToast, setVoiceToast] = useState<HolographicVoiceToast | null>(null);
+
+  const triggerDbSyncAnimation = () => {
+    setIsSyncingDb(true);
+    setTimeout(() => {
+      setIsSyncingDb(false);
+    }, 1200);
+  };
+
+  const toggleDashboardPriority = (p: 'low' | 'medium' | 'high' | 'critical') => {
+    setSelectedDashboardPriorities(prev => {
+      if (prev.includes(p)) {
+        return prev.filter(x => x !== p);
+      } else {
+        return [...prev, p];
+      }
+    });
+  };
+
+  // Holographic Voice Toast auto-cleanup timer
+  React.useEffect(() => {
+    if (voiceToast) {
+      const timer = setTimeout(() => {
+        setVoiceToast(null);
+      }, 6500);
+      return () => clearTimeout(timer);
+    }
+  }, [voiceToast]);
+
+  const [recentSearches, setRecentSearches] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('neora_recent_searches');
+      return saved ? JSON.parse(saved) : ['Brochure proof', 'Tax calculations', 'Backup rule'];
+    } catch {
+      return ['Brochure proof', 'Tax calculations', 'Backup rule'];
+    }
+  });
+
+  const addRecentSearch = (query: string) => {
+    const qClean = query.trim();
+    if (!qClean) return;
+    setRecentSearches(prev => {
+      const filtered = prev.filter(x => x.toLowerCase() !== qClean.toLowerCase());
+      const next = [qClean, ...filtered].slice(0, 8); // Keep last 8 queries
+      localStorage.setItem('neora_recent_searches', JSON.stringify(next));
+      return next;
+    });
+  };
+
   // --- CONNECTION LATENCY / PERFORMANCE METRICS ---
   const [latency, setLatency] = useState(14);
   const [apiHealth, setApiHealth] = useState(100);
@@ -189,15 +409,148 @@ export default function App() {
   const [clickInspectorMode, setClickInspectorMode] = useState(false);
   const [inspectorLog, setInspectorLog] = useState<string | null>(null);
 
+  // Recharts dynamic latency and health history (simulated sliding window over previous hour)
+  const [latencyHistory, setLatencyHistory] = useState<{ time: string; latency: number; health: number }[]>(() => {
+    const points = [];
+    const now = new Date();
+    for (let i = 9; i >= 0; i--) {
+      const d = new Date(now.getTime() - i * 6 * 1000 * 60);
+      const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+      points.push({
+        time: timeStr,
+        latency: Math.floor(Math.random() * 8) + 12,
+        health: 100
+      });
+    }
+    return points;
+  });
+
   React.useEffect(() => {
     const interval = setInterval(() => {
+      let nextLatency = 14;
+      let nextHealth = 100;
+
+      // 12% probability of a simulated system anomaly detection for testing
+      const isAnomalyTick = Math.random() < 0.12;
+
       setLatency(prev => {
-        const delta = Math.floor(Math.random() * 5) - 2;
-        const next = prev + delta;
-        return next < 8 ? 8 : next > 25 ? 25 : next;
+        if (isAnomalyTick) {
+          nextLatency = Math.floor(Math.random() * 30) + 65; // Spikes to 65ms - 95ms
+        } else {
+          const delta = Math.floor(Math.random() * 5) - 2;
+          const next = prev + delta;
+          nextLatency = next < 8 ? 8 : next > 25 ? 25 : next;
+        }
+        return nextLatency;
+      });
+
+      setApiHealth(prev => {
+        if (isAnomalyTick) {
+          nextHealth = Math.floor(Math.random() * 15) + 78; // Drops to 78% - 93%
+        } else {
+          nextHealth = prev < 100 ? Math.min(100, prev + 2) : 100;
+        }
+        return nextHealth;
+      });
+
+      setLatencyHistory(prev => {
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+        const updated = [...prev, { time: timeStr, latency: nextLatency, health: nextHealth }];
+        if (updated.length > 10) {
+          updated.shift();
+        }
+        return updated;
       });
     }, 4000);
     return () => clearInterval(interval);
+  }, []);
+
+  // Debounced auto-saves and draft indicators
+  const [qcmdDraft, setQcmdDraft] = useState(() => {
+    return localStorage.getItem('neora_qcmd_draft') || '';
+  });
+  const [commandUnsaved, setCommandUnsaved] = useState(false);
+  const [showCommandSaved, setShowCommandSaved] = useState(false);
+
+  const [scratchpadDraft, setScratchpadDraft] = useState(() => {
+    return localStorage.getItem('neora_scratchpad_draft') || '';
+  });
+  const [notesUnsaved, setNotesUnsaved] = useState(false);
+  const [showNotesSaved, setShowNotesSaved] = useState(false);
+
+  // Debounce scratchpad
+  React.useEffect(() => {
+    if (!notesUnsaved) return;
+    const timer = setTimeout(() => {
+      localStorage.setItem('neora_scratchpad_draft', scratchpadDraft);
+      setNotesUnsaved(false);
+      setShowNotesSaved(true);
+      const hideTimer = setTimeout(() => setShowNotesSaved(false), 2000);
+      return () => clearTimeout(hideTimer);
+    }, 1000); // 1s Debounce
+    return () => clearTimeout(timer);
+  }, [scratchpadDraft, notesUnsaved]);
+
+  // Debounce command input
+  React.useEffect(() => {
+    if (!commandUnsaved) return;
+    const timer = setTimeout(() => {
+      localStorage.setItem('neora_qcmd_draft', qcmdDraft);
+      setCommandUnsaved(false);
+      setShowCommandSaved(true);
+      const hideTimer = setTimeout(() => setShowCommandSaved(false), 2000);
+      return () => clearTimeout(hideTimer);
+    }, 1000); // 1s Debounce
+    return () => clearTimeout(timer);
+  }, [qcmdDraft, commandUnsaved]);
+
+  // Startup data consistency routine check (Task 5)
+  const [dataSyncStatus, setDataSyncStatus] = useState<'pending' | 'checking' | 'consistent' | 'reconciled' | 'error'>('pending');
+
+  React.useEffect(() => {
+    const checkStateConsistency = async () => {
+      setDataSyncStatus('checking');
+      try {
+        const response: any = await neoraGet('/api/memory');
+        if (response && Array.isArray(response.memories)) {
+          const serverMemories = response.memories;
+          let mismatch = false;
+          if (serverMemories.length !== memories.length) {
+            mismatch = true;
+          } else {
+            for (const sm of serverMemories) {
+              const lm = memories.find(m => m.id === sm.id);
+              if (!lm || lm.key !== sm.key || lm.value !== sm.value || lm.category !== sm.category) {
+                mismatch = true;
+                break;
+              }
+            }
+          }
+
+          if (mismatch) {
+            console.log("Consistency Check: Discrepancies detected with MongoDB server index. Reconciling client cache...");
+            setMemories(serverMemories.map((m: any) => ({
+              id: m.id,
+              key: m.key,
+              value: m.value,
+              category: m.category,
+              importance: m.importance || 2
+            })));
+            setDataSyncStatus('reconciled');
+          } else {
+            console.log("Consistency Check: Client cache fully verified and aligned with database server.");
+            setDataSyncStatus('consistent');
+          }
+        }
+      } catch (err) {
+        console.warn("DB unreachable at boot startup. Disconnected container flow active.");
+        setDataSyncStatus('error');
+      }
+    };
+
+    const timer = setTimeout(checkStateConsistency, 1500);
+    return () => clearTimeout(timer);
   }, []);
 
   React.useEffect(() => {
@@ -378,16 +731,18 @@ export default function App() {
   const t = TRANSLATIONS[lang];
 
   // Handler functions for cross-component triggers (chat NLP adds items directly!)
-  const handleAddTask = (title: string, priority: 'low' | 'medium' | 'high' | 'critical') => {
+  const handleAddTask = (title: string, priority: 'low' | 'medium' | 'high' | 'critical', tags?: string[]) => {
     const newTask: Task = {
       id: Math.random().toString(),
       title,
       notes: '',
       priority,
       dueAt: new Date().toISOString().substring(0, 10),
-      completed: false
+      completed: false,
+      tags: tags || []
     };
     setTasks(prev => [newTask, ...prev]);
+    triggerDbSyncAnimation();
   };
 
   const handleAddReminder = (title: string, remindAt: string, repeat: 'none' | 'daily' | 'weekly' | 'monthly') => {
@@ -427,7 +782,8 @@ export default function App() {
 
   // Toggle checklist status
   const handleToggleTask = (id: string) => {
-    setTasks(prev => prev.map(x => x.id === id ? { ...x, completed: !x.completed } : x));
+    setTasks(prev => prev.map(x => x.id === id ? { ...x, completed: !x.completed, completedAt: !x.completed ? new Date().toISOString() : undefined } : x));
+    triggerDbSyncAnimation();
   };
   const handleDeleteTask = (id: string) => {
     const item = tasks.find(x => x.id === id);
@@ -435,6 +791,7 @@ export default function App() {
       triggerUndoOption('task', item);
     }
     setTasks(prev => prev.filter(x => x.id !== id));
+    triggerDbSyncAnimation();
   };
 
   const handleToggleReminder = (id: string) => {
@@ -543,6 +900,35 @@ export default function App() {
 
           {/* Right: Controls */}
           <div className="flex items-center gap-1.5">
+            {/* Ambient Sound Mode Trigger & Slider */}
+            <div className="flex items-center gap-1.5 px-2 py-1.5 rounded text-[10px] font-mono transition-all"
+                 style={{ border: "1px solid rgba(0,212,255,0.1)", background: "rgba(0,212,255,0.02)", color: "rgba(0,212,255,0.85)" }}>
+              <button
+                onClick={() => setAmbientPlaying(!ambientPlaying)}
+                className="flex items-center gap-1 hover:text-cyan-300 transition-colors cursor-pointer"
+                title="Toggle Ambient Futuristic Soundscapes"
+              >
+                {ambientPlaying ? (
+                  <Volume2 className="w-3.5 h-3.5 animate-pulse text-cyan-400" />
+                ) : (
+                  <VolumeX className="w-3.5 h-3.5 text-slate-500" />
+                )}
+                <span className="hidden sm:inline">AMBIENT</span>
+              </button>
+              {ambientPlaying && (
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={ambientVolume}
+                  onChange={(e) => setAmbientVolume(parseFloat(e.target.value))}
+                  className="w-12 h-1 accent-cyan-400 bg-slate-800 rounded-lg appearance-none cursor-pointer"
+                  title={`Volume: ${Math.round(ambientVolume * 100)}%`}
+                />
+              )}
+            </div>
+
             <button
               onClick={() => setIsSearchOpen(true)}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[10px] cursor-pointer font-mono transition-all jarvis-nav-btn"
@@ -627,6 +1013,7 @@ export default function App() {
           { id: 'neoraTv', label: lang === 'bn' ? 'নিওরা টিভি' : 'NEORA TV', icon: Tv, color: '#ff007c' },
           { id: 'autonomy', label: t.navAutonomy, icon: Sliders, color: '#1a9fff' },
           { id: 'productivity', label: t.navProductivity, icon: Clipboard, color: '#7c3aed' },
+          { id: 'memoriesGraph', label: lang === 'bn' ? 'মেমোরিজ গ্রাফ' : 'MEMORIES GRAPH', icon: Share2, color: '#38bdf8' },
           { id: 'invoice', label: t.navInvoice, icon: DollarSign, color: '#f5a623' },
           { id: 'dev', label: t.navDev, icon: Terminal, color: '#f5a623' },
           { id: 'osAgent', label: t.navOsAgent, icon: Laptop, color: '#00ff88' },
@@ -663,104 +1050,367 @@ export default function App() {
 
       {/* ===== JARVIS COMMAND CENTER — Dashboard tab only (fills remaining height) ===== */}
       {activeTab === 'home' && <section className="px-4 py-3 print:hidden flex-1 overflow-y-auto min-h-0">
-        <div className="grid grid-cols-2 xl:grid-cols-5 gap-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-2.5 max-w-[1600px] mx-auto">
 
           {/* Main workspace card */}
-          <div className="col-span-2 xl:col-span-2 relative rounded-xl overflow-hidden" style={{
+          <div className="col-span-1 md:col-span-2 xl:col-span-2 relative rounded-xl overflow-hidden p-4 flex flex-col justify-between" style={{
             background: "linear-gradient(135deg, rgba(0,15,40,0.9) 0%, rgba(0,8,22,0.85) 100%)",
             border: "1px solid rgba(0,212,255,0.18)",
             boxShadow: "0 0 0 1px rgba(0,212,255,0.05), 0 8px 32px rgba(0,0,0,0.5), inset 0 0 40px rgba(0,212,255,0.03)",
             backdropFilter: "blur(20px)",
+            minHeight: "140px"
           }}>
             {/* Corner accent lines */}
             <div className="absolute top-0 left-0 w-8 h-px" style={{ background: "rgba(0,212,255,0.6)" }} />
             <div className="absolute top-0 left-0 w-px h-8" style={{ background: "rgba(0,212,255,0.6)" }} />
             <div className="absolute bottom-0 right-0 w-8 h-px" style={{ background: "rgba(0,212,255,0.3)" }} />
             <div className="absolute bottom-0 right-0 w-px h-8" style={{ background: "rgba(0,212,255,0.3)" }} />
-            {/* Top glow bar */}
             <div className="absolute top-0 left-0 right-0 h-px" style={{ background: "linear-gradient(90deg, transparent, rgba(0,212,255,0.5), transparent)" }} />
 
-            <div className="p-4">
-              <div className="jarvis-label mb-2">WORKSPACE COMMAND CENTER</div>
+            <div>
+              <div className="flex justify-between items-center mb-1.5">
+                <div className="jarvis-label">WORKSPACE COMMAND CENTER</div>
+                <div className="text-[9px] font-mono flex items-center gap-1.5">
+                  <span className={`w-1.5 h-1.5 rounded-full ${
+                    dataSyncStatus === 'consistent' ? 'bg-emerald-400' :
+                    dataSyncStatus === 'reconciled' ? 'bg-amber-400' : 'bg-cyan-400 animate-pulse'
+                  }`} />
+                  <span className="text-slate-500 uppercase">
+                    {dataSyncStatus === 'checking' ? 'Verifying...' :
+                     dataSyncStatus === 'consistent' ? 'DB Consistent' :
+                     dataSyncStatus === 'reconciled' ? 'DB Balanced' : 'Standby'}
+                  </span>
+                </div>
+              </div>
               <h2 className="font-jarvis text-base font-bold mb-1" style={{ color: "#00d4ff", textShadow: "0 0 15px rgba(0,212,255,0.4)" }}>
                 {lang === 'bn' ? 'এক নজরে Neora workspace' : 'NEORA AI SYSTEM'}
               </h2>
-              <p className="text-[11px] text-slate-400 mb-3 leading-relaxed">
+              <p className="text-[11px] text-slate-400 leading-normal">
                 {lang === 'bn'
                   ? 'চ্যাট, অটোমেশন, মেমরি, এবং OS agent এক স্ক্রিনে।'
                   : 'Neural interface · Autonomous operations · Memory persistence · OS control'}
               </p>
-              <div className="flex flex-wrap gap-1.5">
-                {([
-                  { label: 'CHAT', tab: 'chat', color: '#00d4ff' },
-                  { label: 'OS AGENT', tab: 'osAgent', color: '#00ff88' },
-                  { label: 'PLANNER', tab: 'autonomy', color: '#1a9fff' },
-                  { label: 'ROADMAP', tab: 'roadmap', color: '#7c3aed' },
-                ] as { label: string; tab: any; color: string }[]).map(({ label, tab, color }) => (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    className="px-2.5 py-1 rounded text-[10px] font-mono font-bold uppercase transition-all"
-                    style={{
-                      background: `${color}12`,
-                      border: `1px solid ${color}30`,
-                      color: color,
-                      textShadow: `0 0 6px ${color}60`,
-                    }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-1.5 mt-3">
+              {([
+                { label: 'CHAT', tab: 'chat', color: '#00d4ff' },
+                { label: 'OS AGENT', tab: 'osAgent', color: '#00ff88' },
+                { label: 'PLANNER', tab: 'autonomy', color: '#1a9fff' },
+                { label: 'ROADMAP', tab: 'roadmap', color: '#7c3aed' },
+              ] as { label: string; tab: any; color: string }[]).map(({ label, tab, color }) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className="px-2.5 py-1 rounded text-[10px] font-mono font-bold uppercase transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+                  style={{
+                    background: `${color}12`,
+                    border: `1px solid ${color}30`,
+                    color: color,
+                    textShadow: `0 0 6px ${color}60`,
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
           </div>
 
           {/* Tasks metric */}
-          <div className="relative rounded-xl overflow-hidden p-3" style={{
-            background: "linear-gradient(135deg, rgba(0,15,35,0.9), rgba(0,8,20,0.8))",
+          <div className="col-span-1 md:col-span-1 xl:col-span-1 relative rounded-xl overflow-hidden p-3 flex flex-col justify-between transition-all duration-300" style={{
+            background: "linear-gradient(135deg, rgba(0,15,35,0.92), rgba(0,8,20,0.85))",
             border: "1px solid rgba(0,212,255,0.15)",
             boxShadow: "inset 0 0 20px rgba(0,212,255,0.03)",
             backdropFilter: "blur(20px)",
+            minHeight: "140px"
           }}>
             <div className="absolute top-0 left-0 right-0 h-px" style={{ background: "linear-gradient(90deg, transparent, rgba(0,212,255,0.4), transparent)" }} />
-            <div className="jarvis-label mb-2">TASKS</div>
-            <div className="font-jarvis text-3xl font-bold" style={{ color: "#00d4ff", textShadow: "0 0 20px rgba(0,212,255,0.5)" }}>{tasks.length}</div>
-            <div className="text-[11px] text-slate-400 mt-1">{tasks.filter(x => !x.completed).length} active</div>
-            <div className="mt-2 jarvis-progress h-0.5">
-              <div className="jarvis-progress-bar" style={{ width: `${tasks.length > 0 ? (tasks.filter(x => x.completed).length / tasks.length) * 100 : 0}%` }} />
+            <div>
+              <div className="flex justify-between items-center mb-1">
+                <span className="jarvis-label">TASKS</span>
+                <span className="text-[10px] text-cyan-400 font-mono font-bold bg-cyan-950/30 px-1.5 py-0.5 rounded border border-cyan-500/10 shrink-0">
+                  {tasks.filter(x => x.completed).length}/{tasks.length} DONE
+                </span>
+              </div>
+              
+              {/* Clickable Priority Pill Filters */}
+              <div className="flex flex-wrap gap-1 mt-1.5 mb-1.5">
+                {(['critical', 'high', 'medium', 'low'] as const).map(p => {
+                  const isSelected = selectedDashboardPriorities.includes(p);
+                  const colors = {
+                    critical: { activeBg: 'bg-rose-500/20', text: 'text-rose-400', border: 'border-rose-500/30' },
+                    high: { activeBg: 'bg-amber-500/20', text: 'text-amber-400', border: 'border-amber-500/30' },
+                    medium: { activeBg: 'bg-cyan-500/20', text: 'text-cyan-400', border: 'border-cyan-500/30' },
+                    low: { activeBg: 'bg-slate-500/20', text: 'text-slate-400', border: 'border-slate-500/30' }
+                  }[p];
+                  return (
+                    <button
+                      key={p}
+                      onClick={() => toggleDashboardPriority(p)}
+                      className={`text-[8px] font-bold font-mono px-1.5 py-0.5 rounded border uppercase transition-all cursor-pointer ${
+                        isSelected 
+                          ? `${colors.activeBg} ${colors.text} ${colors.border} shadow-[0_0_5px_rgba(0,180,255,0.1)]` 
+                          : 'bg-slate-900/40 text-slate-550 border-transparent opacity-50 hover:opacity-100'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Scrollable priority task filters list */}
+              <div className="overflow-y-auto max-h-[80px] space-y-1 pr-1 custom-scrollbar mb-2 text-left">
+                {tasks
+                  .filter(tk => !tk.completed && selectedDashboardPriorities.includes(tk.priority))
+                  .map(tk => {
+                    const priorityColor = {
+                      critical: 'text-rose-400',
+                      high: 'text-amber-400',
+                      medium: 'text-cyan-400',
+                      low: 'text-slate-400'
+                    }[tk.priority];
+                    return (
+                      <div key={tk.id} className="text-[10px] bg-slate-950/45 border border-slate-900/40 px-2 py-0.5 rounded flex justify-between items-center gap-1">
+                        <span className="truncate text-slate-300 flex-1 font-sans font-medium">{tk.title}</span>
+                        <span className={`text-[7px] font-mono font-bold uppercase shrink-0 ${priorityColor}`}>{tk.priority}</span>
+                      </div>
+                    );
+                  })}
+                {tasks.filter(tk => !tk.completed && selectedDashboardPriorities.includes(tk.priority)).length === 0 && (
+                  <div className="text-[8px] font-mono text-slate-550 text-center py-1.5 italic">
+                    No active tasks in selected priorities
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <div className="flex justify-between items-center text-[10px] mb-1">
+                <span className="text-slate-400">{tasks.filter(x => !x.completed).length} active</span>
+                <span className="text-[8px] font-mono font-bold flex items-center gap-1 shrink-0">
+                  {isSyncingDb || dataSyncStatus === 'checking' ? (
+                    <>
+                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping shrink-0" />
+                      <span className="text-cyan-400 uppercase tracking-widest animate-pulse">[SYNCING...]</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                      <span className="text-emerald-400 uppercase tracking-widest">[SECURE_SYNC]</span>
+                    </>
+                  )}
+                </span>
+              </div>
+
+              {/* Progress Container with active laser scanner when querying */}
+              <div className="jarvis-progress h-1 border border-slate-900 bg-slate-950/80 rounded-full overflow-hidden relative shadow-[inset_0_1px_3px_rgba(0,0,0,0.6)]">
+                <div 
+                  className={`h-full rounded-full transition-all duration-500 ease-out ${
+                    isSyncingDb || dataSyncStatus === 'checking' 
+                      ? 'bg-gradient-to-r from-cyan-400 to-indigo-500 shadow-[0_0_12px_rgba(0,212,255,0.8)]' 
+                      : 'bg-cyan-500 shadow-[0_0_6px_rgba(0,212,255,0.4)]'
+                  }`} 
+                  style={{ width: `${tasks.length > 0 ? (tasks.filter(x => x.completed).length / tasks.length) * 100 : 0}%` }} 
+                />
+                
+                {/* Visual laser Scan Overlay */}
+                {(isSyncingDb || dataSyncStatus === 'checking') && (
+                  <div className="absolute top-0 bottom-0 left-0 right-0 pointer-events-none overflow-hidden">
+                    <div 
+                      className="h-full w-20 bg-gradient-to-r from-transparent via-cyan-300 / 50 to-transparent" 
+                      style={{
+                        animation: 'shimmer-scan 1.2s infinite ease-in-out'
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
           {/* Memory metric */}
-          <div className="relative rounded-xl overflow-hidden p-3" style={{
-            background: "linear-gradient(135deg, rgba(10,5,35,0.9), rgba(5,0,20,0.8))",
+          <div className="col-span-1 md:col-span-1 xl:col-span-1 relative rounded-xl overflow-hidden p-3 flex flex-col justify-between" style={{
+            background: "linear-gradient(135deg, rgba(10,5,35,0.92), rgba(5,0,20,0.85))",
             border: "1px solid rgba(124,58,237,0.2)",
             boxShadow: "inset 0 0 20px rgba(124,58,237,0.04)",
             backdropFilter: "blur(20px)",
+            minHeight: "140px"
           }}>
             <div className="absolute top-0 left-0 right-0 h-px" style={{ background: "linear-gradient(90deg, transparent, rgba(124,58,237,0.5), transparent)" }} />
-            <div className="jarvis-label mb-2" style={{ color: "rgba(167,139,250,0.7)" }}>MEMORY</div>
-            <div className="font-jarvis text-3xl font-bold" style={{ color: "#a78bfa", textShadow: "0 0 20px rgba(124,58,237,0.5)" }}>{memories.length}</div>
-            <div className="text-[11px] text-slate-400 mt-1">Persistent entries</div>
-            <div className="mt-2 h-0.5 rounded" style={{ background: "rgba(124,58,237,0.12)" }}>
-              <div className="h-full rounded" style={{ width: `${Math.min(memories.length * 20, 100)}%`, background: "linear-gradient(90deg, rgba(124,58,237,0.6), rgba(167,139,250,0.9))", boxShadow: "0 0 6px rgba(124,58,237,0.5)" }} />
+            <div>
+              <div className="flex justify-between items-center mb-1">
+                <span className="jarvis-label" style={{ color: "rgba(167,139,250,0.7)" }}>MEMORY ENGINE</span>
+                <span className="text-[9px] font-mono text-purple-400 bg-purple-950/30 px-1.5 py-0.5 rounded border border-purple-500/10 shrink-0">
+                  {memories.length} KEYS
+                </span>
+              </div>
+
+              {/* Sorted Memory entries list preview (Sorted by Importance) */}
+              <div className="overflow-y-auto max-h-[90px] space-y-1 pr-1 custom-scrollbar mb-2 text-left mt-2">
+                {[...memories]
+                  .sort((a, b) => (b.importance || 0) - (a.importance || 0))
+                  .slice(0, 4)
+                  .map(mem => {
+                    const isHighImportance = (mem.importance || 0) >= 4;
+                    return (
+                      <div key={mem.id} className="text-[10px] bg-indigo-950/20 border border-indigo-900/30 px-2 py-0.5 rounded flex justify-between items-center gap-1">
+                        <div className="truncate flex-1">
+                          <span className="text-[8px] font-mono uppercase text-indigo-400 font-bold mr-1">[{mem.key}]</span>
+                          <span className="text-slate-300 font-sans font-medium">{mem.value}</span>
+                        </div>
+                        {isHighImportance ? (
+                          <span className="text-[8px] font-mono font-bold px-1 rounded bg-rose-500/20 text-rose-300 border border-rose-500/20 shrink-0 shadow-[0_0_5px_rgba(239,68,68,0.25)]">
+                            IMP: {mem.importance}
+                          </span>
+                        ) : (
+                          <span className="text-[8px] font-mono text-slate-500 font-medium shrink-0">
+                            v{mem.importance || 2}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                {memories.length === 0 && (
+                  <div className="text-[8px] font-mono text-slate-550 text-center py-2 italic">
+                    Memory database is standard cache
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div className="mt-1">
+              <div className="text-[10px] text-slate-400 mb-1">Importance-ranked records</div>
+              <div className="h-0.5 rounded bg-purple-950/40 relative overflow-hidden">
+                <div className="h-full rounded" style={{ width: `${Math.min(memories.length * 15, 100)}%`, background: "linear-gradient(90deg, rgba(124,58,237,0.6), rgba(167,139,250,0.9))", boxShadow: "0 0 6px rgba(124,58,237,0.5)" }} />
+              </div>
             </div>
           </div>
 
-          {/* Agent metric */}
-          <div className="relative rounded-xl overflow-hidden p-3" style={{
-            background: "linear-gradient(135deg, rgba(0,20,10,0.9), rgba(0,10,5,0.8))",
-            border: "1px solid rgba(0,255,136,0.15)",
-            boxShadow: "inset 0 0 20px rgba(0,255,136,0.03)",
+          {/* Agent metric (Recharts latency graph with Critical Event overlay) */}
+          {(() => {
+            const hasCriticalEvent = latency > 50 || apiHealth < 95;
+            return (
+              <div className="col-span-1 md:col-span-1 xl:col-span-1 relative rounded-xl overflow-hidden p-3 flex flex-col justify-between transition-all duration-300" style={{
+                background: hasCriticalEvent 
+                  ? "linear-gradient(135deg, rgba(30,5,5,0.95), rgba(15,2,2,0.9))" 
+                  : "linear-gradient(135deg, rgba(0,20,10,0.92), rgba(0,10,5,0.85))",
+                border: hasCriticalEvent 
+                  ? "1px solid rgba(239,68,68,0.4)" 
+                  : "1px solid rgba(0,255,136,0.18)",
+                boxShadow: hasCriticalEvent 
+                  ? "inset 0 0 20px rgba(239,68,68,0.15), 0 0 15px rgba(239,68,68,0.15)" 
+                  : "inset 0 0 20px rgba(0,255,136,0.03)",
+                backdropFilter: "blur(20px)",
+                minHeight: "140px"
+              }}>
+                {hasCriticalEvent ? (
+                  <div className="absolute top-0 left-0 right-0 h-px animate-pulse" style={{ background: "linear-gradient(90deg, transparent, rgba(239,68,68,0.8), transparent)" }} />
+                ) : (
+                  <div className="absolute top-0 left-0 right-0 h-px" style={{ background: "linear-gradient(90deg, transparent, rgba(0,255,136,0.4), transparent)" }} />
+                )}
+                
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="jarvis-label" style={{ color: hasCriticalEvent ? "rgba(239,68,68,0.9)" : "rgba(0,255,136,0.7)" }}>AGENT CONTROLLER</span>
+                    {hasCriticalEvent ? (
+                      <span className="text-[8px] font-mono text-red-400 bg-red-950/60 px-1.5 py-0.5 rounded border border-red-500/30 animate-pulse font-bold">⚠️ SYSTEM ANOMALY</span>
+                    ) : (
+                      <span className="text-[9px] font-mono text-emerald-400 bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-500/10">LIVE PING</span>
+                    )}
+                  </div>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-xl font-jarvis font-bold" style={{ 
+                      color: hasCriticalEvent ? "#ef4444" : "#00ff88", 
+                      textShadow: hasCriticalEvent ? "0 0 10px rgba(239,68,68,0.5)" : "0 0 10px rgba(0,255,136,0.4)" 
+                    }}>
+                      {latency}ms
+                    </span>
+                    <span className={`text-[10px] font-mono ${hasCriticalEvent ? 'text-rose-400 font-bold' : 'text-slate-400'}`}>
+                      {apiHealth}% health
+                    </span>
+                  </div>
+                </div>
+
+                {/* Recharts compact, futuristic line graph */}
+                <div className="h-14 w-full mt-2 select-none relative rounded overflow-hidden">
+                  {/* Subtle pulsing scanner and glow overlay on graph if anomaly detected */}
+                  {hasCriticalEvent && (
+                    <div className="absolute inset-0 bg-red-950/15 pointer-events-none border border-red-500/10 hover:border-red-500/20 shadow-[inset_0_0_15px_rgba(239,68,68,0.2)] animate-pulse flex items-center justify-center z-10 rounded">
+                      <span className="text-[7px] font-mono text-red-400 font-bold tracking-widest uppercase bg-red-950/80 border border-red-500/20 px-1 rounded shadow">
+                        SCAN_ANOMALY
+                      </span>
+                    </div>
+                  )}
+
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={latencyHistory} margin={{ top: 2, right: 2, left: -32, bottom: 2 }}>
+                      <XAxis dataKey="time" hide />
+                      <YAxis domain={['auto', 'auto']} hide />
+                      <Tooltip
+                        contentStyle={{
+                          background: hasCriticalEvent ? 'rgba(30, 5, 5, 0.95)' : 'rgba(0, 10, 5, 0.95)',
+                          border: hasCriticalEvent ? '1px solid rgba(239, 68, 68, 0.5)' : '1px solid rgba(0, 255, 136, 0.3)',
+                          borderRadius: '6px',
+                          fontSize: '9px',
+                          color: hasCriticalEvent ? '#fecdd3' : '#a7f3d0'
+                        }}
+                        labelStyle={{ display: 'none' }}
+                      />
+                      <Line 
+                        type="monotone" 
+                        dataKey="latency" 
+                        name="Ping" 
+                        stroke={hasCriticalEvent ? "#ef4444" : "#00ff88"} 
+                        strokeWidth={1.5} 
+                        dot={false}
+                        activeDot={{ r: 3 }}
+                      />
+                      <Line 
+                        type="monotone" 
+                        dataKey="health" 
+                        name="Health" 
+                        stroke={hasCriticalEvent ? "#fda4af" : "#a78bfa"} 
+                        strokeWidth={1.0} 
+                        dot={false}
+                        activeDot={{ r: 3 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* System Scratchpad Card (Task 8) */}
+          <div className="col-span-1 md:col-span-1 xl:col-span-1 relative rounded-xl overflow-hidden p-3 flex flex-col justify-between" style={{
+            background: "linear-gradient(135deg, rgba(30,10,25,0.92), rgba(15,5,15,0.85))",
+            border: "1px solid rgba(236,72,153,0.18)",
+            boxShadow: "inset 0 0 20px rgba(236,72,153,0.03)",
             backdropFilter: "blur(20px)",
+            minHeight: "140px"
           }}>
-            <div className="absolute top-0 left-0 right-0 h-px" style={{ background: "linear-gradient(90deg, transparent, rgba(0,255,136,0.4), transparent)" }} />
-            <div className="jarvis-label mb-2" style={{ color: "rgba(0,255,136,0.6)" }}>AGENT</div>
-            <div className="font-jarvis text-3xl font-bold" style={{ color: "#00ff88", textShadow: "0 0 20px rgba(0,255,136,0.5)" }}>{latency}ms</div>
-            <div className="text-[11px] text-slate-400 mt-1">{apiHealth}% health</div>
-            <div className="mt-2 h-0.5 rounded" style={{ background: "rgba(0,255,136,0.1)" }}>
-              <div className="h-full rounded" style={{ width: `${apiHealth}%`, background: "linear-gradient(90deg, rgba(0,255,136,0.6), rgba(0,255,136,0.9))", boxShadow: "0 0 6px rgba(0,255,136,0.5)" }} />
+            <div className="absolute top-0 left-0 right-0 h-px" style={{ background: "linear-gradient(90deg, transparent, rgba(236,72,153,0.4), transparent)" }} />
+            
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="jarvis-label" style={{ color: "rgba(236,72,153,0.7)" }}>SYSTEM SCRATCHPAD</span>
+              {showNotesSaved && (
+                <span className="text-[9px] font-mono text-pink-400 animate-pulse flex items-center gap-1">
+                  <span>●</span> {lang === 'bn' ? 'সংরক্ষিত' : 'Draft saved'}
+                </span>
+              )}
             </div>
+
+            <textarea
+              value={scratchpadDraft}
+              onChange={(e) => {
+                setScratchpadDraft(e.target.value);
+                setNotesUnsaved(true);
+              }}
+              placeholder={lang === 'bn' ? 'এখানে ড্রাফট লিখুন...' : 'Scribble quick draft memo...'}
+              className="w-full text-xs font-sans text-pink-100 placeholder-pink-300/20 bg-pink-950/10 border border-pink-500/10 focus:border-pink-500/30 rounded p-1.5 resize-none grow focus:outline-none"
+              style={{ minHeight: '65px' }}
+            />
           </div>
 
         </div>
@@ -774,24 +1424,36 @@ export default function App() {
         }}>
           <div className="absolute top-0 left-0 right-0 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(0,255,136,0.5), transparent)' }} />
           <div className="p-3">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#00ff88', boxShadow: '0 0 4px #00ff88' }} />
-              <span className="jarvis-label" style={{ color: 'rgba(0,255,136,0.7)' }}>OS QUICK COMMAND</span>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#00ff88', boxShadow: '0 0 4px #00ff88' }} />
+                <span className="jarvis-label" style={{ color: 'rgba(0,255,136,0.7)' }}>OS QUICK COMMAND</span>
+              </div>
+              {showCommandSaved && (
+                <span className="text-[9px] font-mono text-emerald-400 animate-pulse flex items-center gap-1">
+                  <span>●</span> {lang === 'bn' ? 'খসড়া সংরক্ষিত!' : 'Draft saved'}
+                </span>
+              )}
             </div>
             <form onSubmit={async (e) => {
               e.preventDefault();
-              const input = (e.currentTarget.elements.namedItem('qcmd') as HTMLInputElement);
-              const val = input?.value?.trim();
+              const val = qcmdDraft.trim();
               if (!val) return;
-              input.value = '';
+              setQcmdDraft('');
+              localStorage.removeItem('neora_qcmd_draft');
               try {
                 await neoraPost('/api/os/command', { prompt: val });
                 setActiveTab('osAgent');
               } catch { /* ignore */ }
-            }} className="flex gap-2">
+            }} className="flex gap-2 font-mono">
               <input
                 name="qcmd"
                 type="text"
+                value={qcmdDraft}
+                onChange={(e) => {
+                  setQcmdDraft(e.target.value);
+                  setCommandUnsaved(true);
+                }}
                 placeholder={lang === 'bn' ? 'যেমন: নোটপ্যাড খোলো, ফাইল লিখো...' : 'e.g. open notepad, write file hello.txt: Hi'}
                 className="flex-1 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none"
                 style={{
@@ -802,7 +1464,7 @@ export default function App() {
                 onFocus={e => e.currentTarget.style.borderColor = 'rgba(0,255,136,0.5)'}
                 onBlur={e => e.currentTarget.style.borderColor = 'rgba(0,255,136,0.2)'}
               />
-              <button type="submit" className="px-3 py-2 rounded-lg text-xs font-mono font-bold transition-all" style={{
+              <button type="submit" className="px-3 py-2 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer hover:bg-emerald-500/20" style={{
                 background: 'rgba(0,255,136,0.12)',
                 border: '1px solid rgba(0,255,136,0.3)',
                 color: '#00ff88',
@@ -816,130 +1478,150 @@ export default function App() {
       </section>}
 
       {/* Main Content — hidden on Dashboard tab */}
-      {activeTab !== 'home' && <main id="main-content" className="flex-1 flex min-h-0 overflow-hidden">
-        {activeTab === 'neoraTv' && (
-          <NeoraTV
-            lang={lang}
-          />
-        )}
+      {activeTab !== 'home' && (
+        <main id="main-content" className="flex-1 flex min-h-0 overflow-hidden relative">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeTab}
+              className="flex-1 flex min-h-0 overflow-hidden"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.16 }}
+            >
+              {activeTab === 'neoraTv' && (
+                <NeoraTV
+                  lang={lang}
+                />
+              )}
 
-        {activeTab === 'pcController' && (
-          <HostPCControl
-            lang={lang}
-          />
-        )}
+              {activeTab === 'pcController' && (
+                <HostPCControl
+                  lang={lang}
+                />
+              )}
 
-        {activeTab === 'chat' && (
-          <ChatView
-            lang={lang}
-            onAddTask={handleAddTask}
-            onAddReminder={handleAddReminder}
-            onAddNote={handleAddNote}
-            onSearchBlueprints={(query) => {
-              setSearchQuery(query);
-              setActiveTab('blueprint');
-            }}
-            useGroq={useGroq}
-            setUseGroq={setUseGroq}
-            groqKey={groqKey}
-            setGroqKey={setGroqKey}
-            groqModel={groqModel}
-            setGroqModel={setGroqModel}
-            geminiKey={geminiKey}
-            setGeminiKey={setGeminiKey}
-          />
-        )}
+              {activeTab === 'chat' && (
+                <ChatView
+                  lang={lang}
+                  onAddTask={handleAddTask}
+                  onAddReminder={handleAddReminder}
+                  onAddNote={handleAddNote}
+                  onSearchBlueprints={(query) => {
+                    setSearchQuery(query);
+                    setActiveTab('blueprint');
+                  }}
+                  useGroq={useGroq}
+                  setUseGroq={setUseGroq}
+                  groqKey={groqKey}
+                  setGroqKey={setGroqKey}
+                  groqModel={groqModel}
+                  setGroqModel={setGroqModel}
+                  geminiKey={geminiKey}
+                  setGeminiKey={setGeminiKey}
+                />
+              )}
 
-        {activeTab === 'autonomy' && (
-          <PlannerView
-            lang={lang}
-            autonomyLevel={autonomyLevel}
-            setAutonomyLevel={setAutonomyLevel}
-          />
-        )}
+              {activeTab === 'autonomy' && (
+                <PlannerView
+                  lang={lang}
+                  autonomyLevel={autonomyLevel}
+                  setAutonomyLevel={setAutonomyLevel}
+                />
+              )}
 
-        {activeTab === 'productivity' && (
-          <OrganizerView
-            lang={lang}
-            tasks={tasks}
-            reminders={reminders}
-            notes={notes}
-            memories={memories}
-            onAddTask={handleAddTask}
-            onAddReminder={handleAddReminder}
-            onAddNote={handleAddNote}
-            onAddMemory={handleAddMemory}
-            onToggleTask={handleToggleTask}
-            onDeleteTask={handleDeleteTask}
-            onToggleReminder={handleToggleReminder}
-            onDeleteReminder={handleDeleteReminder}
-            onDeleteNote={handleDeleteNote}
-            onDeleteMemory={handleDeleteMemory}
-          />
-        )}
+              {activeTab === 'productivity' && (
+                <OrganizerView
+                  lang={lang}
+                  tasks={tasks}
+                  reminders={reminders}
+                  notes={notes}
+                  memories={memories}
+                  onAddTask={handleAddTask}
+                  onAddReminder={handleAddReminder}
+                  onAddNote={handleAddNote}
+                  onAddMemory={handleAddMemory}
+                  onToggleTask={handleToggleTask}
+                  onDeleteTask={handleDeleteTask}
+                  onToggleReminder={handleToggleReminder}
+                  onDeleteReminder={handleDeleteReminder}
+                  onDeleteNote={handleDeleteNote}
+                  onDeleteMemory={handleDeleteMemory}
+                />
+              )}
 
-        {activeTab === 'invoice' && (
-          <EarningView
-            lang={lang}
-          />
-        )}
+              {activeTab === 'memoriesGraph' && (
+                <MemoriesGraphView
+                  lang={lang}
+                  memories={memories}
+                />
+              )}
 
-        {activeTab === 'dev' && (
-          <DevStudioView
-            lang={lang}
-            useGroq={useGroq}
-            setUseGroq={setUseGroq}
-            groqKey={groqKey}
-            setGroqKey={setGroqKey}
-            groqModel={groqModel}
-            setGroqModel={setGroqModel}
-          />
-        )}
+              {activeTab === 'invoice' && (
+                <EarningView
+                  lang={lang}
+                />
+              )}
 
-        {activeTab === 'osAgent' && (
-          <OsAgentView
-            lang={lang}
-            geminiKey={geminiKey}
-            setGeminiKey={setGeminiKey}
-          />
-        )}
+              {activeTab === 'dev' && (
+                <DevStudioView
+                  lang={lang}
+                  useGroq={useGroq}
+                  setUseGroq={setUseGroq}
+                  groqKey={groqKey}
+                  setGroqKey={setGroqKey}
+                  groqModel={groqModel}
+                  setGroqModel={setGroqModel}
+                />
+              )}
 
-        {activeTab === 'webOs' && (
-          <WebOSSimulator
-            lang={lang}
-          />
-        )}
+              {activeTab === 'osAgent' && (
+                <OsAgentView
+                  lang={lang}
+                  geminiKey={geminiKey}
+                  setGeminiKey={setGeminiKey}
+                />
+              )}
 
-        {activeTab === 'filterLab' && (
-          <FilterLabView
-            lang={lang}
-          />
-        )}
+              {activeTab === 'webOs' && (
+                <WebOSSimulator
+                  lang={lang}
+                />
+              )}
 
-        {activeTab === 'roadmap' && (
-          <RoadmapView
-            lang={lang}
-          />
-        )}
+              {activeTab === 'filterLab' && (
+                <FilterLabView
+                  lang={lang}
+                />
+              )}
 
-{activeTab === 'blueprint' && (
-           <div className="flex-1 flex h-full overflow-hidden shrink-0">
-             <Sidebar
-               searchQuery={searchQuery}
-               setSearchQuery={setSearchQuery}
-               selectedSectionId={selectedSectionId}
-               setSelectedSectionId={setSelectedSectionId}
-               selectedTag={selectedTag}
-               setSelectedTag={setSelectedTag}
-             />
-             <SectionViewer section={selectedSection} />
-           </div>
-         )}
+              {activeTab === 'roadmap' && (
+                <RoadmapView
+                  lang={lang}
+                />
+              )}
 
-         {activeTab === 'vscode' && (
-           <VSCodeView />
-         )}
-       </main>}
+              {activeTab === 'blueprint' && (
+                <div className="flex-1 flex h-full overflow-hidden shrink-0">
+                  <Sidebar
+                    searchQuery={searchQuery}
+                    setSearchQuery={setSearchQuery}
+                    selectedSectionId={selectedSectionId}
+                    setSelectedSectionId={setSelectedSectionId}
+                    selectedTag={selectedTag}
+                    setSelectedTag={setSelectedTag}
+                  />
+                  <SectionViewer section={selectedSection} />
+                </div>
+              )}
+
+              {activeTab === 'vscode' && (
+                <VSCodeView />
+              )}
+            </motion.div>
+          </AnimatePresence>
+        </main>
+      )}
 
       {/* --- UNDO TOAST NOTIFICATION SYSTEM (5-SECOND DISMISS) --- */}
       <AnimatePresence>
@@ -1014,6 +1696,11 @@ export default function App() {
                   placeholder={lang === 'bn' ? 'টাইপ করুনঃ টাস্ক, নোট বা সিস্টেম ব্লুপ্রিন্ট খুঁজুন...' : 'Type to search tasks, notes, or blueprints (CMD+K)...'}
                   value={globalSearchVal}
                   onChange={e => setGlobalSearchVal(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && globalSearchVal.trim()) {
+                      addRecentSearch(globalSearchVal);
+                    }
+                  }}
                   className="w-full bg-transparent text-slate-100 placeholder-slate-500 text-sm border-none outline-none focus:ring-0 focus:border-none focus:outline-none"
                 />
                 <button
@@ -1027,9 +1714,42 @@ export default function App() {
               {/* Suggestions / Results */}
               <div className="flex-1 overflow-y-auto max-h-[60vh] p-4 space-y-4">
                 {globalSearchVal.trim() === '' ? (
-                  <div className="text-center py-8 text-slate-500 font-mono text-xs">
-                    <Activity className="w-8 h-8 text-slate-700 mx-auto mb-2 animate-pulse" />
-                    <span>{lang === 'bn' ? 'পেন্ডিং টাস্ক, ডকুমেন্টস বা ব্লুপ্রিন্ট খুঁজতে শুরু করুন...' : 'Search across all workspaces, specifications, and checklists.'}</span>
+                  <div className="space-y-6">
+                    <div className="text-center py-6 text-slate-500 font-mono text-xs border-b border-slate-900/50">
+                      <Activity className="w-8 h-8 text-slate-700 mx-auto mb-2 animate-pulse" />
+                      <span>{lang === 'bn' ? 'পেন্ডিং টাস্ক, ডকুমেন্টস বা ব্লুপ্রিন্ট খুঁজতে শুরু করুন...' : 'Search across all workspaces, specifications, and checklists.'}</span>
+                    </div>
+
+                    {recentSearches.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center px-1">
+                          <span className="text-[9px] font-bold font-mono text-cyan-400 uppercase tracking-widest">
+                            {lang === 'bn' ? 'সাম্প্রতিক অনুসন্ধান' : 'RECENT SEARCH INQUIRIES'}
+                          </span>
+                          <button
+                            onClick={() => {
+                              setRecentSearches([]);
+                              localStorage.setItem('neora_recent_searches', JSON.stringify([]));
+                            }}
+                            className="text-[9px] font-mono text-slate-600 hover:text-rose-400 transition-colors"
+                          >
+                            [CLEAR ALL]
+                          </button>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {recentSearches.map((qs, qIdx) => (
+                            <button
+                              key={qIdx}
+                              onClick={() => setGlobalSearchVal(qs)}
+                              className="text-[10px] font-mono px-2.5 py-1 rounded bg-slate-920 hover:bg-slate-900 border border-slate-850 hover:border-cyan-500/30 text-slate-300 transition-all cursor-pointer flex items-center gap-1.5"
+                            >
+                              <span className="text-slate-500 text-[9px]">🔍</span>
+                              <span>{qs}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <>
@@ -1044,6 +1764,7 @@ export default function App() {
                             <div
                               key={t.id}
                               onClick={() => {
+                                addRecentSearch(globalSearchVal);
                                 setActiveTab('productivity');
                                 setGlobalSearchVal('');
                                 setIsSearchOpen(false);
@@ -1076,6 +1797,7 @@ export default function App() {
                             <div
                               key={n.id}
                               onClick={() => {
+                                addRecentSearch(globalSearchVal);
                                 setActiveTab('productivity');
                                 setGlobalSearchVal('');
                                 setIsSearchOpen(false);
@@ -1101,6 +1823,7 @@ export default function App() {
                             <div
                               key={s.id}
                               onClick={() => {
+                                addRecentSearch(globalSearchVal);
                                 setSelectedSectionId(s.id);
                                 setActiveTab('blueprint');
                                 setGlobalSearchVal('');
@@ -1131,23 +1854,119 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+      {/* ===== HOLOGRAPHIC VOICE COMMAND TOAST ===== */}
+      <AnimatePresence>
+        {voiceToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.92 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+            className="fixed bottom-20 right-6 z-[90] flex items-center gap-3 px-4 py-3 rounded-xl backdrop-blur-xl border border-cyan-500/40 shadow-[0_0_30px_rgba(0,212,255,0.25)]"
+            style={{
+              background: "linear-gradient(135deg, rgba(0,20,40,0.95), rgba(0,8,22,0.9))",
+            }}
+          >
+            {/* Pulsing visual core */}
+            <div className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping shrink-0" />
+            
+            <div className="flex flex-col text-left">
+              <span className="text-[9px] font-mono uppercase text-cyan-400 font-bold tracking-widest leading-none mb-0.5">VOICE COMMAND EXECUTED</span>
+              <span className="text-xs text-slate-100 font-sans font-medium">{voiceToast.message}</span>
+            </div>
+
+            <button
+              onClick={() => {
+                voiceToast.undo();
+                setVoiceToast(null);
+              }}
+              className="ml-2 px-3 py-1 text-[10px] font-mono font-bold uppercase rounded border border-rose-500/35 bg-rose-500/10 hover:bg-rose-500/20 text-rose-450 transition-all cursor-pointer shadow-[0_0_10px_rgba(239,68,68,0.15)] shrink-0"
+            >
+              {lang === 'bn' ? 'বাতিল' : 'CANCEL'}
+            </button>
+            <button
+              onClick={() => setVoiceToast(null)}
+              className="text-slate-500 hover:text-slate-300 transition-colors p-1 shrink-0"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ===== HOLOGRAPHIC NOTIFICATION SYSTEM ===== */}
       <NeoraNotifications reminders={reminders} apiHealth={apiHealth} />
-
-      {/* ===== COMMAND STATUS CORNER DOCKED INDICATOR ===== */}
-      <CommandStatusIndicator queue={commandQueue} lang={lang} />
-
-      {/* ===== VOICE COMMAND PANEL ===== */}
-      {voicePanelOpen && (
-        <VoiceCommandPanel
-          lang={lang}
-          onAddTask={handleAddTask}
-          onAddNote={handleAddNote}
-          onAddReminder={handleAddReminder}
-          onNavigate={(tab) => { setActiveTab(tab as any); setVoicePanelOpen(false); }}
-          onClose={() => setVoicePanelOpen(false)}
-        />
-      )}
+ 
+       {/* ===== COMMAND STATUS CORNER DOCKED INDICATOR ===== */}
+       <CommandStatusIndicator queue={commandQueue} lang={lang} />
+ 
+       {/* ===== VOICE COMMAND PANEL ===== */}
+       {voicePanelOpen && (
+         <VoiceCommandPanel
+           lang={lang}
+           onAddTask={(title, priority) => {
+             const tempId = Math.random().toString();
+             const newTask: Task = {
+               id: tempId,
+               title,
+               notes: '',
+               priority,
+               dueAt: new Date().toISOString().substring(0, 10),
+               completed: false,
+               tags: []
+             };
+             setTasks(prev => [newTask, ...prev]);
+             triggerDbSyncAnimation();
+             
+             setVoiceToast({
+               id: tempId,
+               message: lang === 'bn' ? `টাস্ক তৈরি: "${title}"` : `Task Created: "${title}"`,
+               undo: () => {
+                 setTasks(prev => prev.filter(t => t.id !== tempId));
+                 triggerDbSyncAnimation();
+               }
+             });
+           }}
+           onAddNote={(title, content) => {
+             const tempId = Math.random().toString();
+             const newNote: Note = {
+               id: tempId,
+               title,
+               content,
+               createdAt: new Date().toLocaleDateString()
+             };
+             setNotes(prev => [newNote, ...prev]);
+             
+             setVoiceToast({
+               id: tempId,
+               message: lang === 'bn' ? `নোট সংরক্ষিত: "${title}"` : `Note Saved: "${title}"`,
+               undo: () => {
+                 setNotes(prev => prev.filter(n => n.id !== tempId));
+               }
+             });
+           }}
+           onAddReminder={(title, remindAt, repeat) => {
+             const tempId = Math.random().toString();
+             const newRem: Reminder = {
+               id: tempId,
+               title,
+               remindAt,
+               repeat,
+               completed: false
+             };
+             setReminders(prev => [newRem, ...prev]);
+             
+             setVoiceToast({
+               id: tempId,
+               message: lang === 'bn' ? `রিমাইন্ডার সেট: "${title}"` : `Reminder Set: "${title}"`,
+               undo: () => {
+                 setReminders(prev => prev.filter(r => r.id !== tempId));
+               }
+             });
+           }}
+           onNavigate={(tab) => { setActiveTab(tab as any); setVoicePanelOpen(false); }}
+           onClose={() => setVoicePanelOpen(false)}
+         />
+       )}
       </Suspense>
     </div>
     </AppShell>

@@ -22,6 +22,8 @@ export interface Task {
   priority: 'low' | 'medium' | 'high' | 'critical';
   dueAt: string;
   completed: boolean;
+  tags?: string[];
+  completedAt?: string;
 }
 
 export interface Reminder {

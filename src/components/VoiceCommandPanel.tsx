@@ -46,13 +46,17 @@ const NAV_ALIASES: Record<string, string> = {
 function parseCommand(text: string): { type: string; payload: any } | null {
   const t = text.toLowerCase().trim();
 
-  if (t.startsWith('task:') || t.startsWith('add task') || t.startsWith('create task') || t.startsWith('new task')) {
-    const title = text.replace(/^(task:|add task|create task|new task)/i, '').trim();
+  if (t.startsWith('task:') || t.startsWith('add task') || t.startsWith('create task') || t.startsWith('new task') || t.includes('add a task') || t.includes('task to create') || t.includes('টাস্ক') || t.includes('কাজ')) {
+    const cleanPrefixRegex = /^(task:|add task|create task|new task|add a task|create a task|নতুন কাজ|টাস্ক যোগ কর|টাস্ক|কাজ)/i;
+    const title = text.replace(cleanPrefixRegex, '').trim();
     if (!title) return null;
-    const priority = t.includes('urgent') || t.includes('critical') ? 'critical'
-      : t.includes('high') ? 'high'
-      : t.includes('low') ? 'low'
+    
+    // Auto-detect priority with multi-language keywords
+    const priority = (t.includes('urgent') || t.includes('critical') || t.includes('জরুরী') || t.includes('জরুরি') || t.includes('অতি গুরুত্বপূর্ণ') || t.includes('অত্যন্ত জরুরী')) ? 'critical'
+      : (t.includes('high') || t.includes('important') || t.includes('গুরুত্বপূর্ণ') || t.includes('গুরুত্বপুর্ন')) ? 'high'
+      : (t.includes('low') || t.includes('trivial') || t.includes('সাধারণ') || t.includes('কম গুরুত্বপূর্ণ')) ? 'low'
       : 'medium';
+    
     return { type: 'task', payload: { title, priority } };
   }
 

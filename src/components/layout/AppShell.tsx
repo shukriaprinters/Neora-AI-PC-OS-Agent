@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import {
   Brain, LayoutDashboard, MessageSquare, Monitor,
   Settings, Workflow, Activity, Zap, Shield, ChevronRight, LayoutGrid,
-  DollarSign, Filter, Milestone, BookOpen, Laptop, Tv, Sliders
+  DollarSign, Filter, Milestone, BookOpen, Laptop, Tv, Sliders, Share2
 } from "lucide-react";
 import { NebulaBackground } from "../NebulaBackground";
 import { VoiceOrb } from "../VoiceOrb";
@@ -15,6 +15,7 @@ const navItems = [
   { id: "pcController", label: "PC Control",  icon: Sliders,         color: "#38bdf8" },
   { id: "autonomy",     label: "Automation",  icon: Workflow,        color: "#1a9fff" },
   { id: "productivity", label: "Memory",      icon: Brain,           color: "#7c3aed" },
+  { id: "memoriesGraph",label: "Memories Graph",icon: Share2,        color: "#38bdf8" },
   { id: "invoice",      label: "Earning",     icon: DollarSign,      color: "#f5a623" },
   { id: "osAgent",      label: "OS Agent",    icon: Monitor,         color: "#00ff88" },
   { id: "webOs",        label: "Neora PC",    icon: Laptop,          color: "#00ff88" },
