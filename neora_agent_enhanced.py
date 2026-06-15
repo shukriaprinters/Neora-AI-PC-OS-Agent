@@ -78,6 +78,23 @@ except Exception:
     PYPERCLIP = False
 
 # ── helpers ──
+CURRENT_SCREENSHOT_DATA = None
+
+def capture_screenshot_base64():
+    if not PYAUTOGUI:
+        return None
+    try:
+        import pyautogui
+        img = pyautogui.screenshot()
+        if img.width > 1920:
+            img.thumbnail((1600, 1000))
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=75)
+        return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("utf-8")
+    except Exception as e:
+        log(f"Failed to capture screen: {e}")
+        return None
+
 def set_clipboard(text):
     if PYPERCLIP:
         pyperclip.copy(text)
@@ -466,7 +483,11 @@ def execute(action, param):
                     return [f"MouseMove: {param}"]
             return ["GUI unavailable"]
         if action == "take_screenshot":
-            return ["Screenshot queued"]
+            global CURRENT_SCREENSHOT_DATA
+            CURRENT_SCREENSHOT_DATA = capture_screenshot_base64()
+            if CURRENT_SCREENSHOT_DATA:
+                return ["Screenshot captured and queued for report"]
+            return ["Screenshot captured failed (or headless mode)"]
         if action == "alert_msg":
             if PYAUTOGUI:
                 pyautogui.alert(text=param or "Neora", title="Neora Agent")
@@ -501,11 +522,18 @@ def poll():
         pass
     return None
 
-def report(cmd_id, status, logs, result):
+def report(cmd_id, status, logs, result, screenshot=None):
     try:
-        session.post(f"{BROKER_URL}/api/os/report",
-                     json={"token": AGENT_TOKEN, "commandId": cmd_id,
-                           "status": status, "logs": logs, "result": result}, timeout=8)
+        payload = {
+            "token": AGENT_TOKEN,
+            "commandId": cmd_id,
+            "status": status,
+            "logs": logs,
+            "result": result
+        }
+        if screenshot:
+            payload["screenshot"] = screenshot
+        session.post(f"{BROKER_URL}/api/os/report", json=payload, timeout=8)
     except Exception:
         pass
 
@@ -539,9 +567,14 @@ def main():
             last_ping = now
         data = poll()
         if data and data.get("hasCommand"):
+            global CURRENT_SCREENSHOT_DATA
+            CURRENT_SCREENSHOT_DATA = None
             actions = data.get("actions", [])
             logs = run_actions(actions)
-            report(data.get("commandId", ""), "success", logs, f"{len(actions)} steps")
+            screenshot_payload = CURRENT_SCREENSHOT_DATA
+            if not screenshot_payload and any(a.get("action") == "take_screenshot" for a in actions):
+                screenshot_payload = capture_screenshot_base64()
+            report(data.get("commandId", ""), "success", logs, f"{len(actions)} steps", screenshot_payload)
         time.sleep(POLL_INTERVAL)
     log("Agent stopped.")
 

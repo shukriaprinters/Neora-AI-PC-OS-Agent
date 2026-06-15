@@ -501,7 +501,7 @@ export function NeoraTV({ lang }: NeoraTVProps) {
                   mixBlendMode: 'color-dodge',
                 }} >
                   <div className="absolute inset-0 scanline-overlay opacity-40" />
-                  <div className="absolute inset-0 animate-pulse bg-pink-500/5" />
+                  <div className="absolute inset-0 bg-pink-500/5" />
                 </div>
               )}
 

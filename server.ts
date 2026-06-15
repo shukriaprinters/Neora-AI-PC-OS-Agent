@@ -4,6 +4,9 @@ import crypto from "node:crypto";
 import path from "path";
 import multer from "multer";
 import dotenv from "dotenv";
+import { createRequire } from "module";
+const require = createRequire(import.meta.url);
+const archiver = require("archiver");
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import { exec as execCb } from "child_process";
@@ -1387,11 +1390,97 @@ app.post("/api/recovery/bundle", (req, res) => {
   res.json({ status: "success" });
 });
 
-app.post("/api/plan/create", (req, res) => {
-  const { goal } = req.body || {};
+app.post("/api/plan/create", async (req, res) => {
+  const { goal, geminiKey } = req.body || {};
   if (!goal || typeof goal !== "string") {
     return res.status(400).json({ error: "Missing goal" });
   }
+
+  const apiKey = geminiKey || process.env.GEMINI_API_KEY;
+  if (apiKey) {
+    try {
+      const client = getGeminiClient(apiKey);
+      const systemInstruction = `You are the Neora 10,000x Autonomous Mission Planner & Strategy Compiler.
+Your job is to translate a high-level user workspace strategy/mission objective into a detailed, sequential, multi-step execution plan.
+Each step you output must have:
+1. kind: One of "shell", "file_write", "code_edit", "verify", "note", "tool_call".
+   - "shell": For running command lines (e.g. launching an executable like notepad, calc, winword, photoshop)
+   - "file_write": For creating/saving a document or file (e.g., writing data, logs, txt files)
+   - "code_edit": For editing coding files or project configurations
+   - "verify": For taking desktop screenshot, verifying window exists, or visual confirmation
+   - "note": For informational summaries or user prompts
+   - "tool_call": For key inputs, keypresses, mouse events, waiting/pauses, opening browsers, or specific API integrations
+2. title: A concise, human-readable name of the step (e.g. "Launch Photoshop Engine", "Create Canvas", "Type Digital Artwork Title", "Desktop Visual Verification"). Keep it clear in either English or Bengali.
+3. payload: The command or information for that step.
+   - For launching software: e.g. "photoshop", "winword", "notepad", "mspaint"
+   - For writing a text file: "filename:content"
+   - For clicking, waiting, typing, or key combo: e.g. "press_key: ctrl+n", "wait: 5.0", "type_text: design title", "save_file_as: poster.psd", "open_browser: https://github.com"
+   - For verification: "Verify Photoshop opened and take screenshot"
+
+Analyze the goals meticulously. Even if the user objective is in Bengali or Banglish (e.g. 'Photoshop r illustrator 2 tai chalu koro, wait duto tei screenshot ne'), parse the intent perfectly and compilation steps accordingly.
+Output exactly a JSON object matching the requested schema. Ensure the final step is always a 'verify' kind to trigger screenshot capture on client side.`;
+
+      const response = await client.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: `Compile a sequential mission plan for the goal: "${goal}"`,
+        config: {
+          systemInstruction: systemInstruction,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              steps: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    kind: {
+                      type: Type.STRING,
+                      description: "The kind: shell, file_write, code_edit, verify, note, tool_call"
+                    },
+                    title: {
+                      type: Type.STRING,
+                      description: "Concise human-friendly title"
+                    },
+                    payload: {
+                      type: Type.STRING,
+                      description: "The execution command or argument"
+                    }
+                  },
+                  required: ["kind", "title", "payload"]
+                }
+              }
+            },
+            required: ["steps"]
+          },
+          temperature: 0.1
+        }
+      });
+
+      const parsed = JSON.parse(response.text.trim());
+      if (parsed && Array.isArray(parsed.steps)) {
+        const stepsWithIds = parsed.steps.map((s: any) => ({
+          id: `step-${Math.random().toString(36).slice(2, 9)}`,
+          kind: s.kind,
+          title: s.title,
+          payload: s.payload,
+          status: "pending" as const
+        }));
+        const plan = {
+          id: `plan-${Math.random().toString(36).slice(2, 9)}`,
+          goal,
+          steps: stepsWithIds,
+          status: "pending" as const
+        };
+        const stored = upsertPlan(plan);
+        return res.json({ status: "success", plan: stored });
+      }
+    } catch (err: any) {
+      console.error("Failed to generate dynamic plan with Gemini, falling back to local compiler:", err);
+    }
+  }
+
+  // Fallback to local rule-based planner
   const plan = buildNeoraPlan(goal);
   const stored = upsertPlan(plan);
   res.json({ status: "success", plan: stored });
@@ -1710,6 +1799,107 @@ app.get("/api/os/processes", (req, res) => {
     timestamp: new Date().toISOString(),
     clipboardSnapshot: "Designed professionally by Neora Operator"
   });
+});
+
+function copyFolderRecursiveSync(source: string, target: string) {
+  if (!fs.existsSync(target)) {
+    fs.mkdirSync(target, { recursive: true });
+  }
+
+  const files = fs.readdirSync(source);
+  let filesCopied = 0;
+  for (const file of files) {
+    if (file === ".git" || file === "node_modules" || file === "dist" || file === "temp_sync_pull" || file === "temp_log_repo") {
+      continue;
+    }
+
+    const curSource = path.join(source, file);
+    const curTarget = path.join(target, file);
+
+    if (fs.lstatSync(curSource).isDirectory()) {
+      filesCopied += copyFolderRecursiveSync(curSource, curTarget);
+    } else {
+      fs.copyFileSync(curSource, curTarget);
+      filesCopied++;
+    }
+  }
+  return filesCopied;
+}
+
+// Sync Pull from GitHub to Google Cloud
+app.all("/api/sync/pull", async (req, res) => {
+  const tempRepo = path.join(process.cwd(), "temp_sync_pull");
+  try {
+    if (fs.existsSync(tempRepo)) {
+      fs.rmSync(tempRepo, { recursive: true, force: true });
+    }
+
+    console.log("Starting cloud sync pull from GitHub...");
+    const cloneCmd = "git clone --depth 1 https://github.com/shukriaprinters/Neora-AI-PC-OS-Agent.git temp_sync_pull";
+    await exec(cloneCmd);
+
+    const count = copyFolderRecursiveSync(tempRepo, process.cwd());
+
+    fs.rmSync(tempRepo, { recursive: true, force: true });
+
+    console.log(`Cloud sync pull completed. Copied ${count} files.`);
+    res.json({
+      success: true,
+      message: "Sync pull succeeded! Google Cloud files updated from GitHub.",
+      filesCount: count
+    });
+  } catch (error: any) {
+    console.error("Error during sync pull:", error);
+    try {
+      if (fs.existsSync(tempRepo)) {
+        fs.rmSync(tempRepo, { recursive: true, force: true });
+      }
+    } catch {}
+    res.status(500).json({
+      success: false,
+      error: error.message || String(error)
+    });
+  }
+});
+
+// Download cloud changes as a ZIP file to local PC
+app.get("/api/sync/download", (req, res) => {
+  try {
+    const archive = archiver("zip", {
+      zlib: { level: 9 }
+    });
+
+    res.attachment("neora_cloud_workspace.zip");
+    res.setHeader("Content-Type", "application/zip");
+
+    archive.on("error", (err) => {
+      console.error("Archive error:", err);
+      if (!res.headersSent) {
+        res.status(500).send({ error: err.message });
+      }
+    });
+
+    archive.pipe(res);
+
+    archive.glob("**/*", {
+      cwd: process.cwd(),
+      ignore: [
+        "node_modules/**",
+        ".git/**",
+        "dist/**",
+        "temp_sync_pull/**",
+        "temp_log_repo/**",
+        "**/*.zip"
+      ]
+    });
+
+    archive.finalize();
+  } catch (error: any) {
+    console.error("Sync download error:", error);
+    if (!res.headersSent) {
+      res.status(500).send({ error: error.message });
+    }
+  }
 });
 
 // Other API routes, like health

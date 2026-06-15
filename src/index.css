@@ -115,11 +115,7 @@ body, #root {
 }
 
 @keyframes holographic-flicker {
-  0%, 92%, 100% { opacity: 1; }
-  93% { opacity: 0.85; }
-  94% { opacity: 1; }
-  96% { opacity: 0.9; }
-  97% { opacity: 1; }
+  0%, 100% { opacity: 1; }
 }
 
 @keyframes data-stream {
@@ -182,12 +178,13 @@ body, #root {
 
 /* ===== HOLOGRAPHIC SCANLINE ===== */
 .holo-scanline-container {
+  display: none !important;
   pointer-events: none;
   position: fixed;
   inset: 0;
   z-index: 50;
   overflow: hidden;
-  opacity: 0.3;
+  opacity: 0;
 }
 
 .holo-scanline-bar {

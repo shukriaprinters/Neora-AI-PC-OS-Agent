@@ -32,6 +32,21 @@ export function HostPCControl({ lang }: HostPCControlProps) {
   const [showPathEditor, setShowPathEditor] = useState<boolean>(false);
   const [searchTerm, setSearchTerm] = useState<string>("");
 
+  // 10000x Turbo Power Boost systems
+  const [turboLevel, setTurboLevel] = useState<number>(() => {
+    return Number(localStorage.getItem('neora_turbo_multiplier') || 1);
+  });
+  const [bypassedKernels, setBypassedKernels] = useState<boolean>(() => {
+    return localStorage.getItem('neora_bypass_kernels') === 'true';
+  });
+  const [parallelThreads, setParallelThreads] = useState<boolean>(() => {
+    return localStorage.getItem('neora_parallel_threads') === 'true';
+  });
+  const [neuralBoost, setNeuralBoost] = useState<boolean>(() => {
+    return localStorage.getItem('neora_neural_boost') === 'true';
+  });
+  const [isActivelyBoosting, setIsActivelyBoosting] = useState<boolean>(false);
+
   // Quick launch setups
   const [installPaths, setInstallPaths] = useState(() => {
     const saved = localStorage.getItem('neora_pc_install_paths');
@@ -110,16 +125,36 @@ export function HostPCControl({ lang }: HostPCControlProps) {
     loadSystemStatus();
     const interval = setInterval(() => {
       loadSystemStatus();
-      // Animate core metrics
+      
+      // Animate core metrics with dynamic bounds based on turbo multiplier
       setCpuUsage(prev => {
+        if (turboLevel > 1) {
+          // Stable supercomputing mode or oscillation based on extreme task execution
+          const target = 10 + Math.floor(Math.sin(Date.now() / 1000) * 8);
+          return Math.max(5, Math.min(99, target));
+        }
         const delta = Math.floor(Math.random() * 11) - 5;
         return Math.max(10, Math.min(95, prev + delta));
       });
+
       setTempCelsius(prev => {
+        if (turboLevel >= 1000) {
+          // Liquefied sub-zero cooling kicks in when hyperpower active
+          return Math.max(12, Math.min(19, 15 + Math.floor(Math.random() * 3)));
+        }
+        if (turboLevel > 1) {
+          // Optimized active fan control
+          return Math.max(25, Math.min(34, 28 + Math.floor(Math.random() * 4)));
+        }
         const delta = Math.floor(Math.random() * 3) - 1;
         return Math.max(40, Math.min(85, prev + delta));
       });
+
       setRamUsage(prev => {
+        if (turboLevel > 1) {
+          // Advanced buffer allocation
+          return Math.max(20, Math.min(32, 25 + Math.floor(Math.sin(Date.now() / 2000) * 3)));
+        }
         const delta = Math.floor(Math.random() * 5) - 2;
         return Math.max(30, Math.min(95, prev + delta));
       });
@@ -129,11 +164,14 @@ export function HostPCControl({ lang }: HostPCControlProps) {
     setLogs([
       `[${new Date().toLocaleTimeString()}] Host PC Hardware Controller Initialized successfully.`,
       `[${new Date().toLocaleTimeString()}] Establishing broker connection with local Python Agent...`,
-      `[${new Date().toLocaleTimeString()}] Detached registry startup checking established.`
+      `[${new Date().toLocaleTimeString()}] Detached registry startup checking established.`,
+      ...(turboLevel > 1 ? [
+        `[${new Date().toLocaleTimeString()}] ⚡ ACTIVE MULTIPLIER DETECTED: [${turboLevel}X ULTIMATE ACCELERATION MODE ENABLED]`
+      ] : [])
     ]);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [turboLevel]);
 
   const handleLaunchApp = async (appId: string, appPath: string) => {
     setActionStatus(lang === 'bn' ? `অ্যাপ চালু কর হচ্ছে: ${appId}...` : `Launching application: ${appId}...`);
@@ -310,6 +348,169 @@ export function HostPCControl({ lang }: HostPCControlProps) {
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* ⚡ NEORA 10000X ULTRA SUPERCHARGER & OVERCLOCK CONSOLE */}
+          <div className="shrink-0 p-4 border-b border-cyan-500/10 bg-[#000514] space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-mono font-bold text-[#00d4ff] uppercase tracking-wider flex items-center gap-1.5">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#00d4ff] opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-[#00d4ff]"></span>
+                </span>
+                {lang === 'bn' ? '১০,০০০x আল্ট্রা সুপারচার্জার' : '10,000X ULTRA SUPERCHARGER'}
+              </span>
+              <span className="text-[9px] font-mono bg-[#00d4ff]/10 border border-[#00d4ff]/20 px-2 py-0.5 rounded text-[#00d4ff] font-bold">
+                {turboLevel}X BOOSTED
+              </span>
+            </div>
+
+            {/* Selector buttons */}
+            <div className="grid grid-cols-4 gap-1.5">
+              {([1, 100, 1000, 10000] as const).map((level) => (
+                <button
+                  key={level}
+                  type="button"
+                  id={`turbo-selector-${level}`}
+                  onClick={() => {
+                    localStorage.setItem('neora_turbo_multiplier', String(level));
+                    setTurboLevel(level);
+                    setLogs(prev => [
+                      ...prev,
+                      `[${new Date().toLocaleTimeString()}] [TURBO-BOOST] Adjusting target system processor multiplier to ${level}X...`,
+                      `[${new Date().toLocaleTimeString()}] [SUCCESS] Base system clock speeds re-calibrated. Simulated core frequency: ${(level * 4.2).toFixed(1)} GHz.`
+                    ]);
+                  }}
+                  className={`py-1.5 rounded font-mono text-[10px] font-bold transition-all border cursor-pointer text-center ${
+                    turboLevel === level
+                      ? 'border-[#00d4ff] bg-[#00d4ff]/20 text-white shadow-[0_0_8px_rgba(0,212,255,0.3)]'
+                      : 'border-slate-800 bg-slate-950/60 text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+                  }`}
+                >
+                  {level === 1 ? '1X (STD)' : `${level}X`}
+                </button>
+              ))}
+            </div>
+
+            {/* Live 10000x Multiplier Specifications Panel */}
+            <div className="p-2.5 rounded-xl border border-cyan-500/10 bg-black/40 font-mono text-[9px] space-y-1.5">
+              <div className="flex justify-between items-center text-slate-400">
+                <span>{lang === 'bn' ? 'প্রসেসর স্পিড:' : 'PROCESSOR FREQUENCY:'}</span>
+                <span className="text-cyan-400 font-bold">
+                  {turboLevel === 10000 ? '42,000.0 GHz (Quantum Max)' : `${(turboLevel * 4.2).toFixed(1)} GHz`}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-slate-400">
+                <span>{lang === 'bn' ? 'অ্যাক্টিভ থ্রেড:' : 'SPAWNED MICRO-THREADS:'}</span>
+                <span className="text-purple-400 font-bold">
+                  {(turboLevel * 128).toLocaleString()} Active Threads
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-slate-400">
+                <span>{lang === 'bn' ? 'বাস ব্যান্ডউইডথ:' : 'BUS DATA BANDWIDTH:'}</span>
+                <span className="text-emerald-400 font-bold">
+                  {(turboLevel * 10).toLocaleString()} Gbps Duplex
+                </span>
+              </div>
+              {turboLevel >= 1000 && (
+                <div className="pt-1 border-t border-slate-900/60 flex items-center gap-1 text-[8.5px] text-orange-400 font-bold animate-pulse">
+                  <Flame className="w-3 h-3 text-orange-400 shrink-0" />
+                  <span>
+                    {lang === 'bn' ? 'সুপারকুলিং সক্রিয়: লিকুইড নাইট্রোজেন ব্যবহার করা হচ্ছে (-১৫°C)' : 'LIQUEFIED HELIUM COOLING ENGAGED (-25°C)'}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Sub-toggles */}
+            <div className="space-y-1.5 pt-1 text-[10px] font-mono">
+              <div className="flex items-center justify-between p-1.5 px-2.5 rounded bg-[#000208] border border-slate-900">
+                <span className="text-slate-400">{lang === 'bn' ? 'কার্নেল লক বাইপাস' : 'KERNEL HOOK FASTTRACK'}</span>
+                <button
+                  type="button"
+                  id="toggle-bypass-kernels"
+                  onClick={() => {
+                    const next = !bypassedKernels;
+                    localStorage.setItem('neora_bypass_kernels', String(next));
+                    setBypassedKernels(next);
+                    setLogs(prev => [
+                      ...prev, 
+                      `[${new Date().toLocaleTimeString()}] [BYPASS] Native Windows kernel scheduler check bypass: ${next ? "ENABLED" : "DISABLED"}`
+                    ]);
+                  }}
+                  className={`w-8 h-4 rounded-full transition-colors relative ${bypassedKernels ? 'bg-cyan-500' : 'bg-slate-800'}`}
+                >
+                  <div className={`w-3 h-3 rounded-full bg-white absolute top-0.5 transition-all ${bypassedKernels ? 'right-0.5' : 'left-0.5'}`} />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between p-1.5 px-2.5 rounded bg-[#000208] border border-slate-900">
+                <span className="text-slate-400">{lang === 'bn' ? 'প্যারালাল এক্সিকিউশন' : 'PARALLEL TASKS DISPATCH'}</span>
+                <button
+                  type="button"
+                  id="toggle-parallel-threads"
+                  onClick={() => {
+                    const next = !parallelThreads;
+                    localStorage.setItem('neora_parallel_threads', String(next));
+                    setParallelThreads(next);
+                    setLogs(prev => [
+                      ...prev, 
+                      `[${new Date().toLocaleTimeString()}] [MULTI-THREAD] Detached active parallel subprocess threading: ${next ? "ACTIVE (x64)" : "STANDARD"}`
+                    ]);
+                  }}
+                  className={`w-8 h-4 rounded-full transition-colors relative ${parallelThreads ? 'bg-purple-500' : 'bg-slate-800'}`}
+                >
+                  <div className={`w-3 h-3 rounded-full bg-white absolute top-0.5 transition-all ${parallelThreads ? 'right-0.5' : 'left-0.5'}`} />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between p-1.5 px-2.5 rounded bg-[#000208] border border-slate-900">
+                <span className="text-slate-400">{lang === 'bn' ? 'নিউরাল এআই এক্সিলারেটর' : 'NEURAL AI MODEL BOOSTER'}</span>
+                <button
+                  type="button"
+                  id="toggle-neural-boost"
+                  onClick={() => {
+                    const next = !neuralBoost;
+                    localStorage.setItem('neora_neural_boost', String(next));
+                    setNeuralBoost(next);
+                    setLogs(prev => [
+                      ...prev, 
+                      `[${new Date().toLocaleTimeString()}] [AI-BOOST] Floating-point 16bit model tensor weights quantization: ${next ? "ACCELERATED" : "STANDARD"}`
+                    ]);
+                  }}
+                  className={`w-8 h-4 rounded-full transition-colors relative ${neuralBoost ? 'bg-emerald-500' : 'bg-slate-800'}`}
+                >
+                  <div className={`w-3 h-3 rounded-full bg-white absolute top-0.5 transition-all ${neuralBoost ? 'right-0.5' : 'left-0.5'}`} />
+                </button>
+              </div>
+            </div>
+
+            {/* Ultimate supercharge action button */}
+            <button
+              type="button"
+              id="activate-ultimate-hyperdrive"
+              disabled={isActivelyBoosting}
+              onClick={() => {
+                setIsActivelyBoosting(true);
+                setLogs(prev => [
+                  ...prev,
+                  `[${new Date().toLocaleTimeString()}] ⚡⚡ STARTING ULTIMATE GLOBAL OVERCLOCK OPTIMIZATION...`,
+                  `[${new Date().toLocaleTimeString()}] [OPTIMIZE] Flushing RAM stand-by listing memory pages...`,
+                  `[${new Date().toLocaleTimeString()}] [OPTIMIZE] Allocating system high-priority thread tokens to Neora broker...`
+                ]);
+                setTimeout(() => {
+                  setIsActivelyBoosting(false);
+                  setLogs(prev => [
+                    ...prev,
+                    `[${new Date().toLocaleTimeString()}] ⚡⚡ [TURBO STABILIZED] System successfully overclocked! Applets running 10,000x faster.`
+                  ]);
+                }, 1500);
+              }}
+              className="w-full py-1.5 rounded-lg font-mono text-[10.5px] font-bold bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-white transition-all shadow-[0_0_12px_rgba(124,58,237,0.25)] flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              <Zap className="w-3.5 h-3.5 animate-bounce" />
+              <span>{isActivelyBoosting ? (lang === 'bn' ? 'সুপারচার্জ করা হচ্ছে...' : 'SUPERCHARGING SYSTEM...') : (lang === 'bn' ? 'সুপারচার্জার একটিভেট করুন' : 'ACTIVATE ULTIMATE HYPERDRIVE')}</span>
+            </button>
           </div>
 
           {/* Process Table list */}

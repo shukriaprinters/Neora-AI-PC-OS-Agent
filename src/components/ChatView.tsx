@@ -63,7 +63,22 @@ export function ChatView({
   setGeminiKey
 }: ChatViewProps) {
   const t = TRANSLATIONS[lang];
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(() => {
+    try {
+      const saved = localStorage.getItem('neora_chat_messages');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('neora_chat_messages', JSON.stringify(messages));
+    } catch (e) {
+      console.warn('Failed to save chat messages:', e);
+    }
+  }, [messages]);
   const [inputValue, setInputValue] = useState('');
   const [isListening, setIsListening] = useState(false);
   const [speakVolumeOn, setSpeakVolumeOn] = useState(true);
