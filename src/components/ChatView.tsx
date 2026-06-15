@@ -394,30 +394,45 @@ export function ChatView({
       
       const sentenceText = sentences[index];
       const utterance = new SpeechSynthesisUtterance(sentenceText);
-      utterance.lang = lang === 'bn' ? 'bn-BD' : 'en-US';
+      const containsBangla = /[\u0980-\u09FF]/.test(sentenceText);
+      const isBn = lang === 'bn' || containsBangla;
+      utterance.lang = isBn ? 'bn-BD' : 'en-US';
       utterance.rate = 0.98; // elegant and melodic rate
       utterance.pitch = 1.08; // gorgeous, soft female voice pitch
       
       const voices = synth.getVoices();
       
-      // Proactively match sweet female Bengali voice or primary Google/Microsoft natural voices
-      const preferred = voices.find(v => {
-        const nameLower = v.name.toLowerCase();
-        const isBengali = v.lang.startsWith('bn') || nameLower.includes('bengali') || nameLower.includes('bangla') || nameLower.includes('বাংলা');
-        return isBengali && (
-          nameLower.includes('sabina') || 
-          nameLower.includes('kalpana') || 
-          nameLower.includes('sanjukta') || 
-          nameLower.includes('female') ||
-          nameLower.includes('online') ||
-          nameLower.includes('google')
+      // Proactively match sweet female voice or primary natural voices
+      let preferred = null;
+      if (isBn) {
+        preferred = voices.find(v => {
+          const nameLower = v.name.toLowerCase();
+          const isBengali = v.lang.startsWith('bn') || nameLower.includes('bengali') || nameLower.includes('bangla') || nameLower.includes('বাংলা');
+          return isBengali && (
+            nameLower.includes('sabina') || 
+            nameLower.includes('kalpana') || 
+            nameLower.includes('sanjukta') || 
+            nameLower.includes('female') ||
+            nameLower.includes('online') ||
+            nameLower.includes('google')
+          );
+        }) || voices.find(v => 
+          v.lang.startsWith('bn') || 
+          v.name.toLowerCase().includes('bengali') || 
+          v.name.toLowerCase().includes('bangla') || 
+          v.name.toLowerCase().includes('বাংলা')
         );
-      }) || voices.find(v => 
-        v.lang.startsWith('bn') || 
-        v.name.toLowerCase().includes('bengali') || 
-        v.name.toLowerCase().includes('bangla') || 
-        v.name.toLowerCase().includes('বাংলা')
-      );
+      } else {
+        preferred = voices.find(v => {
+          const nameLower = v.name.toLowerCase();
+          return v.lang.startsWith('en') && (
+            nameLower.includes('zira') || 
+            nameLower.includes('samantha') || 
+            nameLower.includes('google') || 
+            nameLower.includes('female')
+          );
+        });
+      }
       
       if (preferred) {
         utterance.voice = preferred;
@@ -1355,11 +1370,11 @@ export function ChatView({
                   {lang === 'bn' ? 'সক্রিয় জেমিনি মডেল:' : 'Active Gemini Model:'}
                 </label>
                 <div className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-rose-400 font-bold font-mono">
-                  gemini-3.5-flash (Standard)
+                  gemini-2.5-flash (Standard)
                 </div>
                 <span className="text-[8px] text-slate-500 block leading-tight">
                   {lang === 'bn' 
-                    ? '✦ Neora স্বয়ংক্রিয়ভাবে জেমিনি ৩.৫ ফ্ল্যাশ ব্যবহার করে।' 
+                    ? '✦ Neora স্বয়ংক্রিয়ভাবে জেমিনি ২.৫ ফ্ল্যাশ ব্যবহার করে।' 
                     : '✦ Fully optimized version for low-level automation compilers.'}
                 </span>
               </div>

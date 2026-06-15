@@ -514,7 +514,7 @@ app.post("/api/chat-gemini", async (req, res) => {
     }));
 
     const response = await client.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.5-flash",
       contents: formattedContents,
       config: {
         systemInstruction: systemInstruction,
@@ -593,7 +593,7 @@ Rules:
 
     const client = getGeminiClient(geminiKey);
     const response = await client.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.5-flash",
       contents: `Please enhance this prompt: "${prompt}"`,
       config: {
         systemInstruction: sysInstruction,
@@ -1053,7 +1053,7 @@ Always add a "take_screenshot" action at the end/mid of the sequence so that the
 Output ONLY the final raw JSON action plan matching the response schema!`;
 
     const response = await client.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.5-flash",
       contents: prompt,
       config: {
         systemInstruction: systemInstruction,
@@ -1420,7 +1420,7 @@ Analyze the goals meticulously. Even if the user objective is in Bengali or Bang
 Output exactly a JSON object matching the requested schema. Ensure the final step is always a 'verify' kind to trigger screenshot capture on client side.`;
 
       const response = await client.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: "gemini-2.5-flash",
         contents: `Compile a sequential mission plan for the goal: "${goal}"`,
         config: {
           systemInstruction: systemInstruction,
@@ -1737,7 +1737,7 @@ app.post("/api/os/vision", async (req, res) => {
     };
 
     const visionResult = await client.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.5-flash",
       contents: { parts: [imagePart, textPart] },
       config: {
         responseMimeType: "application/json",
