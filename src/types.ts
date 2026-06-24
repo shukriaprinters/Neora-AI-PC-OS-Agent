@@ -78,6 +78,11 @@ export interface Message {
   content: string;
   timestamp: string;
   classification?: 'chat' | 'os-command' | 'rejected';
+  brainUsed?: 'gemini' | 'groq' | 'ollama' | 'offline';
+  image?: {
+    data: string;
+    mimeType: string;
+  };
 }
 
 export interface PlanStep {

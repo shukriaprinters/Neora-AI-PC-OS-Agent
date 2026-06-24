@@ -22,6 +22,7 @@ const navItems = [
   { id: "filterLab",    label: "Filter Lab",  icon: Filter,          color: "#00d4ff" },
   { id: "roadmap",      label: "Roadmap",     icon: Milestone,       color: "#1a9fff" },
   { id: "blueprint",    label: "Specs",       icon: BookOpen,        color: "#00d4ff" },
+  { id: "evolution",    label: "Self-Evolution", icon: Zap,          color: "#00ffcc" },
   { id: "dev",          label: "Settings",    icon: Settings,        color: "#f5a623" },
   { id: "vscode",       label: "Workspace",   icon: LayoutDashboard, color: "#00d4ff" },
 ] as const;

@@ -91,7 +91,7 @@ export function Terminal({ onClose }: TerminalProps) {
           <button
             onClick={() => {
               const history = VSCodeDB.getCommandHistory().then(h => {
-                setOutputs(prev => [...prev, ...h.map(c => ({ type: 'output', content: c.command }))]);
+                setOutputs(prev => [...prev, ...h.map(c => ({ type: 'output' as const, content: c.command }))]);
               });
             }}
             className="p-1.5 text-slate-500 hover:text-slate-300 cursor-pointer"

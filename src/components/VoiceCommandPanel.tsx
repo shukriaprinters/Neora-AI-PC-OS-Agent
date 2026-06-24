@@ -10,6 +10,7 @@ interface VoiceCommandPanelProps {
   onNavigate: (tab: string) => void;
   onClose: () => void;
   lang: 'en' | 'bn';
+  onSelfEvolution?: (action: string) => void;
 }
 
 interface RecentCmd {
@@ -45,6 +46,10 @@ const NAV_ALIASES: Record<string, string> = {
 
 function parseCommand(text: string): { type: string; payload: any } | null {
   const t = text.toLowerCase().trim();
+
+  if (t.includes('optimize') || t.includes('self-evolution') || t.includes('self evolution') || t.includes('অপ্টিমাইজ') || t.includes('সিস্টেম আপডেট') || t.includes('উন্নয়ন')) {
+    return { type: 'self-evolution', payload: { action: 'optimize-dashboard' } };
+  }
 
   if (t.startsWith('task:') || t.startsWith('add task') || t.startsWith('create task') || t.startsWith('new task') || t.includes('add a task') || t.includes('task to create') || t.includes('টাস্ক') || t.includes('কাজ')) {
     const cleanPrefixRegex = /^(task:|add task|create task|new task|add a task|create a task|নতুন কাজ|টাস্ক যোগ কর|টাস্ক|কাজ)/i;
@@ -90,7 +95,7 @@ function parseCommand(text: string): { type: string; payload: any } | null {
   return null;
 }
 
-export function VoiceCommandPanel({ onAddTask, onAddNote, onAddReminder, onNavigate, onClose, lang }: VoiceCommandPanelProps) {
+export function VoiceCommandPanel({ onAddTask, onAddNote, onAddReminder, onNavigate, onClose, lang, onSelfEvolution }: VoiceCommandPanelProps) {
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [feedback, setFeedback] = useState<{ msg: string; ok: boolean } | null>(null);
@@ -300,6 +305,13 @@ export function VoiceCommandPanel({ onAddTask, onAddNote, onAddReminder, onNavig
           } else if (cmd.type === 'navigate') {
             onNavigate(cmd.payload.tab);
             actionLabel = `Navigated to ${cmd.payload.dest}`;
+          } else if (cmd.type === 'self-evolution') {
+            if (onSelfEvolution) {
+              onSelfEvolution(cmd.payload.action);
+            }
+            actionLabel = lang === 'bn' 
+              ? 'ড্যাশবোর্ড অপ্টিমাইজেশন সম্পন্ন!' 
+              : 'Autonomous layout optimization executed!';
           }
         } catch {
           ok = false;
@@ -384,7 +396,7 @@ export function VoiceCommandPanel({ onAddTask, onAddNote, onAddReminder, onNavig
         }
       }
     }
-  }, [isListening, transcript, onAddTask, onAddNote, onAddReminder, onNavigate]);
+  }, [isListening, transcript, onAddTask, onAddNote, onAddReminder, onNavigate, onSelfEvolution]);
 
   const BAR_COLOR = isListening ? '#00d4ff' : 'rgba(0,212,255,0.25)';
 

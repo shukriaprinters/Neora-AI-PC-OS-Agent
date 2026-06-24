@@ -1,11 +1,12 @@
 import React, { useRef, useEffect, useState } from 'react';
 import * as d3 from 'd3';
-import { Memory } from '../types';
+import { Memory, Task } from '../types';
 import { Brain, Sparkles, AlertCircle, Info, Database, Eye, Share2, ZoomIn, ZoomOut, RotateCcw, Filter } from 'lucide-react';
 
 interface MemoriesGraphViewProps {
   lang: 'en' | 'bn';
   memories: Memory[];
+  tasks?: Task[];
 }
 
 interface GraphNode extends d3.SimulationNodeDatum {
@@ -26,7 +27,7 @@ interface GraphLink {
   target: string;
 }
 
-export function MemoriesGraphView({ lang, memories }: MemoriesGraphViewProps) {
+export function MemoriesGraphView({ lang, memories, tasks = [] }: MemoriesGraphViewProps) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
@@ -50,7 +51,7 @@ export function MemoriesGraphView({ lang, memories }: MemoriesGraphViewProps) {
   }, []);
 
   // Filter memories if necessary
-  const filteredMemories = filterCategory === 'all' 
+  const filteredMemories = filterCategory === 'all' || filterCategory === 'tasks' 
     ? memories 
     : memories.filter(m => m.category === filterCategory);
 
@@ -116,6 +117,55 @@ export function MemoriesGraphView({ lang, memories }: MemoriesGraphViewProps) {
         target: `hub-${mem.category}`
       });
     });
+
+    // Add Tasks & Dependencies Nodes
+    const showTasks = filterCategory === 'all' || filterCategory === 'tasks';
+    if (showTasks && tasks && tasks.length > 0) {
+      nodes.push({
+        id: "hub-tasks",
+        label: "TASKS HUB",
+        category: "tasks",
+        importance: 4,
+        isHub: true,
+        detail: lang === 'bn' 
+          ? "সিস্টেমের সকল চলমান ও সম্পন্ন কাজের হাব" 
+          : "Central hub tracking active, pending and completed tasks."
+      });
+
+      links.push({
+        source: "hub-tasks",
+        target: "core"
+      });
+
+      tasks.forEach(task => {
+        const taskIdStr = `task-${task.id}`;
+        nodes.push({
+          id: taskIdStr,
+          label: task.title,
+          category: "tasks",
+          importance: task.priority === 'critical' ? 4 : task.priority === 'high' ? 3 : 2,
+          isHub: false,
+          detail: `[Priority: ${task.priority.toUpperCase()}] ${task.title}. Status: ${task.completed ? 'COMPLETED' : 'PENDING'}`
+        });
+
+        links.push({
+          source: taskIdStr,
+          target: "hub-tasks"
+        });
+
+        // Dynamic cognitive dependency linking memories & tasks via fuzzy keyword match
+        filteredMemories.forEach(mem => {
+          const mKey = mem.key.toLowerCase();
+          const tTitle = task.title.toLowerCase();
+          if (tTitle.includes(mKey) || mKey.includes(tTitle) || (mKey.length > 3 && tTitle.includes(mKey.substring(0, 4)))) {
+            links.push({
+              source: taskIdStr,
+              target: mem.id
+            });
+          }
+        });
+      });
+    }
 
     // 2. Setup D3 Objects
     const svg = d3.select(svgRef.current)
@@ -188,6 +238,7 @@ export function MemoriesGraphView({ lang, memories }: MemoriesGraphViewProps) {
       work: "#eab308",        // Yellow
       preference: "#06b6d4",  // Cyan
       skill: "#ec4899",       // Pink
+      tasks: "#f97316",       // Orange for Tasks
     };
 
     const glowFilters: Record<string, string> = {
@@ -196,6 +247,7 @@ export function MemoriesGraphView({ lang, memories }: MemoriesGraphViewProps) {
       work: "drop-shadow(0 0 8px rgba(234,179,8,0.5))",
       preference: "drop-shadow(0 0 8px rgba(6,182,212,0.5))",
       skill: "drop-shadow(0 0 8px rgba(236,72,153,0.5))",
+      tasks: "drop-shadow(0 0 8px rgba(249,115,22,0.6))",
     };
 
     // HTML dragging logic
@@ -327,6 +379,7 @@ export function MemoriesGraphView({ lang, memories }: MemoriesGraphViewProps) {
           <div className="grid grid-cols-2 gap-1.5">
             {([
               { id: 'all', label: lang === 'bn' ? 'সব মেমরি' : 'ALL', color: '#38bdf8' },
+              { id: 'tasks', label: lang === 'bn' ? 'টাস্ক ডিপেন্ডেন্সি' : 'TASKS & DEP', color: '#f97316' },
               { id: 'personal', label: lang === 'bn' ? 'ব্যক্তিগত' : 'PERSONAL', color: '#10b981' },
               { id: 'work', label: lang === 'bn' ? 'কর্মক্ষেত্র' : 'WORK', color: '#eab308' },
               { id: 'preference', label: lang === 'bn' ? 'পছন্দ' : 'PREFERENCE', color: '#06b6d4' },
@@ -335,7 +388,9 @@ export function MemoriesGraphView({ lang, memories }: MemoriesGraphViewProps) {
               const active = filterCategory === cat.id;
               const count = cat.id === 'all' 
                 ? memories.length 
-                : memories.filter(m => m.category === cat.id).length;
+                : cat.id === 'tasks'
+                  ? tasks.length
+                  : memories.filter(m => m.category === cat.id).length;
               return (
                 <button
                   key={cat.id}
@@ -366,11 +421,15 @@ export function MemoriesGraphView({ lang, memories }: MemoriesGraphViewProps) {
           <div className="grid grid-cols-2 gap-2 text-[9px] font-mono text-slate-500">
             <div>
               <span className="block text-slate-600">Total Nodes:</span>
-              <span className="font-bold text-slate-300">{filteredMemories.length + 5}</span>
+              <span className="font-bold text-slate-300">
+                {filteredMemories.length + 5 + ((filterCategory === 'all' || filterCategory === 'tasks') ? (tasks.length + 1) : 0)}
+              </span>
             </div>
             <div>
               <span className="block text-slate-600">Cluster Links:</span>
-              <span className="font-bold text-slate-300">{filteredMemories.length + 4}</span>
+              <span className="font-bold text-slate-300">
+                {filteredMemories.length + 4 + ((filterCategory === 'all' || filterCategory === 'tasks') ? (tasks.length + 1) : 0)}
+              </span>
             </div>
           </div>
           <div className="text-[10px] text-slate-500 leading-relaxed font-sans mt-1.5">

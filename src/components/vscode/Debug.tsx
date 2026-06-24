@@ -96,7 +96,7 @@ export function Debug({}: DebugProps) {
         <div className="space-y-1">
           {sessions.map(session => (
             <div key={session.id} className="flex items-center gap-2 px-2 py-1 text-xs text-slate-300 hover:bg-slate-800/50 rounded cursor-pointer">
-              <div className={`w-2 h-2 rounded-full ${getStatusColor(session)}`} />
+              <div className={`w-2 h-2 rounded-full bg-current ${getStatusColor(session.status)}`} />
               <span className="flex-1 truncate">{session.name}</span>
             </div>
           ))}

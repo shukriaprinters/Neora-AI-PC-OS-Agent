@@ -92,3 +92,72 @@ export async function neoraUpload<T>(path: string, formData: FormData, options?:
   }, options);
   return parseResponse<T>(response);
 }
+
+export async function neoraChatWithFallback(
+  primaryModel: 'gemini' | 'groq' | 'ollama',
+  payload: {
+    messages: any[];
+    lang?: string;
+    geminiKey?: string;
+    groqKey?: string;
+    key?: string; // matching server's param for Groq
+    model?: string;
+    ollamaBaseUrl?: string;
+  }
+): Promise<{ modelUsed: 'gemini' | 'groq' | 'ollama'; response: any }> {
+  const modelsInOrder: Array<'gemini' | 'groq' | 'ollama'> = [primaryModel];
+  
+  if (primaryModel === 'gemini') {
+    modelsInOrder.push('groq', 'ollama');
+  } else if (primaryModel === 'groq') {
+    modelsInOrder.push('gemini', 'ollama');
+  } else {
+    modelsInOrder.push('gemini', 'groq');
+  }
+
+  let lastError: any = null;
+
+  for (const model of modelsInOrder) {
+    let endpoint = '/api/chat-gemini';
+    if (model === 'groq') endpoint = '/api/chat-groq';
+    if (model === 'ollama') endpoint = '/api/chat-ollama';
+
+    try {
+      console.log(`[neoraApi] Attempting LLM call to ${model} via ${endpoint}...`);
+      
+      // Setup payload matching the endpoint expectations
+      const requestPayload: any = {
+        messages: payload.messages,
+        lang: payload.lang,
+      };
+
+      if (model === 'gemini') {
+        requestPayload.geminiKey = payload.geminiKey || payload.key;
+      } else if (model === 'groq') {
+        requestPayload.key = payload.key || payload.groqKey;
+        if (payload.model && payload.model !== 'llama3') {
+          requestPayload.model = payload.model;
+        }
+      } else if (model === 'ollama') {
+        requestPayload.ollamaBaseUrl = payload.ollamaBaseUrl;
+        requestPayload.model = payload.model === 'llama-3.3-70b-versatile' ? 'llama3' : payload.model;
+      }
+
+      const res = await neoraPost<any>(endpoint, requestPayload, { retries: 0 });
+      
+      if (res && (res.status === 'api_key_missing' || res.error || res.status === 'error')) {
+        throw new Error(res.message || res.error || `${model} returned error status.`);
+      }
+      
+      return {
+        modelUsed: model,
+        response: res,
+      };
+    } catch (err: any) {
+      console.warn(`[neoraApi] Model ${model} call failed. Falling back to alternative... Error:`, err);
+      lastError = err;
+    }
+  }
+
+  throw new Error(`All LLM models in fallback chain failed. Last error: ${lastError?.message || lastError}`);
+}

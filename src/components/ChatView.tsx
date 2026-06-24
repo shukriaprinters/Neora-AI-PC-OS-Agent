@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { Message, Task, Reminder, Note } from '../types';
 import { TRANSLATIONS } from '../translations';
 import {
@@ -26,10 +27,19 @@ import {
   Database,
   Info,
   Check,
-  X
+  X,
+  Zap,
+  Copy,
+  Edit3,
+  Download,
+  History,
+  Gauge,
+  VolumeX,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { classifyNeoraInput, isLikelyOsCommand } from '../lib/neoraCommand';
-import { NeoraApiError, neoraGet, neoraPost, neoraUpload } from '../lib/neoraApi';
+import { NeoraApiError, neoraGet, neoraPost, neoraUpload, neoraChatWithFallback } from '../lib/neoraApi';
 
 interface ChatViewProps {
   lang: 'en' | 'bn';
@@ -45,6 +55,7 @@ interface ChatViewProps {
   setGroqModel: (val: string) => void;
   geminiKey: string;
   setGeminiKey: (val: string) => void;
+  onSelfEvolution?: (action: string) => void;
 }
 
 function getOfflineReply(userText: string, lang: 'en' | 'bn'): string {
@@ -146,25 +157,141 @@ export function ChatView({
   groqModel,
   setGroqModel,
   geminiKey,
-  setGeminiKey
+  setGeminiKey,
+  onSelfEvolution
 }: ChatViewProps) {
   const t = TRANSLATIONS[lang];
-  const [messages, setMessages] = useState<Message[]>(() => {
+  const [threads, setThreads] = useState<Array<{ id: string; title: string; messages: Message[]; timestamp: string }>>(() => {
     try {
-      const saved = localStorage.getItem('neora_chat_messages');
-      return saved ? JSON.parse(saved) : [];
+      const saved = localStorage.getItem('neora_chat_threads');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.length > 0) return parsed;
+      }
+      const defaultThread = {
+        id: 'default',
+        title: lang === 'bn' ? 'আলাপচারিতা #১' : 'Conversation #1',
+        messages: [],
+        timestamp: new Date().toLocaleDateString()
+      };
+      return [defaultThread];
     } catch {
-      return [];
+      return [{
+        id: 'default',
+        title: 'Conversation #1',
+        messages: [],
+        timestamp: new Date().toLocaleDateString()
+      }];
+    }
+  });
+
+  const [activeThreadId, setActiveThreadId] = useState<string>(() => {
+    return localStorage.getItem('neora_active_thread_id') || 'default';
+  });
+
+  const [messages, setMessages] = useState<Message[]>([]);
+
+  // 1. When activeThreadId changes, load its messages
+  useEffect(() => {
+    const activeThread = threads.find(t => t.id === activeThreadId);
+    if (activeThread) {
+      setMessages(activeThread.messages);
+    }
+  }, [activeThreadId]);
+
+  // 2. When messages change, map them back into the active thread inside threads array
+  useEffect(() => {
+    setThreads(prevThreads => {
+      const activeThread = prevThreads.find(t => t.id === activeThreadId);
+      if (!activeThread) return prevThreads;
+      
+      if (JSON.stringify(activeThread.messages) === JSON.stringify(messages)) {
+        return prevThreads;
+      }
+
+      return prevThreads.map(t => {
+        if (t.id === activeThreadId) {
+          let newTitle = t.title;
+          if (t.title.includes('Conversation #') || t.title.includes('আলাপচারিতা #') || t.title === 'Default Chat Thread' || t.title === 'নতুন আলাপচারিতা') {
+            const firstUserMsg = messages.find(m => m.role === 'user');
+            if (firstUserMsg) {
+              newTitle = firstUserMsg.content.slice(0, 24) + (firstUserMsg.content.length > 24 ? '...' : '');
+            }
+          }
+          return {
+            ...t,
+            title: newTitle,
+            messages: messages,
+            timestamp: new Date().toLocaleDateString()
+          };
+        }
+        return t;
+      });
+    });
+  }, [messages, activeThreadId]);
+
+  // 3. Save threads array to localStorage
+  useEffect(() => {
+    localStorage.setItem('neora_chat_threads', JSON.stringify(threads));
+    localStorage.setItem('neora_active_thread_id', activeThreadId);
+  }, [threads, activeThreadId]);
+
+  // Helper that updates both local view and synchronized thread
+  const updateMessagesInThreads = (newMessages: Message[] | ((prev: Message[]) => Message[])) => {
+    setMessages(prev => {
+      const resolved = typeof newMessages === 'function' ? newMessages(prev) : newMessages;
+      return resolved;
+    });
+  };
+
+  // Diagnostic states
+  const [connectionStatus, setConnectionStatus] = useState<any>({
+    gemini: { alive: true, message: 'Configured' },
+    groq: { alive: true, message: 'Configured' },
+    ollama: { alive: false, message: 'Offline' }
+  });
+  const [isDiagnosticRunning, setIsDiagnosticRunning] = useState(false);
+
+  // Rate limits state
+  const [rateLimits, setRateLimits] = useState<{
+    groq: {
+      remainingRequests: number | null;
+      limitRequests: number | null;
+      remainingTokens: number | null;
+      limitTokens: number | null;
+      resetTime: string | null;
+    };
+    gemini: {
+      remainingRequests: number;
+      limitRequests: number;
+      resetTime: string | null;
+    };
+  }>(() => {
+    try {
+      const saved = localStorage.getItem('neora_api_rate_limits');
+      return saved ? JSON.parse(saved) : {
+        groq: { remainingRequests: null, limitRequests: null, remainingTokens: null, limitTokens: null, resetTime: null },
+        gemini: { remainingRequests: 15, limitRequests: 15, resetTime: null }
+      };
+    } catch {
+      return {
+        groq: { remainingRequests: null, limitRequests: null, remainingTokens: null, limitTokens: null, resetTime: null },
+        gemini: { remainingRequests: 15, limitRequests: 15, resetTime: null }
+      };
     }
   });
 
   useEffect(() => {
-    try {
-      localStorage.setItem('neora_chat_messages', JSON.stringify(messages));
-    } catch (e) {
-      console.warn('Failed to save chat messages:', e);
-    }
-  }, [messages]);
+    localStorage.setItem('neora_api_rate_limits', JSON.stringify(rateLimits));
+  }, [rateLimits]);
+
+  // Model fallback notification states
+  const [fallbackNotification, setFallbackNotification] = useState<{ from: string; to: string } | null>(null);
+
+  // Copy, edit, delete active message states
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editingContent, setEditingContent] = useState('');
   const [inputValue, setInputValue] = useState('');
   const [isListening, setIsListening] = useState(false);
   const [speakVolumeOn, setSpeakVolumeOn] = useState(true);
@@ -177,6 +304,37 @@ export function ChatView({
   const [pendingVoiceCommand, setPendingVoiceCommand] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [attachmentImage, setAttachmentImage] = useState<{ data: string; mimeType: string } | null>(null);
+  const [attachmentPreview, setAttachmentPreview] = useState<string | null>(null);
+
+  const handleImageSelection = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const dataUrl = reader.result as string;
+      const base64Data = dataUrl.split(',')[1];
+      setAttachmentImage({
+        data: base64Data,
+        mimeType: file.type
+      });
+      setAttachmentPreview(dataUrl);
+    };
+    reader.readAsDataURL(file);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+  const [voicePitch, setVoicePitch] = useState<number>(() => {
+    return Number(localStorage.getItem('neora_voice_pitch') || '1.1');
+  });
+  const [voiceRate, setVoiceRate] = useState<number>(() => {
+    return Number(localStorage.getItem('neora_voice_rate') || '1.0');
+  });
+
   // Whisper Speech Recording refs and state
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -184,6 +342,7 @@ export function ChatView({
   const [whisperStatus, setWhisperStatus] = useState<'idle' | 'recording' | 'transcribing' | 'error' | 'fallback'>('idle');
 
   const [showSettings, setShowSettings] = useState(false);
+  const [showThreadsSidebar, setShowThreadsSidebar] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -193,6 +352,60 @@ export function ChatView({
   const [ollamaStatus, setOllamaStatus] = useState<'checking' | 'available' | 'partial' | 'blocked' | 'not_installed'>('checking');
   const [ollamaModels, setOllamaModels] = useState<any[]>([]);
   const [selectedOllamaModel, setSelectedOllamaModel] = useState<string>('llama3');
+
+  // New States for Advanced Model Selection and Failover
+  const [activeBrain, setActiveBrain] = useState<'gemini' | 'groq' | 'ollama'>(() => {
+    const stored = localStorage.getItem('neora_active_brain');
+    if (stored === 'gemini' || stored === 'groq' || stored === 'ollama') {
+      return stored as 'gemini' | 'groq' | 'ollama';
+    }
+    // Backward compatibility with legacy checkbox keys
+    if (localStorage.getItem('neora_use_groq') === 'true' || useGroq) return 'groq';
+    return 'gemini';
+  });
+
+  const [autoFailover, setAutoFailover] = useState<boolean>(() => {
+    return localStorage.getItem('neora_auto_failover') !== 'false';
+  });
+
+  const [ollamaBaseUrl, setOllamaBaseUrl] = useState<string>(() => {
+    return localStorage.getItem('neora_ollama_base_url') || 'http://localhost:11434';
+  });
+
+  const [ollamaConnectionMode, setOllamaConnectionMode] = useState<'browser' | 'server'>(() => {
+    return (localStorage.getItem('neora_ollama_conn_mode') as 'browser' | 'server') || 'browser';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('neora_active_brain', activeBrain);
+    setUseOllama(activeBrain === 'ollama');
+    if (activeBrain === 'groq') {
+      setUseGroq(true);
+    } else {
+      setUseGroq(false);
+    }
+  }, [activeBrain]);
+
+  useEffect(() => {
+    localStorage.setItem('neora_auto_failover', autoFailover ? 'true' : 'false');
+  }, [autoFailover]);
+
+  useEffect(() => {
+    localStorage.setItem('neora_voice_pitch', voicePitch.toString());
+  }, [voicePitch]);
+
+  useEffect(() => {
+    localStorage.setItem('neora_voice_rate', voiceRate.toString());
+  }, [voiceRate]);
+
+  useEffect(() => {
+    localStorage.setItem('neora_ollama_base_url', ollamaBaseUrl);
+  }, [ollamaBaseUrl]);
+
+  useEffect(() => {
+    localStorage.setItem('neora_ollama_conn_mode', ollamaConnectionMode);
+  }, [ollamaConnectionMode]);
+
   const healthState = statusEndpoint ? 'offline' : 'healthy';
   const healthChipClass: string =
     healthState === 'healthy'
@@ -201,19 +414,45 @@ export function ChatView({
 
   const checkOllamaStatus = async () => {
     try {
-      const data: any = await neoraGet('/api/ollama/status');
-      setOllamaStatus(data.status);
-      setOllamaModels(data.models || []);
-      if (data.models && data.models.length > 0) {
-        const names = data.models.map((m: any) => m.name);
-        if (!names.includes(selectedOllamaModel)) {
-          setSelectedOllamaModel(names[0]);
+      if (ollamaConnectionMode === 'browser') {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000); // 2s timeout
+        
+        const response = await fetch(`${ollamaBaseUrl.replace(/\/+$/, '')}/api/tags`, {
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+          const data = await response.json();
+          setOllamaStatus('available');
+          const modelsList = data.models || [];
+          setOllamaModels(modelsList);
+          if (modelsList.length > 0) {
+            const names = modelsList.map((m: any) => m.name);
+            if (!names.includes(selectedOllamaModel)) {
+              setSelectedOllamaModel(names[0]);
+            }
+          }
+        } else {
+          setOllamaStatus('partial');
+          setOllamaModels([]);
+        }
+      } else {
+        // Server proxy check, passing custom base URL Encoded
+        const data: any = await neoraGet(`/api/ollama/status?url=${encodeURIComponent(ollamaBaseUrl)}`);
+        setOllamaStatus(data.status);
+        setOllamaModels(data.models || []);
+        if (data.models && data.models.length > 0) {
+          const names = data.models.map((m: any) => m.name);
+          if (!names.includes(selectedOllamaModel)) {
+            setSelectedOllamaModel(names[0]);
+          }
         }
       }
-    } catch {
+    } catch (err) {
+      console.warn("Ollama status check failed: ", err);
       setOllamaStatus('not_installed');
-      setStatusEndpoint('/api/ollama/status');
-      setStatusBanner(lang === 'bn' ? 'Endpoint unavailable' : 'Endpoint unavailable');
     }
   };
 
@@ -221,7 +460,7 @@ export function ChatView({
     checkOllamaStatus();
     const interval = setInterval(checkOllamaStatus, 15000); // Poll status every 15s
     return () => clearInterval(interval);
-  }, []);
+  }, [ollamaConnectionMode, ollamaBaseUrl]);
 
   useEffect(() => {
     const loadWorkspaceState = async () => {
@@ -337,6 +576,409 @@ export function ChatView({
     }
   };
 
+  // Copy, Edit, Delete and Diagnostics actions
+  const handleCopyMessage = (text: string, id: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedMessageId(id);
+      setTimeout(() => setCopiedMessageId(null), 1500);
+    });
+  };
+
+  const startEditingMessage = (id: string, content: string) => {
+    setEditingMessageId(id);
+    setEditingContent(content);
+  };
+
+  // Triggers automated model fallback notifications
+  const triggerFallbackNotification = (from: string, to: string) => {
+    setFallbackNotification({ from: from.toUpperCase(), to: to.toUpperCase() });
+    setTimeout(() => {
+      setFallbackNotification(null);
+    }, 7000); // clear after 7 seconds automatically
+  };
+
+  // Run connection status heartbeats
+  const runHeartbeatDiagnostic = async () => {
+    setIsDiagnosticRunning(true);
+    try {
+      const res = await neoraPost<any>('/api/diagnostic/heartbeat', {
+        geminiKey: geminiKey || undefined,
+        groqKey: groqKey || undefined,
+        ollamaBaseUrl: ollamaBaseUrl
+      });
+      if (res && res.check) {
+        setConnectionStatus(res.check);
+      }
+    } catch (e: any) {
+      console.warn("Heartbeat diagnostic fetch error:", e);
+      setConnectionStatus({
+        gemini: { alive: !!(geminiKey || process.env.GEMINI_API_KEY), message: 'Presence Active' },
+        groq: { alive: !!(groqKey || process.env.GROQ_API_KEY), message: 'Presence Active' },
+        ollama: { alive: false, message: 'Offline (Not responding)' }
+      });
+    } finally {
+      setIsDiagnosticRunning(false);
+    }
+  };
+
+  // Poll heartbeat connection state every 30 seconds
+  useEffect(() => {
+    runHeartbeatDiagnostic();
+    const interval = setInterval(runHeartbeatDiagnostic, 30000);
+    return () => clearInterval(interval);
+  }, [geminiKey, groqKey, ollamaBaseUrl]);
+
+  // Clean rate limits update trigger
+  const updateRateLimits = (provider: 'groq' | 'gemini', serverResLimits: any) => {
+    setRateLimits(prev => {
+      const next = { ...prev };
+      if (provider === 'groq' && serverResLimits) {
+        next.groq = {
+          remainingRequests: serverResLimits.remainingRequests ? parseInt(serverResLimits.remainingRequests) : null,
+          limitRequests: serverResLimits.limitRequests ? parseInt(serverResLimits.limitRequests) : null,
+          remainingTokens: serverResLimits.remainingTokens ? parseInt(serverResLimits.remainingTokens) : null,
+          limitTokens: serverResLimits.limitTokens ? parseInt(serverResLimits.limitTokens) : null,
+          resetTime: serverResLimits.resetRequests || null
+        };
+      } else if (provider === 'gemini') {
+        const currentRemaining = prev.gemini.remainingRequests;
+        const newRemaining = currentRemaining > 1 ? currentRemaining - 1 : 15;
+        next.gemini = {
+          remainingRequests: newRemaining,
+          limitRequests: 15,
+          resetTime: newRemaining === 15 ? '60s' : prev.gemini.resetTime
+        };
+      }
+      return next;
+    });
+  };
+
+  // Reset Gemini rate limits count every minute
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setRateLimits(prev => {
+        if (prev.gemini.remainingRequests < 15) {
+          return {
+            ...prev,
+            gemini: {
+              remainingRequests: 15,
+              limitRequests: 15,
+              resetTime: null
+            }
+          };
+        }
+        return prev;
+      });
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Multi-thread Chat Session Management Helpers
+  const handleCreateNewThread = () => {
+    const newId = Math.random().toString();
+    const newThread = {
+      id: newId,
+      title: lang === 'bn' ? `আলাপচারিতা #${threads.length + 1}` : `Conversation #${threads.length + 1}`,
+      messages: [],
+      timestamp: new Date().toLocaleDateString()
+    };
+    setThreads(prev => [newThread, ...prev]);
+    setActiveThreadId(newId);
+  };
+
+  const handleDeleteThread = (idToDelete: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (threads.length <= 1) {
+      const defaultThread = {
+        id: 'default',
+        title: lang === 'bn' ? 'আলাপচারিতা #১' : 'Conversation #1',
+        messages: [],
+        timestamp: new Date().toLocaleDateString()
+      };
+      setThreads([defaultThread]);
+      setActiveThreadId('default');
+      return;
+    }
+    const updatedThreads = threads.filter(t => t.id !== idToDelete);
+    setThreads(updatedThreads);
+    if (activeThreadId === idToDelete) {
+      setActiveThreadId(updatedThreads[0].id);
+    }
+  };
+
+  const handleExportThread = () => {
+    try {
+      const activeThread = threads.find(t => t.id === activeThreadId);
+      if (!activeThread || activeThread.messages.length === 0) {
+        alert(lang === 'bn' ? "রপ্তানি করার জন্য কোনো বার্তা নেই।" : "No messages to export.");
+        return;
+      }
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(activeThread, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `neora_chat_thread_${activeThread.id}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    } catch (e) {
+      console.error("Export thread failed:", e);
+    }
+  };
+
+  const handleClearAllThreads = () => {
+    if (confirm(lang === 'bn' ? "আপনি কি সমস্ত চ্যাট হিস্ট্রি মুছে ফেলতে চান?" : "Are you sure you want to permanently clear all conversation threads?")) {
+      const defaultThread = {
+        id: 'default',
+        title: lang === 'bn' ? 'আলাপচারিতা #১' : 'Conversation #1',
+        messages: [],
+        timestamp: new Date().toLocaleDateString()
+      };
+      setThreads([defaultThread]);
+      setActiveThreadId('default');
+    }
+  };
+
+  const handleDeleteMessage = (msgId: string) => {
+    const updated = messages.filter(m => m.id !== msgId);
+    updateMessagesInThreads(updated);
+  };
+
+  // Re-submission action when messages are edited by users
+  const triggerResend = async (updatedHistory: Message[], editedText: string) => {
+    setIsGenerating(true);
+
+    const attempts: ('gemini' | 'groq' | 'ollama')[] = [activeBrain];
+    if (autoFailover) {
+      if (activeBrain === 'ollama') {
+        attempts.push('groq');
+        attempts.push('gemini');
+      } else if (activeBrain === 'groq') {
+        attempts.push('gemini');
+        attempts.push('ollama');
+      } else {
+        attempts.push('groq');
+        attempts.push('ollama');
+      }
+    }
+
+    const getLoadingLabel = (p: 'gemini' | 'groq' | 'ollama') => {
+      if (p === 'ollama') {
+        return lang === 'bn' 
+          ? `নিওরা লোকাল ব্রেইন চিন্তাভাবনা করছে (Ollama: ${selectedOllamaModel} সক্রিয়)...` 
+          : `Neora offline brain is thinking (Ollama: ${selectedOllamaModel} Active)...`;
+      } else if (p === 'groq') {
+        return lang === 'bn' 
+          ? `নিওরা চিন্তাভাবনা করছে (Groq: ${groqModel.split('-')[0].toUpperCase()} সক্রিয়)...` 
+          : `Neora is thinking (Groq: ${groqModel.split('-')[0].toUpperCase()} Active)...`;
+      } else {
+        return lang === 'bn' 
+          ? 'নিওরা চিন্তাভাবনা করছে (Gemini Core সক্রিয়)...' 
+          : 'Neora is thinking (Gemini Core Active)...';
+      }
+    };
+
+    const loadingMsgId = Math.random().toString();
+    const loadingMsg: Message = {
+      id: loadingMsgId,
+      role: 'assistant',
+      content: getLoadingLabel(activeBrain),
+      timestamp: new Date().toLocaleTimeString()
+    };
+    
+    updateMessagesInThreads([...updatedHistory, loadingMsg]);
+
+    const executeBrainAttempt = async (provider: 'gemini' | 'groq' | 'ollama'): Promise<string> => {
+      const recentHistory = updatedHistory.slice(-8);
+
+      if (provider === 'ollama') {
+        if (ollamaConnectionMode === 'browser') {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 12000);
+          
+          const systemInstruction = lang === 'bn'
+            ? "আপনি নিওরা, শুকরিয়া প্রিন্টার্সের একজন অত্যন্ত বুদ্ধিমান এবং কাজের এআই সহকারী। অনুগ্রহ করে অত্যন্ত বিনয়ীভাবে উত্তর দিন।"
+            : "You are Neora, the super intelligent desktop companion and operations automation AI assistant for Shukria Printers. Keep responses professional, highly context-aware, and precise.";
+
+          const formattedMessages = [
+            { role: "system", content: systemInstruction },
+            ...recentHistory.map(m => ({
+              role: m.role === "assistant" ? "assistant" : "user",
+              content: m.content
+            }))
+          ];
+
+          const response = await fetch(`${ollamaBaseUrl.replace(/\/+$/, '')}/api/chat`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: selectedOllamaModel,
+              messages: formattedMessages,
+              stream: false
+            }),
+            signal: controller.signal
+          });
+
+          clearTimeout(timeoutId);
+          if (!response.ok) {
+            throw new Error(`Direct browser Ollama returned code ${response.status}`);
+          }
+          const result = await response.json();
+          return result?.message?.content || "";
+        } else {
+          const res = await neoraPost<any>('/api/chat-ollama', {
+            messages: recentHistory,
+            model: selectedOllamaModel,
+            lang: lang,
+            ollamaBaseUrl: ollamaBaseUrl
+          });
+          if (res.error) throw new Error(res.error);
+          return res.text || "";
+        }
+      } else if (provider === 'groq') {
+        const payload: any = {
+          messages: recentHistory,
+          model: groqModel,
+          lang: lang
+        };
+        if (groqKey) payload.key = groqKey;
+        const res = await neoraPost<any>('/api/chat-groq', payload);
+        if (res.status === 'api_key_missing') throw new Error(res.message);
+        if (res.error) throw new Error(res.error);
+        
+        if (res.rateLimits) {
+          updateRateLimits('groq', res.rateLimits);
+        }
+        
+        return res.data?.choices?.[0]?.message?.content || "";
+      } else {
+        const payload: any = {
+          messages: recentHistory,
+          lang: lang
+        };
+        if (geminiKey) payload.geminiKey = geminiKey;
+        const res = await neoraPost<any>('/api/chat-gemini', payload);
+        if (res.status === 'api_key_missing') throw new Error(res.message);
+        if (res.error) throw new Error(res.error);
+        
+        updateRateLimits('gemini', null);
+        
+        return res.text || "";
+      }
+    };
+
+    let finalResponseText = '';
+    let success = false;
+    let actualUsedProvider: 'gemini' | 'groq' | 'ollama' | 'offline' = activeBrain;
+
+    if (autoFailover && !(activeBrain === 'ollama' && ollamaConnectionMode === 'browser')) {
+      try {
+        const result = await neoraChatWithFallback(activeBrain, {
+          messages: updatedHistory.slice(-8),
+          lang: lang,
+          geminiKey: geminiKey || undefined,
+          groqKey: groqKey || undefined,
+          key: groqKey || undefined,
+          model: activeBrain === 'ollama' ? selectedOllamaModel : (activeBrain === 'groq' ? groqModel : undefined),
+          ollamaBaseUrl: ollamaBaseUrl
+        });
+
+        actualUsedProvider = result.modelUsed;
+        
+        if (result.modelUsed !== activeBrain) {
+          triggerFallbackNotification(activeBrain, result.modelUsed);
+        }
+
+        if (result.modelUsed === 'gemini') {
+          finalResponseText = result.response.text;
+          updateRateLimits('gemini', null);
+        } else if (result.modelUsed === 'groq') {
+          finalResponseText = result.response.data?.choices?.[0]?.message?.content || "";
+          if (result.response.rateLimits) {
+            updateRateLimits('groq', result.response.rateLimits);
+          }
+        } else if (result.modelUsed === 'ollama') {
+          finalResponseText = result.response.text || "";
+        }
+        success = !!finalResponseText;
+      } catch (err: any) {
+        console.error("neoraChatWithFallback failed on edit retry:", err);
+      }
+    }
+
+    if (!success) {
+      for (let i = 0; i < attempts.length; i++) {
+        const currentProvider = attempts[i];
+        actualUsedProvider = currentProvider;
+
+        if (i > 0) {
+          triggerFallbackNotification(attempts[i-1], currentProvider);
+
+          updateMessagesInThreads(prev => prev.map(m => m.id === loadingMsgId ? {
+            ...m,
+            content: lang === 'bn'
+              ? `পূর্ববর্তী সংযোগ কাজ করেনি! স্বয়ংক্রিয় ব্যাকআপ ট্রাই করা হচ্ছে (${currentProvider === 'gemini' ? 'Gemini' : currentProvider === 'groq' ? 'Groq' : 'Ollama'})...`
+              : `Attempt failed! Falling over to next active brain (${currentProvider.toUpperCase()})...`
+          } : m));
+        }
+
+        try {
+          const text = await executeBrainAttempt(currentProvider);
+          finalResponseText = text;
+          success = true;
+          break;
+        } catch (err: any) {
+          console.warn(`Fallback route ${currentProvider} failed:`, err);
+        }
+      }
+    }
+
+    if (success && finalResponseText) {
+      const botResponse: Message = {
+        id: Math.random().toString(),
+        role: 'assistant',
+        content: finalResponseText,
+        timestamp: new Date().toLocaleTimeString(),
+        brainUsed: actualUsedProvider as any
+      };
+
+      updateMessagesInThreads([...updatedHistory, botResponse]);
+      handleSpeak(finalResponseText);
+    } else {
+      const errorResponse: Message = {
+        id: Math.random().toString(),
+        role: 'assistant',
+        content: lang === 'bn'
+          ? "দুঃখিত বস, কিন্তু সবকটি এআই সার্ভার সংযোগ সম্পূর্ণ ব্যর্থ হয়েছে। আপনার এপিআই কি এবং নেটওয়ার্ক চেক করুন।"
+          : "All configured LLM brain nodes returned offline failures. Please verify your internet or API key parameters in settings.",
+        timestamp: new Date().toLocaleTimeString(),
+        brainUsed: 'offline'
+      };
+      updateMessagesInThreads([...updatedHistory, errorResponse]);
+    }
+    setIsGenerating(false);
+  };
+
+  const handleUpdateMessage = async (id: string, newText: string) => {
+    if (!newText.trim()) return;
+    setEditingMessageId(null);
+    
+    const index = messages.findIndex(m => m.id === id);
+    if (index === -1) return;
+
+    const updatedMessages = messages.slice(0, index + 1);
+    updatedMessages[index] = {
+      ...updatedMessages[index],
+      content: newText,
+      timestamp: new Date().toLocaleTimeString()
+    };
+
+    updateMessagesInThreads(updatedMessages);
+    
+    setTimeout(() => {
+      triggerResend(updatedMessages, newText);
+    }, 150);
+  };
+
   const speakQueueRef = useRef<{ cancel: () => void } | null>(null);
 
   const handleSpeak = (text: string, onSpeechFinished?: () => void) => {
@@ -348,15 +990,13 @@ export function ChatView({
     }
     const cleanText = text.replace(/[`*#_\[\]]/g, '').replace(/\*\*/g, '').slice(0, 1800);
     const synth = window.speechSynthesis;
-    if (!synth) {
-      setIsSpeaking(false);
-      if (onSpeechFinished) onSpeechFinished();
-      return;
-    }
+    
     if (speakQueueRef.current) {
       speakQueueRef.current.cancel();
     }
-    synth.cancel();
+    if (synth) {
+      synth.cancel();
+    }
 
     // Split text into elegant sentence chunks by punctuation and line breaks
     const sentences = cleanText
@@ -372,11 +1012,18 @@ export function ChatView({
 
     let index = 0;
     let cancelled = false;
+    let currentAudio: HTMLAudioElement | null = null;
 
     const cancel = () => {
       cancelled = true;
       setIsSpeaking(false);
-      synth.cancel();
+      if (synth) {
+        synth.cancel();
+      }
+      if (currentAudio) {
+        currentAudio.pause();
+        currentAudio = null;
+      }
     };
 
     speakQueueRef.current = { cancel };
@@ -393,63 +1040,103 @@ export function ChatView({
       }
       
       const sentenceText = sentences[index];
-      const utterance = new SpeechSynthesisUtterance(sentenceText);
       const containsBangla = /[\u0980-\u09FF]/.test(sentenceText);
       const isBn = lang === 'bn' || containsBangla;
-      utterance.lang = isBn ? 'bn-BD' : 'en-US';
-      utterance.rate = 0.98; // elegant and melodic rate
-      utterance.pitch = 1.08; // gorgeous, soft female voice pitch
-      
-      const voices = synth.getVoices();
-      
-      // Proactively match sweet female voice or primary natural voices
-      let preferred = null;
+
       if (isBn) {
-        preferred = voices.find(v => {
-          const nameLower = v.name.toLowerCase();
-          const isBengali = v.lang.startsWith('bn') || nameLower.includes('bengali') || nameLower.includes('bangla') || nameLower.includes('বাংলা');
-          return isBengali && (
-            nameLower.includes('sabina') || 
-            nameLower.includes('kalpana') || 
-            nameLower.includes('sanjukta') || 
-            nameLower.includes('female') ||
-            nameLower.includes('online') ||
-            nameLower.includes('google')
-          );
-        }) || voices.find(v => 
-          v.lang.startsWith('bn') || 
-          v.name.toLowerCase().includes('bengali') || 
-          v.name.toLowerCase().includes('bangla') || 
-          v.name.toLowerCase().includes('বাংলা')
-        );
+        // Try sweet high-fidelity Google Translate TTS wrapper
+        try {
+          const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=bn&client=tw-ob&q=${encodeURIComponent(sentenceText)}`;
+          const audio = new Audio(ttsUrl);
+          audio.playbackRate = voiceRate; // Apply custom user rate
+          currentAudio = audio;
+          
+          audio.onended = () => {
+            if (currentAudio === audio) currentAudio = null;
+            index++;
+            speakNext();
+          };
+          
+          audio.onerror = (e) => {
+            console.warn("Google Translate TTS failed, falling back to local SpeechSynthesis:", e);
+            if (currentAudio === audio) currentAudio = null;
+            playLocalSynthesis();
+          };
+
+          audio.play().catch(err => {
+            console.warn("Audio play blocked/failed, falling back to local SpeechSynthesis:", err);
+            playLocalSynthesis();
+          });
+        } catch (err) {
+          playLocalSynthesis();
+        }
       } else {
-        preferred = voices.find(v => {
-          const nameLower = v.name.toLowerCase();
-          return v.lang.startsWith('en') && (
-            nameLower.includes('zira') || 
-            nameLower.includes('samantha') || 
-            nameLower.includes('google') || 
-            nameLower.includes('female')
+        playLocalSynthesis();
+      }
+
+      function playLocalSynthesis() {
+        if (!synth) {
+          index++;
+          speakNext();
+          return;
+        }
+
+        const utterance = new SpeechSynthesisUtterance(sentenceText);
+        utterance.lang = isBn ? 'bn-BD' : 'en-US';
+        utterance.rate = voiceRate; // Apply custom user rate
+        utterance.pitch = voicePitch; // Apply custom user pitch
+        
+        const voices = synth.getVoices();
+        
+        // Proactively match sweet female voice or primary natural voices
+        let preferred = null;
+        if (isBn) {
+          preferred = voices.find(v => {
+            const nameLower = v.name.toLowerCase();
+            const isBengali = v.lang.startsWith('bn') || nameLower.includes('bengali') || nameLower.includes('bangla') || nameLower.includes('বাংলা');
+            return isBengali && (
+              nameLower.includes('sabina') || 
+              nameLower.includes('kalpana') || 
+              nameLower.includes('sanjukta') || 
+              nameLower.includes('female') ||
+              nameLower.includes('online') ||
+              nameLower.includes('google')
+            );
+          }) || voices.find(v => 
+            v.lang.startsWith('bn') || 
+            v.name.toLowerCase().includes('bengali') || 
+            v.name.toLowerCase().includes('bangla') || 
+            v.name.toLowerCase().includes('বাংলা')
           );
-        });
+        } else {
+          preferred = voices.find(v => {
+            const nameLower = v.name.toLowerCase();
+            return v.lang.startsWith('en') && (
+              nameLower.includes('zira') || 
+              nameLower.includes('samantha') || 
+              nameLower.includes('google') || 
+              nameLower.includes('female')
+            );
+          });
+        }
+        
+        if (preferred) {
+          utterance.voice = preferred;
+        }
+
+        utterance.onend = () => {
+          index++;
+          speakNext();
+        };
+
+        utterance.onerror = (e) => {
+          console.warn("Speech Synthesis error caught (resuming queue):", e);
+          index++;
+          speakNext();
+        };
+
+        synth.speak(utterance);
       }
-      
-      if (preferred) {
-        utterance.voice = preferred;
-      }
-
-      utterance.onend = () => {
-        index++;
-        speakNext();
-      };
-
-      utterance.onerror = (e) => {
-        console.warn("Speech Synthesis error caught (resuming queue):", e);
-        index++;
-        speakNext();
-      };
-
-      synth.speak(utterance);
     };
 
     speakNext();
@@ -501,6 +1188,48 @@ export function ChatView({
     let responseText = '';
 
     const currentHandlers = handlersRef.current;
+
+    // 0. Check self-evolution / optimize-dashboard keyword matching
+    if (
+      lowerText.includes('optimize') ||
+      lowerText.includes('self-evolution') ||
+      lowerText.includes('self evolution') ||
+      lowerText.includes('অপ্টিমাইজ') ||
+      lowerText.includes('সিস্টেম আপডেট') ||
+      lowerText.includes('ড্যাশবোর্ড অপ্টিমাইজ') ||
+      lowerText.includes('উন্নয়ন')
+    ) {
+      if (onSelfEvolution) {
+        onSelfEvolution('optimize-dashboard');
+        responseText = isBangla
+          ? `🎤 স্বয়ংক্রিয় উন্নয়ন ভয়েস কমান্ড সনাক্ত: ড্যাশবোর্ড সফলভাবে অপ্টিমাইজ এবং আপডেট করা হয়েছে!`
+          : `🎤 Self-Evolution voice command recognized: Successfully optimized the dashboard layout and activated specialized system buffers!`;
+        
+        playSystemChirp('success');
+        setInputValue('');
+        setPendingVoiceCommand(null);
+
+        const userMsg: Message = {
+          id: Math.random().toString(),
+          role: 'user',
+          content: `🎤 [Voice Command]: ${rawText}`,
+          timestamp: new Date().toLocaleTimeString(),
+          classification: 'chat'
+        };
+
+        const botReply: Message = {
+          id: Math.random().toString(),
+          role: 'assistant',
+          content: responseText,
+          timestamp: new Date().toLocaleTimeString(),
+          classification: 'chat'
+        };
+
+        setMessages(prev => [...prev, userMsg, botReply]);
+        handleSpeak(responseText);
+        return;
+      }
+    }
 
     // 1. Check layout / productivity shortcuts
     if (
@@ -842,6 +1571,125 @@ export function ChatView({
     }
   };
 
+  const streamLlmResponse = async (
+    targetProvider: 'gemini' | 'groq' | 'ollama', 
+    historyPayload: Message[], 
+    assistantMsgId: string,
+    onSuccess: (finalText: string, realProvider: 'gemini' | 'groq' | 'ollama') => void,
+    onFailure: (err: any) => void
+  ) => {
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    
+    try {
+      const selectedModelName = targetProvider === 'ollama' 
+        ? selectedOllamaModel 
+        : (targetProvider === 'groq' ? groqModel : 'gemini-3.5-flash');
+
+      // Map history payload and insert attachment data if present on the final user message
+      const mappedHistory = historyPayload.map((m, idx) => {
+        if (m.role === 'user' && idx === historyPayload.length - 1 && attachmentImage) {
+          return {
+            ...m,
+            image: attachmentImage
+          };
+        }
+        return m;
+      });
+
+      const response = await fetch('/api/chat-stream', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: mappedHistory,
+          provider: targetProvider,
+          model: selectedModelName,
+          lang: lang,
+          geminiKey: geminiKey || undefined,
+          groqKey: groqKey || undefined,
+          ollamaBaseUrl: ollamaBaseUrl
+        }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        throw new Error(`Streaming failed with status ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('Response stream has no readable reader');
+      }
+
+      const decoder = new TextDecoder('utf-8');
+      let textBuffer = '';
+      let accumulatedContent = '';
+
+      // Clear the loading thinking prompt and prepare to append streaming tokens in real time
+      setMessages(prev => prev.map(m => m.id === assistantMsgId ? { ...m, content: '', brainUsed: targetProvider } : m));
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        textBuffer += decoder.decode(value, { stream: true });
+        const lines = textBuffer.split('\n');
+        textBuffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const cleanLine = line.trim();
+          if (!cleanLine) continue;
+
+          if (cleanLine.startsWith('data: ')) {
+            const rawData = cleanLine.substring(6);
+            if (rawData === '[DONE]') {
+              continue;
+            }
+
+            try {
+              const parsed = JSON.parse(rawData);
+              
+              if (parsed.error) {
+                throw new Error(parsed.error);
+              }
+
+              if (parsed.text) {
+                accumulatedContent += parsed.text;
+                // Live append text updates to assistant bubble
+                setMessages(prev => prev.map(m => m.id === assistantMsgId ? { ...m, content: accumulatedContent } : m));
+              }
+
+              // Parse out response header/payload rate limit estimates dynamically
+              if (parsed.rateLimits) {
+                setRateLimits(prev => ({
+                  ...prev,
+                  groq: parsed.rateLimits.groq ? { ...prev.groq, ...parsed.rateLimits.groq } : prev.groq,
+                  gemini: parsed.rateLimits.gemini ? { ...prev.gemini, ...parsed.rateLimits.gemini } : prev.gemini
+                }));
+              }
+            } catch (e) {
+              // Gracefully handle partial data blocks
+            }
+          }
+        }
+      }
+
+      // Capture final streaming feedback
+      onSuccess(accumulatedContent, targetProvider);
+
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        console.log('Stream generation aborted by user.');
+        setIsGenerating(false);
+        abortControllerRef.current = null;
+        return;
+      }
+      onFailure(err);
+    }
+  };
+
   const handleSendMessage = async (overrideText?: string) => {
     const textToProcess = overrideText !== undefined ? overrideText : inputValue;
     if (!textToProcess.trim() || isGenerating) return;
@@ -872,6 +1720,33 @@ export function ChatView({
     const lowerText = userText.toLowerCase();
     const isBangla = /[\u0980-\u09FF]/.test(userText);
     const currentHandlers = handlersRef?.current;
+
+    // Check self-evolution / optimize-dashboard keyword matching
+    if (
+      lowerText.includes('optimize') ||
+      lowerText.includes('self-evolution') ||
+      lowerText.includes('self evolution') ||
+      lowerText.includes('অপ্টিমাইজ') ||
+      lowerText.includes('সিস্টেম আপডেট') ||
+      lowerText.includes('ড্যাশবোর্ড অপ্টিমাইজ') ||
+      lowerText.includes('উন্নয়ন')
+    ) {
+      if (onSelfEvolution) {
+        onSelfEvolution('optimize-dashboard');
+        const botReply: Message = {
+          id: Math.random().toString(),
+          role: 'assistant',
+          content: lang === 'bn'
+            ? `🤖 স্বয়ংক্রিয় উন্নয়ন: আপনার ড্যাশবোর্ড সফলভাবে অপ্টিমাইজ এবং আপডেট করা হয়েছে!`
+            : `🤖 Self-Evolution: Successfully optimized the dashboard layout and activated specialized system buffers!`,
+          timestamp: new Date().toLocaleTimeString(),
+          classification: 'chat'
+        };
+        setMessages(prev => [...prev, botReply]);
+        handleSpeak(botReply.content);
+        return;
+      }
+    }
 
     if (route.classification === 'os-command') {
       setIsGenerating(true);
@@ -910,7 +1785,7 @@ export function ChatView({
     }
 
     // 1. Process local workspace triggers (instant scheduling)
-    if (lowerText.includes('remind') || lowerText.includes('মনে করিয়ে') || lowerText.includes('রিমাইন্ডার')) {
+    if (lowerText.includes('remind') || lowerText.includes('মনে করিয়ে') || lowerText.includes('รিমাইন্ডার')) {
       const remindTitle = userText.replace(/remind me to|remember to|রিমাইন্ডার|মনে করিয়ে দিও/gi, '').trim();
       const alarmTitle = remindTitle || (isBangla ? 'পার্সড রিমাইন্ডার টাস্ক' : 'Parsed alarm item');
       const tomorrow = new Date();
@@ -935,216 +1810,121 @@ export function ChatView({
       }
     }
 
-    // 2. Determine AI Response Pathway: Ollama vs Groq vs Gemini LLM
-    if (useOllama) {
-      setIsGenerating(true);
-      
-      const loadingMsgId = Math.random().toString();
-        const loadingMsg: Message = {
-          id: loadingMsgId,
-          role: 'assistant',
-          content: lang === 'bn' ? `নিওরা অফলাইন ব্রেইন চিন্তাভাবনা করছে (Ollama: ${selectedOllamaModel} সক্রিয়)...` : `Neora offline brain is thinking (Ollama: ${selectedOllamaModel} Active)...`,
-          timestamp: new Date().toLocaleTimeString(),
-          classification: 'chat'
-        };
-      setMessages(prev => [...prev, loadingMsg]);
+    // 2. Determine AI Response Pathway: Sequential LLM routing with Auto-Failover
+    setIsGenerating(true);
 
-      // Define local fallback helper for Ollama errors
-      const runLocalPresetFallback = () => {
-        setMessages(prev => prev.filter(m => m.id !== loadingMsgId));
-        
-        let botResponse = getOfflineReply(userText, lang);
-        // If it was just a generic catch-all or default explanation, let's append Ollama-specific connection info
-        if (botResponse.includes('লোকাল ডেমো মোড') || botResponse.includes('local demo mode')) {
-          botResponse = lang === 'bn'
-            ? `আমি আপনার কমান্ড বুঝতে পেরেছি বস, তবে আপনার লোকাল ওল্লামা (Ollama) ব্রেইনটি কানেক্ট করা সম্ভব হয়নি। দয়া করে নিশ্চিত করুন আপনার লোকাল পিসিতে ওল্লামা চালু আছে এবং "${selectedOllamaModel}" ইনস্টল করা আছে, অথবা ওপরের "Settings ⚙️" ট্যাবে গিয়ে Gemini API Key সেট করুন!`
-            : `I understood your request, boss! However, I could not connect to your local Ollama instance on localhost. Please make sure Ollama is running and model "${selectedOllamaModel}" is installed, or enter a Gemini API Key in the "Settings ⚙️" tab.`;
-        }
-
-        const botReply: Message = {
-          id: Math.random().toString(),
-          role: 'assistant',
-          content: botResponse,
-          timestamp: new Date().toLocaleTimeString()
-        };
-        setMessages(prev => [...prev, botReply]);
-        handleSpeak(botResponse);
-      };
-
-      try {
-        const recentHistory = [...messages, newMsg].slice(-8);
-        
-        const resData: any = await neoraPost('/api/chat-ollama', {
-          messages: recentHistory,
-          model: selectedOllamaModel,
-          lang: lang
-        });
-        
-        if (resData.status === 'success' && resData.text) {
-          const contentText = resData.text;
-          setMessages(prev => prev.filter(m => m.id !== loadingMsgId).concat({
-            id: Math.random().toString(),
-            role: 'assistant',
-            content: contentText,
-            timestamp: new Date().toLocaleTimeString()
-          }));
-          handleSpeak(contentText);
-        } else {
-          throw new Error('Invalid raw response received from local Ollama');
-        }
-      } catch (err) {
-        console.error('Ollama connection error, fallback triggered:', err);
-        runLocalPresetFallback();
-      } finally {
-        setIsGenerating(false);
-      }
-    } else if (useGroq) {
-      setIsGenerating(true);
-      
-      const loadingMsgId = Math.random().toString();
-      const loadingMsg: Message = {
-        id: loadingMsgId,
-        role: 'assistant',
-        content: lang === 'bn' ? 'নিওরা চিন্তাভাবনা করছে (Groq সক্রিয়)...' : 'Neora is thinking (Groq Active)...',
-        timestamp: new Date().toLocaleTimeString()
-      };
-      setMessages(prev => [...prev, loadingMsg]);
-
-      // Define local fallback helper for Groq errors
-      const runLocalPresetFallback = () => {
-        setMessages(prev => prev.filter(m => m.id !== loadingMsgId));
-        
-        let botResponse = getOfflineReply(userText, lang);
-        // If it was just a generic catch-all or default explanation, append Groq-specific connection warning
-        if (botResponse.includes('লোকাল ডেমো মোড') || botResponse.includes('local demo mode')) {
-          botResponse = lang === 'bn'
-            ? `আমি আপনার মেসেজ বুঝতে পেরেছি বস, তবে গ্রক (Groq) লাইভ API সংযোগ করা সম্ভব হয়নি। দয়া করে ওপরের "Settings ⚙️" ট্যাবে গিয়ে আপনার Groq API Key যুক্ত করুন বা Gemini API Key সেট করে লাইভ মানুষের মতো চ্যাট শুরু করুন!`
-            : `I understood your message, boss! However, I could not connect to the live Groq API. Please add your Groq API Key in the "Settings ⚙️" tab or enter a Gemini API Key to enable my live conversation mode!`;
-        }
-
-        const botReply: Message = {
-          id: Math.random().toString(),
-          role: 'assistant',
-          content: botResponse,
-          timestamp: new Date().toLocaleTimeString()
-        };
-        setMessages(prev => [...prev, botReply]);
-        handleSpeak(botResponse);
-      };
-
-      try {
-        const recentHistory = [...messages, newMsg].slice(-8);
-        
-        const resData: any = await neoraPost('/api/chat-groq', {
-          messages: recentHistory,
-          model: groqModel,
-          key: groqKey,
-          lang: lang
-        });
-        
-        if (resData.status === 'api_key_missing') {
-          setMessages(prev => prev.filter(m => m.id !== loadingMsgId));
-          const warningContent = lang === 'bn'
-            ? '❌ আপনার Groq API Key সেট করা পাওয়া যায়নি। অনুগ্রহ করে উপরের "Settings⚙️/DevStudio" ট্যাবে গিয়ে একটি সঠিক কী সাবমিট করুন।'
-            : '❌ Your Groq API Key was not found. Please click on Settings/DevStudio tab above to save a key first.';
-          setMessages(prev => [...prev, {
-            id: Math.random().toString(),
-            role: 'assistant',
-            content: warningContent,
-            timestamp: new Date().toLocaleTimeString()
-          }]);
-        } else if (resData.status === 'success' && resData.data?.choices?.[0]?.message?.content) {
-          const contentText = resData.data.choices[0].message.content;
-          setMessages(prev => prev.filter(m => m.id !== loadingMsgId).concat({
-            id: Math.random().toString(),
-            role: 'assistant',
-            content: contentText,
-            timestamp: new Date().toLocaleTimeString()
-          }));
-          handleSpeak(contentText);
-          setLastResult(contentText);
-          setStatusEndpoint(null);
-          setStatusBanner(null);
-        } else {
-          throw new Error('Invalid response payload from Groq');
-        }
-      } catch (err) {
-        console.error('Groq live engine error, fallback triggered:', err);
-        const endpointLabel = err instanceof NeoraApiError ? err.endpoint : '/api/chat-groq';
-        setStatusEndpoint(endpointLabel);
-        setStatusBanner(lang === 'bn' ? 'Groq সংযোগ ব্যর্থ' : 'Groq connection failed');
-        runLocalPresetFallback();
-      } finally {
-        setIsGenerating(false);
-      }
-    } else {
-      // Dynamic Gemini Active LLM Query Flow with Adaptive Local Fallback
-      setIsGenerating(true);
-      const loadingMsgId = Math.random().toString();
-      const loadingMsg: Message = {
-        id: loadingMsgId,
-        role: 'assistant',
-        content: lang === 'bn' ? 'নিওরা চিন্তাভাবনা করছে (Gemini सक्रिय)...' : 'Neora is thinking (Gemini Active)...',
-        timestamp: new Date().toLocaleTimeString()
-      };
-      setMessages(prev => [...prev, loadingMsg]);
-
-      // Define local preset recovery function
-      const runLocalPresetFallback = () => {
-        // Remove typing indicator if present
-        setMessages(prev => prev.filter(m => m.id !== loadingMsgId));
-        
-        const botResponse = getOfflineReply(userText, lang);
-
-        const botReply: Message = {
-          id: Math.random().toString(),
-          role: 'assistant',
-          content: botResponse,
-          timestamp: new Date().toLocaleTimeString()
-        };
-        setMessages(prev => [...prev, botReply]);
-        handleSpeak(botResponse);
-      };
-
-      try {
-        const recentHistory = [...messages, newMsg].slice(-8);
-        const resData: any = await neoraPost('/api/chat-gemini', {
-          messages: recentHistory,
-          lang: lang,
-          geminiKey: geminiKey
-        });
-        
-        if (resData.status === 'api_key_missing') {
-          runLocalPresetFallback();
-          setIsGenerating(false);
-          return;
-        }
-
-        if (resData.status === 'success' && resData.text) {
-          // Speak and render human-like dynamic response
-          setMessages(prev => prev.filter(m => m.id !== loadingMsgId).concat({
-            id: Math.random().toString(),
-            role: 'assistant',
-            content: resData.text,
-            timestamp: new Date().toLocaleTimeString()
-          }));
-          handleSpeak(resData.text);
-          setLastResult(resData.text);
-          setStatusEndpoint(null);
-          setStatusBanner(null);
-        } else {
-          throw new Error('Invalid response payload');
-        }
-      } catch (err) {
-        console.error('Gemini live engine error, fallback triggered:', err);
-        const endpointLabel = err instanceof NeoraApiError ? err.endpoint : '/api/chat-gemini';
-        setStatusEndpoint(endpointLabel);
-        setStatusBanner(lang === 'bn' ? 'Gemini সংযোগ ব্যর্থ' : 'Gemini connection failed');
-        runLocalPresetFallback();
-      } finally {
-        setIsGenerating(false);
+    const attempts: ('gemini' | 'groq' | 'ollama')[] = [activeBrain];
+    if (autoFailover) {
+      if (activeBrain === 'ollama') {
+        attempts.push('groq');
+        attempts.push('gemini');
+      } else if (activeBrain === 'groq') {
+        attempts.push('gemini');
+        attempts.push('ollama');
+      } else {
+        attempts.push('groq');
+        attempts.push('ollama');
       }
     }
+
+    const getLoadingLabel = (p: 'gemini' | 'groq' | 'ollama') => {
+      if (p === 'ollama') {
+        return lang === 'bn' 
+          ? `নিওরা লোকাল ব্রেইন চিন্তাভাবনা করছে (Ollama: ${selectedOllamaModel} সক্রিয়)...` 
+          : `Neora offline brain is thinking (Ollama: ${selectedOllamaModel} Active)...`;
+      } else if (p === 'groq') {
+        return lang === 'bn' 
+          ? `নিওরা চিন্তাভাবনা করছে (Groq: ${groqModel.split('-')[0].toUpperCase()} সক্রিয়)...` 
+          : `Neora is thinking (Groq: ${groqModel.split('-')[0].toUpperCase()} Active)...`;
+      } else {
+        return lang === 'bn' 
+          ? 'নিওরা চিন্তাভাবনা করছে (Gemini Core সক্রিয়)...' 
+          : 'Neora is thinking (Gemini Core Active)...';
+      }
+    };
+
+    const loadingMsgId = Math.random().toString();
+    const loadingMsg: Message = {
+      id: loadingMsgId,
+      role: 'assistant',
+      content: getLoadingLabel(activeBrain),
+      timestamp: new Date().toLocaleTimeString(),
+      brainUsed: activeBrain
+    };
+    setMessages(prev => [...prev, loadingMsg]);
+
+    const runStreamingWithFallback = async (attemptIndex: number) => {
+      if (attemptIndex >= attempts.length) {
+        // Local fallback presets as safety-net
+        setMessages(prev => prev.filter(m => m.id !== loadingMsgId));
+        let botResponse = getOfflineReply(userText, lang);
+
+        const prefixMsg = lang === 'bn'
+          ? `⚠️ দুঃখিত বস, আমার সচল সবগুলো এআই ব্রেন (Ollama, Groq, Gemini) চেষ্টা করেও যুক্ত করা যায়নি। চ্যাট নেটওয়ার্ক বা API Key চেক করুন।\n\n`
+          : `⚠️ Sorry boss, could not hook into any active AI brains (Ollama, Groq, Gemini) in sequence. Please verify credentials or local hosting service.\n\n`;
+
+        botResponse = prefixMsg + botResponse;
+
+        setMessages(prev => [...prev, {
+          id: Math.random().toString(),
+          role: 'assistant',
+          content: botResponse,
+          timestamp: new Date().toLocaleTimeString(),
+          brainUsed: 'offline'
+        }]);
+        handleSpeak(botResponse);
+        setIsGenerating(false);
+        abortControllerRef.current = null;
+        return;
+      }
+
+      const currentProvider = attempts[attemptIndex];
+      
+      if (attemptIndex > 0) {
+        // Set fallback notification to trigger subtle animated banner in ChatView
+        setFallbackNotification({ from: attempts[attemptIndex - 1], to: currentProvider });
+        setTimeout(() => setFallbackNotification(null), 4000); // clear after 4 seconds
+
+        // Update the loading message text to reflect fallback transition
+        setMessages(prev => prev.map(m => m.id === loadingMsgId ? {
+          ...m,
+          content: lang === 'bn'
+            ? `পূর্ববর্তী সংযোগ কাজ করেনি! স্বয়ংক্রিয় ব্যাকআপ ট্রাই করা হচ্ছে (${currentProvider === 'gemini' ? 'Gemini Core' : currentProvider === 'groq' ? 'Groq LPU' : 'Ollama Local'})...`
+            : `Attempt failed! Falling over to next active brain (${currentProvider.toUpperCase()})...`,
+          brainUsed: currentProvider
+        } : m));
+      }
+
+      const recentHistory = [...messages.filter(m => m.id !== loadingMsgId), newMsg].slice(-8);
+
+      await streamLlmResponse(
+        currentProvider,
+        recentHistory,
+        loadingMsgId,
+        (finalText, realProvider) => {
+          // Success! Speech speak synthesizers and wrap up
+          handleSpeak(finalText);
+          setLastResult(finalText);
+          setStatusEndpoint(null);
+          setStatusBanner(null);
+          setPendingVoiceCommand(null);
+          setIsGenerating(false);
+          abortControllerRef.current = null;
+          
+          // Clear visual attachment after successful generation
+          setAttachmentImage(null);
+          setAttachmentPreview(null);
+        },
+        (err) => {
+          console.warn(`Provider ${currentProvider} failed during query stream:`, err.message || err);
+          // Auto fallover next index
+          runStreamingWithFallback(attemptIndex + 1);
+        }
+      );
+    };
+
+    // Begin cascade
+    await runStreamingWithFallback(0);
   };
 
   const handleClearHistory = () => {
@@ -1161,6 +1941,90 @@ export function ChatView({
 
   return (
     <div id="chat-section" className="flex-1 flex h-full bg-[#1b1b1b] text-[#ececec] border-r border-[#2f2f2f] overflow-hidden relative select-none">
+      {/* 🚀 Super High-Quality Recurrent Chat Threads Manager Sidebar */}
+      {showThreadsSidebar && (
+        <div className="w-64 bg-slate-950 border-r border-slate-900 flex flex-col h-full shrink-0 z-30 animate-fade-in relative">
+          {/* Sidebar Header */}
+          <div className="p-3.5 border-b border-slate-900 bg-slate-900/35 flex items-center justify-between">
+            <div className="flex items-center gap-2 font-mono text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+              <History className="w-3.5 h-3.5 text-indigo-400" />
+              <span>{lang === 'bn' ? 'আলাপচারিতা হিস্ট্রি' : 'Chat Log History'}</span>
+            </div>
+            <button
+              onClick={() => setShowThreadsSidebar(false)}
+              className="p-1 hover:bg-slate-900 text-slate-500 hover:text-slate-200 rounded cursor-pointer transition-colors"
+              title={lang === 'bn' ? 'স্লাইডবার লুকান' : 'Collapse Sidebar'}
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+
+          {/* New Chat & Log actions */}
+          <div className="p-3 space-y-2 border-b border-slate-900">
+            <button
+              onClick={handleCreateNewThread}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 border border-cyan-500/25 bg-cyan-950/20 hover:bg-cyan-950/40 text-cyan-400 text-xs font-bold uppercase tracking-wider rounded-xl cursor-pointer hover:shadow-[0_0_15px_rgba(6,182,212,0.15)] transition-all transform active:scale-[0.98]"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>{lang === 'bn' ? 'নতুন চ্যাট শুরু করুন' : 'New Chat Thread'}</span>
+            </button>
+
+            <div className="flex gap-1.5 pt-1">
+              <button
+                onClick={handleExportThread}
+                className="flex-1 flex items-center justify-center gap-1 py-1 rounded-lg border border-slate-800 bg-slate-900/50 hover:bg-slate-800 text-[9px] font-bold text-slate-400 hover:text-slate-100 transition-all uppercase tracking-wide cursor-pointer"
+                title={lang === 'bn' ? 'হিস্ট্রি ব্যাকআপ রপ্তানি' : 'Export Current Thread to JSON'}
+              >
+                <Download className="w-2.5 h-2.5" />
+                <span>{lang === 'bn' ? 'রপ্তানি' : 'Export'}</span>
+              </button>
+              <button
+                onClick={handleClearAllThreads}
+                className="flex-1 flex items-center justify-center gap-1 py-1 rounded-lg border border-rose-950/30 bg-rose-950/10 hover:bg-rose-950/25 text-[9px] font-bold text-rose-500 hover:text-rose-400 transition-all uppercase tracking-wide cursor-pointer"
+                title={lang === 'bn' ? 'সব আলাপচারিতা মুছে দিন' : 'Clear All Sessions'}
+              >
+                <Trash2 className="w-2.5 h-2.5" />
+                <span>{lang === 'bn' ? 'ক্লিয়ার সব' : 'Clear All'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Scrolling thread items list */}
+          <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
+            {threads.map(t => {
+              const isActive = t.id === activeThreadId;
+              return (
+                <div
+                  key={t.id}
+                  onClick={() => setActiveThreadId(t.id)}
+                  className={`group relative flex items-center justify-between p-2.5 rounded-xl border text-left cursor-pointer transition-all duration-200 ${
+                    isActive
+                      ? 'bg-slate-900/95 border-cyan-500/20 text-cyan-400 shadow-[0_4px_12px_rgba(6,182,212,0.05)] shadow-slate-950/40 border'
+                      : 'border-transparent text-slate-400 hover:text-slate-100 hover:bg-slate-900/30'
+                  }`}
+                >
+                  <div className="flex-1 min-w-0 pr-1.5">
+                    <p className={`text-xs font-medium truncate ${isActive ? 'text-slate-100 font-semibold' : 'text-slate-400 group-hover:text-slate-200'}`}>
+                      {t.title}
+                    </p>
+                    <span className="text-[8px] opacity-45 font-mono block mt-0.5">
+                      {t.timestamp} • {t.messages.length} messages
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={(e) => handleDeleteThread(t.id, e)}
+                    className="p-1 opacity-0 group-hover:opacity-100 hover:bg-rose-950/25 text-slate-500 hover:text-rose-400 rounded-lg shrink-0 cursor-pointer transition-all duration-200"
+                    title={lang === 'bn' ? 'ডিলিট করুন' : 'Delete Session'}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
       {/* Immersive Holographic Speech Active Overlay */}
       {isListening && (
         <div id="speech-overlay-portal" className="absolute inset-0 bg-slate-950/90 backdrop-blur-md z-40 flex flex-col items-center justify-center text-center p-6 animate-fade-in select-none">
@@ -1219,41 +2083,93 @@ export function ChatView({
       {/* Main Column Wrapper */}
       <div className="flex-1 flex flex-col h-full overflow-hidden relative bg-[#212121]">
         {/* Header toolbar */}
-        <div className="p-3 bg-slate-900/60 border-b border-slate-800/80 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-cyan-400 animate-pulse" />
-          <span className="text-xs font-semibold text-white tracking-wider flex items-center gap-1.5 font-mono uppercase">
-            <span>Neora AI</span>
-            {useGroq ? (
-              <span className="text-[9px] bg-indigo-950/40 text-indigo-400 px-1.5 py-0.2 rounded border border-indigo-500/30">
-                Groq Active ({groqModel.split('-')[0].toUpperCase()})
-              </span>
-            ) : (
-              <span className="text-[9px] bg-cyan-950 text-cyan-400 px-1.5 py-0.2 rounded border border-cyan-800/30">
-                Gemini Edition
-              </span>
+        <div className="p-3 bg-slate-900/60 border-b border-slate-800/80 flex items-center justify-between shrink-0 gap-3">
+          <div className="flex items-center gap-2">
+            {!showThreadsSidebar && (
+              <button
+                onClick={() => setShowThreadsSidebar(true)}
+                className="p-1 px-2.5 bg-slate-950 hover:bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200 rounded-lg cursor-pointer mr-1.5 flex items-center gap-1.5 text-[10px] font-mono font-bold uppercase transition-all"
+                title={lang === 'bn' ? 'আলাপচারিতা হিস্ট্রি দেখুন' : 'Show Chat Log History'}
+              >
+                <History className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+                <span>Logs</span>
+              </button>
             )}
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          {messages.length > 0 && (
+            <Sparkles className="w-4 h-4 text-cyan-400 animate-pulse animate-duration-1000" />
+            <span className="text-xs font-semibold text-white tracking-wider flex items-center gap-1.5 font-mono uppercase">
+              <span>Neora AI</span>
+              {/* Interactive Connection-Status conscious Model Selector Dropdown */}
+              <div className="flex items-center gap-1.5 ml-1 select-none">
+                <select
+                  aria-label="Model switcher selection selection bar"
+                  value={activeBrain}
+                  onChange={(e) => {
+                    const selected = e.target.value as 'gemini' | 'groq' | 'ollama';
+                    setActiveBrain(selected);
+                    if (selected === 'groq') {
+                      setUseGroq(true);
+                      setUseOllama(false);
+                    } else if (selected === 'ollama') {
+                      setUseGroq(false);
+                      setUseOllama(true);
+                    } else {
+                      setUseGroq(false);
+                      setUseOllama(false);
+                    }
+                  }}
+                  className="bg-slate-950 hover:bg-slate-900 border border-slate-800 text-slate-200 text-[10px] font-mono font-bold tracking-wider rounded-xl px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-cyan-500/40 cursor-pointer uppercase pr-6 appearance-none relative"
+                  style={{ 
+                    backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 24 24\' stroke=\'%2306b6d4\'%3E%3Cpath stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'2.5\' d=\'M19 9l-7 7-7-7\' /%3E%3C/svg%3E")', 
+                    backgroundPosition: 'right 6px center', 
+                    backgroundSize: '9px', 
+                    backgroundRepeat: 'no-repeat' 
+                  }}
+                >
+                  <option value="gemini" className="bg-slate-950 text-cyan-400 font-bold uppercase text-[9px]">
+                    Gemini {connectionStatus?.gemini?.alive ? '● LIVE' : '○ ERR'}
+                  </option>
+                  <option value="groq" className="bg-slate-950 text-indigo-400 font-bold uppercase text-[9px]">
+                    Groq {connectionStatus?.groq?.alive ? '● LIVE' : '○ ERR'}
+                  </option>
+                  <option value="ollama" className="bg-slate-950 text-emerald-400 font-bold uppercase text-[9px]">
+                    Ollama {connectionStatus?.ollama?.alive ? '● LOCAL' : '○ OFF'}
+                  </option>
+                </select>
+              </div>
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2.5">
+            {/* Real-Time API Rate Quota Monitor */}
+            <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 bg-slate-950 rounded-xl border border-slate-850/80 font-mono text-[9px] text-slate-400">
+              <Gauge className="w-3 h-3 text-cyan-400 animate-pulse" />
+              <span className="font-bold text-slate-300">{lang === 'bn' ? 'কোটা:' : 'QUOTA Remaining:'}</span>
+              <span className="text-cyan-400 font-semibold pl-0.5">Gemini: {rateLimits.gemini.remainingRequests} Req/Min</span>
+              {rateLimits.groq.remainingRequests !== null ? (
+                <span className="border-l border-slate-800 pl-2 text-indigo-400 font-semibold">Groq Requests: {rateLimits.groq.remainingRequests} / {rateLimits.groq.limitRequests || 'Limit'}</span>
+              ) : (
+                <span className="border-l border-slate-800 pl-2 text-indigo-500">Groq: Wait Query</span>
+              )}
+            </div>
+
+            {messages.length > 0 && (
+              <button
+                onClick={handleClearHistory}
+                className="p-1.5 text-slate-500 hover:text-rose-400 rounded hover:bg-rose-950/20 transition-all cursor-pointer"
+                title={lang === 'bn' ? 'টাস্ক ক্লিয়ার করুন' : 'Reset Conversation'}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
             <button
-              onClick={handleClearHistory}
-              className="p-1.5 text-slate-500 hover:text-rose-400 rounded hover:bg-rose-950/20 transition-all cursor-pointer"
-              title={lang === 'bn' ? 'চ্যাট হিস্ট্রি মুছুন' : 'Reset Conversation'}
+              onClick={() => setSpeakVolumeOn(!speakVolumeOn)}
+              className={`p-1.5 rounded transition-all cursor-pointer ${
+                speakVolumeOn ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' : 'bg-slate-950 text-slate-500 border border-slate-850'
+              }`}
+              title={speakVolumeOn ? 'Vocal Speech ON' : 'Vocal Speech MUTED'}
             >
-              <Trash2 className="w-3.5 h-3.5" />
+              <Volume2 className="w-3.5 h-3.5" />
             </button>
-          )}
-          <button
-            onClick={() => setSpeakVolumeOn(!speakVolumeOn)}
-            className={`p-1.5 rounded transition-all cursor-pointer ${
-              speakVolumeOn ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' : 'bg-slate-950 text-slate-500 border border-slate-850'
-            }`}
-            title={speakVolumeOn ? 'Vocal Synthesis Output ON' : 'Vocal Synthesis Output MUTED'}
-          >
-            <Volume2 className="w-3.5 h-3.5" />
-          </button>
           <button
             onClick={() => setShowSettings(!showSettings)}
             className={`p-1.5 rounded transition-all cursor-pointer ${
@@ -1266,90 +2182,158 @@ export function ChatView({
         </div>
       </div>
 
-      {/* Groq Settings panel */}
+      {/* Advanced AI Settings Panel */}
       {showSettings && (
-      <div className="p-4 bg-slate-900/80 border-b border-indigo-950/45 space-y-3 animate-fade-in text-xs font-mono transition-all panel-surface-strong">
-          <div className="flex items-center justify-between">
-            <span className="text-white font-bold uppercase text-[10px] tracking-wider text-indigo-400 flex items-center gap-1.5">
-              <Cpu className="w-4 h-4 text-indigo-400" />
-              <span>{lang === 'bn' ? 'বিনামূল্যে Groq এপিআই সেটিংস' : 'FREE GROQ API COMPILER SETTINGS'}</span>
-            </span>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] text-slate-400">{lang === 'bn' ? 'Groq এআই সক্রিয়:' : 'Enable Groq AI:'}</span>
+        <div className="p-4 bg-slate-900/90 border-b border-indigo-950/45 space-y-3.5 animate-fade-in text-xs font-mono transition-all panel-surface-strong max-h-[80vh] overflow-y-auto">
+          {/* Quick Active Brain and Auto-Failover Hub */}
+          <div className="bg-slate-950/70 p-3.5 rounded-xl border border-slate-800/85 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-white font-bold uppercase text-[10px] tracking-wider text-indigo-400 flex items-center gap-1.5 font-mono">
+                <Cpu className="w-4 h-4 text-indigo-400 font-bold" />
+                <span>{lang === 'bn' ? 'প্রধান এআই ব্রেন নির্বাচন ও সংযোগ পদ্ধতি' : 'PRIMARY AI BRAIN COMPILER & AUTOMATIC FAILOVER'}</span>
+              </span>
+            </div>
+            
+            <p className="text-[10px] text-slate-400 leading-relaxed font-sans font-medium">
+              {lang === 'bn'
+                ? 'নিওরা কোন লাইভ এআই ব্রেনটি ব্যবহার করবে তা নির্বাচন করুন। একটি এআই সংযোগ ব্যর্থ হলে অন্য এপিআই দিয়ে সক্রিয়ভাবে সাহায্য করার জন্য ব্যাকআপ ফেলওভার নীতি অন রাখুন।'
+                : 'Select which active LLM module Neora should use primarily for answering requests. Keep the Failover helper enabled to always receive a live answer.'}
+            </p>
+
+            {/* Model select dropdown */}
+            <div className="flex flex-col gap-1 text-[10px] pr-0.5">
+              <span className="text-slate-400 font-bold uppercase tracking-wider text-[9px]">
+                {lang === 'bn' ? 'ব্রেন মডেল ড্রপডাউন মেনু:' : 'Select LLM Server Model:'}
+              </span>
+              <select
+                id="neora-model-select-dropdown"
+                value={activeBrain}
+                onChange={(e) => setActiveBrain(e.target.value as 'gemini' | 'groq' | 'ollama')}
+                className="w-full bg-slate-900 border border-slate-800 rounded-lg py-1.5 px-2.5 text-white focus:outline-none focus:ring-1 focus:ring-indigo-500/50 cursor-pointer font-mono text-[11px]"
+              >
+                <option value="gemini">Gemini 2.5 Flash Core (Recommended)</option>
+                <option value="groq">Groq Cloud (Llama-3.3-70b Speed-Engine)</option>
+                <option value="ollama">Ollama (Offline Local VM Agent)</option>
+              </select>
+            </div>
+
+            {/* Quick selectors */}
+            <div className="grid grid-cols-3 gap-2 pt-1 font-mono">
               <button
-                onClick={() => setUseGroq(!useGroq)}
-                className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase transition-all cursor-pointer ${
-                  useGroq 
-                    ? 'bg-emerald-950 text-emerald-400 border border-emerald-500/30' 
-                    : 'bg-slate-950 text-slate-500 border border-slate-850'
+                type="button"
+                onClick={() => setActiveBrain('gemini')}
+                className={`py-2 px-1.5 rounded-lg border text-center font-bold tracking-wider transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
+                  activeBrain === 'gemini'
+                    ? 'bg-rose-950/20 text-rose-400 border-rose-500/50 shadow-[0_0_12px_rgba(244,63,94,0.15)]'
+                    : 'bg-slate-900/40 text-slate-500 border-slate-800/60 hover:text-slate-300'
                 }`}
               >
-                {useGroq ? (lang === 'bn' ? 'হ্যাঁ' : 'ACTIVE') : (lang === 'bn' ? 'না' : 'DISABLED')}
+                <Sparkles className="w-3.5 h-3.5" />
+                <span className="text-[9px] uppercase">Gemini Core</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveBrain('groq')}
+                className={`py-2 px-1.5 rounded-lg border text-center font-bold tracking-wider transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
+                  activeBrain === 'groq'
+                    ? 'bg-indigo-950/20 text-indigo-400 border-indigo-500/50 shadow-[0_0_12px_rgba(99,102,241,0.15)]'
+                    : 'bg-slate-900/40 text-slate-500 border-slate-800/60 hover:text-slate-300'
+                }`}
+              >
+                <Zap className="w-3.5 h-3.5 text-indigo-450" />
+                <span className="text-[9px] uppercase">Groq LPU</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveBrain('ollama')}
+                className={`py-2 px-1.5 rounded-lg border text-center font-bold tracking-wider transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
+                  activeBrain === 'ollama'
+                    ? 'bg-cyan-950/20 text-cyan-400 border-cyan-500/50 shadow-[0_0_12px_rgba(6,182,212,0.15)]'
+                    : 'bg-slate-900/40 text-slate-500 border-slate-800/60 hover:text-slate-300'
+                }`}
+              >
+                <Cpu className="w-3.5 h-3.5" />
+                <span className="text-[9px] uppercase font-mono">Ollama Local</span>
               </button>
             </div>
-          </div>
-          
-          <p className="text-[10px] text-slate-400 leading-relaxed font-sans">
-            {lang === 'bn' 
-              ? 'নিওরা পেইড এপিআই ছাড়াই সম্পূর্ণরূপে বিনামূল্যে ব্যবহারের জন্য Groq ক্লাউড সাপোর্ট করে। এটি অতি দ্রুত গতিসম্পন্ন Llama ও Gemma ওপেন-সোর্স এআই মডেলগুলোর সার্ভিস প্রদান করে।' 
-              : 'Neora supports Groq Cloud completely free for developer setups, providing sub-second low latency Llama 3 & Gemma models without expensive recurring plans.'}
-          </p>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1.5">
-            <div className="space-y-1.5">
-              <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wide block">{lang === 'bn' ? 'ব্যক্তিগত Groq এপিআই কি:' : 'Personal Groq API Key:'}</label>
-              <input
-                type="password"
-                placeholder="gsk_..."
-                value={groqKey}
-                onChange={(e) => setGroqKey(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-205 placeholder-slate-705 outline-none focus:border-indigo-500/50"
-              />
-              <span className="text-[8px] text-slate-500 block leading-tight">
-                {lang === 'bn' 
-                  ? '✦ আপনার ব্রাউজারের লোকাল-স্টোরেজে সংরক্ষিত থাকবে, কোনো সার্ভারে লক হবে না।' 
-                  : '✦ Stored locally in your client browser cache; never hardcoded on remote endpoints.'}
+            {/* Auto Failover Toggle Option */}
+            <div className="flex items-center justify-between border-t border-slate-900/80 pt-2.5 text-[10px]">
+              <span className="text-slate-400 flex items-center gap-1">
+                <span>🔄</span>
+                <span>{lang === 'bn' ? 'সংযোগ ত্রুটিতে মডেলে স্বয়ংক্রিয় পরিবর্তন:' : 'Auto Failover on Connection Outages:'}</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setAutoFailover(!autoFailover)}
+                className={`px-2 py-0.5 rounded text-[8px] font-bold tracking-wide transition-all cursor-pointer ${
+                  autoFailover
+                    ? 'bg-emerald-950 text-emerald-400 border border-emerald-500/30 shadow-[0_0_8px_rgba(16,185,129,0.1)]'
+                    : 'bg-slate-900 text-slate-500 border border-slate-850'
+                }`}
+              >
+                {autoFailover ? (lang === 'bn' ? 'সক্রিয় (রিলায়েবল)' : 'ENABLED (Highly Reliable)') : (lang === 'bn' ? 'নিষ্ক্রিয়' : 'DISABLED')}
+              </button>
+            </div>
+            
+            <p className="text-[8px] text-slate-500 leading-tight">
+              {lang === 'bn'
+                ? '✦ মেম্বার মডেলে কী-ভুল বা সংযোগ বিচ্ছিন্নতা থাকলে নিওরা লাইভ ব্যাকআপে (Gemini Core বা ওল্লামা) চলে যাবে।'
+                : '✦ If your chosen active brain fails on requests, Neora recovers the dialogue using sequential active fallbacks.'}
+            </p>
+          </div>
+
+          {/* Groq Settings Panel details */}
+          <div className="border-t border-slate-800/60 pt-3.5 mt-2 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-white font-bold uppercase text-[10px] tracking-wider text-indigo-400 flex items-center gap-1.5 font-mono">
+                <Zap className="w-4 h-4 text-indigo-400" />
+                <span>{lang === 'bn' ? 'Groq এপিআই কনফিগারেশন' : 'GROQ API PROXY SETTINGS'}</span>
               </span>
             </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+              <div className="space-y-1.5">
+                <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wide block">{lang === 'bn' ? 'ব্যক্তিগত Groq এপিআই কি:' : 'Personal Groq API Key:'}</label>
+                <input
+                  type="password"
+                  placeholder="gsk_..."
+                  value={groqKey}
+                  onChange={(e) => setGroqKey(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-700 outline-none focus:border-indigo-500/50"
+                />
+              </div>
 
-            <div className="space-y-1.5">
-              <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wide block">{lang === 'bn' ? 'পছন্দসই এআই মডেল:' : 'Select AI Model Brain:'}</label>
-              <select
-                value={groqModel}
-                onChange={(e) => setGroqModel(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-slate-205 outline-none focus:border-indigo-500/50"
-              >
-                <option value="llama-3.3-70b-versatile">Llama 3.3 70B (Versatile & Smart)</option>
-                <option value="llama-3.1-8b-instant">Llama 3.1 8B (Sub-second Instant)</option>
-                <option value="mixtral-8x7b-32768">Mixtral 8x7B (Deep reasoning context)</option>
-                <option value="gemma2-9b-it">Gemma 2 9B (Google Open weights)</option>
-              </select>
-              <span className="text-[8px] text-slate-500 block leading-tight">
-                {lang === 'bn' 
-                  ? '✦ মেমরি এবং লজিক্যাল অ্যাকশনের জন্য 70B মডেলটি রিকমেন্ডেড।' 
-                  : '✦ Ultra-fast open weight models powered by Groq LPUs.'}
-              </span>
+              <div className="space-y-1.5">
+                <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wide block">{lang === 'bn' ? 'পছন্দসই এআই মডেল:' : 'Select AI Model Brain:'}</label>
+                <select
+                  value={groqModel}
+                  onChange={(e) => setGroqModel(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500/50"
+                >
+                  <option value="llama-3.3-70b-versatile">Llama 3.3 70B (Versatile & Smart)</option>
+                  <option value="llama-3.1-8b-instant">Llama 3.1 8B (Sub-second Instant)</option>
+                  <option value="mixtral-8x7b-32768">Mixtral 8x7B (Deep reasoning context)</option>
+                  <option value="gemma2-9b-it">Gemma 2 9B (Google Open weights)</option>
+                </select>
+              </div>
             </div>
           </div>
 
           {/* Gemini API Settings Panel */}
-          <div className="border-t border-slate-800/80 pt-3.5 mt-3 space-y-3">
+          <div className="border-t border-slate-800/60 pt-3.5 space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-white font-bold uppercase text-[10px] tracking-wider text-rose-400 flex items-center gap-1.5 font-mono">
+              <span className="text-white font-bold uppercase text-[10px] tracking-wider text-rose-450 flex items-center gap-1.5 font-mono">
                 <Sparkles className="w-4 h-4 text-rose-400" />
                 <span>{lang === 'bn' ? 'ব্যক্তিগত Gemini এপিআই সেটিংস' : 'PERSONAL GEMINI API SETTINGS'}</span>
               </span>
             </div>
-            
-            <p className="text-[10px] text-slate-400 leading-relaxed font-sans">
-              {lang === 'bn' 
-                ? 'গুগল জেমিনি এআই সচল করতে বা লোকাল পিসি-তে অফলাইনে ব্যবহারের জন্য আপনার এপিআই কি দিন। এটি উন্নত স্পীড ও সম্পূর্ণ বাংলা ও ইংরেজি অটোমেশন প্রম্পট প্রসেস করতে সাহায্য করে।' 
-                : 'Configure Google Gemini API Client to enable state-of-the-art native intelligence. Runs with zero latencies on both local setups and AI studio cloud hosts.'}
-            </p>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1.5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
               <div className="space-y-1.5 col-span-2 md:col-span-1">
-                <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wide block">
+                <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wide block justify-between items-center">
                   {lang === 'bn' ? 'ব্যক্তিগত Gemini এপিআই কি:' : 'Personal Gemini API Key:'}
                 </label>
                 <input
@@ -1357,115 +2341,127 @@ export function ChatView({
                   placeholder="AIzaSy..."
                   value={geminiKey}
                   onChange={(e) => setGeminiKey(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-205 placeholder-slate-705 outline-none focus:border-rose-500/50"
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-700 outline-none focus:border-rose-500/50"
                 />
-                <span className="text-[8px] text-slate-500 block leading-tight">
-                  {lang === 'bn' 
-                    ? '✦ আপনার ব্রাউজারের ক্যাশে নিরাপদে সংরক্ষিত থাকবে।' 
-                    : '✦ Saved securely in your browser cache. Extends offline setup instantly.'}
-                </span>
               </div>
               <div className="space-y-1.5 col-span-2 md:col-span-1">
                 <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wide block">
                   {lang === 'bn' ? 'সক্রিয় জেমিনি মডেল:' : 'Active Gemini Model:'}
                 </label>
                 <div className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-rose-400 font-bold font-mono">
-                  gemini-2.5-flash (Standard)
+                  gemini-2.5-flash (Standard Setup)
                 </div>
-                <span className="text-[8px] text-slate-500 block leading-tight">
-                  {lang === 'bn' 
-                    ? '✦ Neora স্বয়ংক্রিয়ভাবে জেমিনি ২.৫ ফ্ল্যাশ ব্যবহার করে।' 
-                    : '✦ Fully optimized version for low-level automation compilers.'}
-                </span>
               </div>
             </div>
           </div>
 
           {/* Ollama Local Offline AI Brain Panel */}
-          <div className="border-t border-slate-800/80 pt-3.5 mt-3 space-y-3">
+          <div className="border-t border-slate-800/60 pt-3.5 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-white font-bold uppercase text-[10px] tracking-wider text-cyan-400 flex items-center gap-1.5 font-mono">
                 <Cpu className="w-4 h-4 text-cyan-400" />
-                <span>{lang === 'bn' ? 'লোকাল ওল্লামা অফলাইন এআই ব্রেইন' : 'LOCAL OLLAMA OFFLINE AI BRAIN'}</span>
+                <span>{lang === 'bn' ? 'লোকাল ওল্লামা অফলাইন এআই সেটিংস' : 'LOCAL OLLAMA CONNECTION HANDSHAKE'}</span>
               </span>
               <div className="flex items-center gap-2">
-                <span className="text-[10px] text-slate-400">{lang === 'bn' ? 'ওল্লামা অফলাইন মোড:' : 'Enable Local Ollama:'}</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const nextUseOllama = !useOllama;
-                    setUseOllama(nextUseOllama);
-                    if (nextUseOllama) {
-                      setUseGroq(false); // Make them mutually exclusive
-                    }
-                  }}
-                  className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase transition-all cursor-pointer ${
-                    useOllama 
-                      ? 'bg-cyan-950 text-cyan-400 border border-cyan-500/30' 
-                      : 'bg-slate-950 text-slate-500 border border-slate-850'
-                  }`}
-                >
-                  {useOllama ? (lang === 'bn' ? 'সক্রিয়' : 'ACTIVE') : (lang === 'bn' ? 'নিষ্ক্রিয়' : 'DISABLED')}
-                </button>
-              </div>
-            </div>
-
-            <p className="text-[10px] text-slate-400 leading-relaxed font-sans">
-              {lang === 'bn' 
-                ? 'ওল্লামা আপনাকে সম্পূর্ণ ইন্টারনেটবিহীন অফলাইনে কাজ করার সুবিধা দেয়। আপনার কম্পিউটারে চলা Llama3 বা DeepSeek-R1 মডেলগুলোর সাথে এটি সরাসরি যুক্ত হয়।' 
-                : 'Ollama integration enables completely private, internet-free offline processing. It maps prompts straight to llama3, mistral, or deepseek-r1 models running inside your offline local container setup.'}
-            </p>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1.5">
-              <div className="space-y-1.5">
-                <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wide block">{lang === 'bn' ? 'ওল্লামা অফলাইন স্ট্যাটাস:' : 'Ollama Offline Connection:'}</span>
-                <div className="flex items-center gap-2">
+                <span className="text-[10.5px] text-slate-400">{lang === 'bn' ? 'স্ট্যাটাস:' : 'Handshake Status:'}</span>
+                <div className="flex items-center gap-1.5">
                   {ollamaStatus === 'checking' && (
-                    <span className="text-amber-400 text-xs flex items-center gap-1.5 font-mono">
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Checking local...
+                    <span className="text-amber-400 text-[10px] flex items-center gap-1 font-mono">
+                      <RefreshCw className="w-2.5 h-2.5 animate-spin" /> ...
                     </span>
                   )}
                   {ollamaStatus === 'available' && (
-                    <span className="text-emerald-400 text-xs font-bold uppercase flex items-center gap-1.5 font-mono">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                      {lang === 'bn' ? 'সংযুক্ত' : 'CONNECTED'}
+                    <span className="text-emerald-400 text-[10px] font-bold uppercase flex items-center gap-1 font-mono">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                      OK
                     </span>
                   )}
                   {ollamaStatus === 'not_installed' && (
-                    <span className="text-slate-500 text-xs font-bold uppercase flex items-center gap-1.5 font-mono">
-                      <span className="w-2 h-2 rounded-full bg-red-500"></span>
-                      {lang === 'bn' ? 'অফলাইন' : 'OFFLINE'}
+                    <span className="text-slate-500 text-[10px] font-bold uppercase flex items-center gap-1 font-mono">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                      OFFLINE
                     </span>
                   )}
                   {ollamaStatus === 'partial' && (
-                    <span className="text-amber-500 text-xs font-bold uppercase flex items-center gap-1.5 font-mono">
-                      <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span>
-                      {lang === 'bn' ? 'আংশিক' : 'PARTIAL'}
+                    <span className="text-amber-500 text-[10px] font-bold uppercase flex items-center gap-1 font-mono">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                      PARTIAL
                     </span>
                   )}
                   <button 
                     type="button" 
                     onClick={checkOllamaStatus}
-                    className="p-1 text-slate-400 hover:text-white rounded bg-slate-950 border border-slate-800 transition"
-                    title="Perform Manual Handshake"
+                    className="p-1 text-slate-400 hover:text-white rounded bg-slate-950 border border-slate-800 transition cursor-pointer"
                   >
-                    <RefreshCw className="w-3 h-3" />
+                    <RefreshCw className="w-2.5 h-2.5" />
                   </button>
                 </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1">
+              {/* Custom Base URL */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wide block">
+                  {lang === 'bn' ? 'ওল্লামা সার্ভার ইউআরএল:' : 'Ollama Host Address URL:'}
+                </label>
+                <input
+                  type="text"
+                  placeholder="http://localhost:11434"
+                  value={ollamaBaseUrl}
+                  onChange={(e) => setOllamaBaseUrl(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-cyan-500/50"
+                />
                 <span className="text-[8px] text-slate-500 block leading-tight">
-                  {lang === 'bn' 
-                    ? '✦ নিশ্চিত করুন ওল্লামা পোর্ট ১১৪৩৪-এ লোকালহোস্টে সচল রয়েছে।' 
-                    : '✦ Automatically detects Ollama listening daemon running locally on Port 11434.'}
+                  {lang === 'bn' ? '✦ সাধারণত localhost বা কাস্টম হোস্ট আইপি।' : '✦ Standard is http://localhost:11434 or custom IP.'}
                 </span>
               </div>
 
+              {/* Connection Mode Selector */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wide block">
+                  {lang === 'bn' ? 'সংযোগ প্রোটোকল:' : 'Connection protocol Mode:'}
+                </label>
+                <div className="grid grid-cols-2 gap-1 font-mono">
+                  <button
+                    type="button"
+                    onClick={() => setOllamaConnectionMode('browser')}
+                    className={`py-1.5 rounded text-[10px] font-bold border transition duration-150 cursor-pointer ${
+                      ollamaConnectionMode === 'browser'
+                        ? 'bg-cyan-950/40 text-cyan-400 border-cyan-500/40'
+                        : 'bg-slate-950 text-slate-500 border-slate-850'
+                    }`}
+                  >
+                    Client CORS Direct
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOllamaConnectionMode('server')}
+                    className={`py-1.5 rounded text-[10px] font-bold border transition duration-150 cursor-pointer ${
+                      ollamaConnectionMode === 'server'
+                        ? 'bg-cyan-950/40 text-cyan-400 border-cyan-500/40'
+                        : 'bg-slate-950 text-slate-500 border-slate-850'
+                    }`}
+                  >
+                    Server-Side Proxy
+                  </button>
+                </div>
+                <span className="text-[8px] text-slate-500 block leading-tight">
+                  {lang === 'bn'
+                    ? '✦ সরাসরি ব্রাউজার সংযোগের জন্য Client সিলেক্ট করুন।'
+                    : '✦ Server-Side bypasses browser container constraints.'}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1">
               <div className="space-y-1.5">
                 <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wide block">{lang === 'bn' ? 'ওল্লামা মডেল নির্বাচন:' : 'Select Ollama Model:'}</label>
                 {ollamaModels.length > 0 ? (
                   <select
                     value={selectedOllamaModel}
                     onChange={(e) => setSelectedOllamaModel(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-slate-205 outline-none focus:border-cyan-500/50"
+                    className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-slate-200 outline-none focus:border-cyan-500/50"
                   >
                     {ollamaModels.map((m: any, idx: number) => (
                       <option key={idx} value={m.name}>{m.name}</option>
@@ -1486,8 +2482,8 @@ export function ChatView({
                 )}
                 <span className="text-[8px] text-slate-500 block leading-tight">
                   {lang === 'bn' 
-                    ? '✦ নতুন মডেল ডাউনলোড করতে ওল্লামায় "ollama run" ট্রাই করুন।' 
-                    : '✦ Discovered active model weights. Run "ollama run llama3" or "ollama run deepseek-r1" to fetch.'}
+                    ? '✦ নতুন মডেল ওল্লামায় সচল করতে "ollama run" ট্রাই করুন।' 
+                    : '✦ Discovered active models. Use "ollama run llama3" or "ollama run deepseek-r1" to fetch.'}
                 </span>
               </div>
             </div>
@@ -1573,9 +2569,28 @@ export function ChatView({
                     <span className="text-[10px] text-slate-500 font-mono tracking-wide flex items-center gap-2 px-1">
                       <span>
                         {isBot 
-                          ? (useGroq ? `Neora AI (${groqModel.split('-')[0].toUpperCase()} - Groq Client)` : 'Neora AI (Gemini Core)') 
+                          ? (lang === 'bn' ? 'নিওরা এআই (Neora AI)' : 'Neora AI') 
                           : (lang === 'bn' ? 'আপনি (শুকরিয়া প্রিন্টার্স)' : 'You (Shukria Printers)')}
                       </span>
+                      {isBot && (
+                        <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold border tracking-wider uppercase ${
+                          m.brainUsed === 'ollama'
+                            ? 'bg-cyan-950/40 text-cyan-400 border-cyan-500/25'
+                            : m.brainUsed === 'groq'
+                              ? 'bg-indigo-950/40 text-indigo-400 border-indigo-500/25'
+                              : m.brainUsed === 'offline'
+                                ? 'bg-amber-950/40 text-amber-500 border-amber-500/25 animate-pulse'
+                                : 'bg-rose-950/40 text-rose-400 border-rose-500/25'
+                        }`}>
+                          {m.brainUsed === 'ollama' 
+                            ? `Ollama: ${selectedOllamaModel}` 
+                            : m.brainUsed === 'groq' 
+                              ? `Groq: ${groqModel.split('-')[0].toUpperCase()}` 
+                              : m.brainUsed === 'offline' 
+                                ? (lang === 'bn' ? 'অফলাইন ব্যাকআপ' : 'Offline Safe') 
+                                : 'Gemini Core'}
+                        </span>
+                      )}
                       {isSpeaking && isBot && (
                         <span className="flex items-center gap-0.5 text-cyan-400 bg-cyan-950/40 px-1.5 py-0.5 rounded border border-cyan-500/20 animate-pulse text-[8px] font-bold">
                           <span className="w-0.5 h-2.5 bg-cyan-400 rounded-full animate-bounce [animation-delay:0.1s]"></span>
@@ -1591,13 +2606,117 @@ export function ChatView({
                       </span>
                     )}
                     
-                    <div className={`p-4 rounded-2xl text-xs sm:text-sm leading-relaxed whitespace-pre-line shadow-sm border ${
-                      isBot 
-                        ? 'bg-slate-900/60 border-slate-800/80 text-slate-200 shadow-slate-950/40 rounded-tl-none' 
-                        : 'bg-cyan-950/25 border-cyan-500/20 text-cyan-100 rounded-tr-none'
-                    }`}>
-                      {m.content}
-                    </div>
+                    {editingMessageId === m.id ? (
+                      <div className="space-y-2 w-full min-w-[280px] bg-slate-950 p-3.5 rounded-2xl border border-cyan-500/20 text-left">
+                        <textarea
+                          value={editingContent}
+                          onChange={(e) => setEditingContent(e.target.value)}
+                          className="w-full bg-slate-900 text-slate-100 text-xs sm:text-sm p-2.5 rounded-xl border border-slate-800 focus:outline-none focus:border-cyan-500/40 resize-none font-sans"
+                          rows={3}
+                        />
+                        <div className="flex justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setEditingMessageId(null)}
+                            className="px-3 py-1.5 text-[9px] uppercase font-bold tracking-wider rounded-lg bg-slate-850 hover:bg-slate-800 text-slate-300 transition-all cursor-pointer"
+                          >
+                            {lang === 'bn' ? 'বাতিল' : 'Cancel'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateMessage(m.id, editingContent)}
+                            className="px-3 py-1.5 text-[9px] uppercase font-bold tracking-wider rounded-lg bg-cyan-950 text-cyan-400 hover:bg-cyan-900 border border-cyan-850/40 transition-all cursor-pointer"
+                          >
+                            {lang === 'bn' ? 'পরিবর্তন করুন ও পাঠান' : 'Update & Resend'}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="group relative">
+                        <div className={`p-4 rounded-2xl text-xs sm:text-sm leading-relaxed shadow-sm border transition-all ${
+                          isBot 
+                            ? 'bg-slate-900/60 border-slate-800/80 text-slate-200 shadow-slate-950/40 rounded-tl-none hover:border-slate-700 text-left' 
+                            : 'bg-cyan-950/25 border-cyan-500/20 text-cyan-100 rounded-tr-none hover:border-cyan-500/45 text-left'
+                        }`}>
+                          {/* If a user attached an image, show its thumbnail preview in the message bubble too! */}
+                          {m.image?.data && (
+                            <img 
+                              src={`data:${m.image.mimeType};base64,${m.image.data}`} 
+                              alt="Attached visual context asset link" 
+                              className="max-h-48 rounded-xl object-contain border border-cyan-500/10 mb-3 shadow-[0_4px_12px_rgba(0,0,0,0.5)] bg-slate-900" 
+                              referrerPolicy="no-referrer"
+                            />
+                          )}
+                          <div className="markdown-body select-text text-left">
+                            <ReactMarkdown
+                              components={{
+                                p: ({ children }) => <p className="mb-2 last:mb-0 text-left">{children}</p>,
+                                ul: ({ children }) => <ul className="list-disc pl-5 mb-2 space-y-1 text-left">{children}</ul>,
+                                ol: ({ children }) => <ol className="list-decimal pl-5 mb-2 space-y-1 text-left">{children}</ol>,
+                                li: ({ children }) => <li className="mb-0.5 text-left">{children}</li>,
+                                code: ({ node, ...props }) => (
+                                  <code className="bg-slate-950 text-[#00d4ff] px-1.5 py-0.5 font-mono text-[11px] rounded border border-cyan-950" {...props} />
+                                ),
+                                pre: ({ children }) => (
+                                  <pre className="bg-slate-950 p-3 rounded-xl border border-slate-800 font-mono text-[11px] overflow-x-auto text-slate-300 my-2 shadow-inner leading-normal max-w-full text-left">{children}</pre>
+                                ),
+                                strong: ({ children }) => <strong className="font-semibold text-white">{children}</strong>,
+                                h1: ({ children }) => <h1 className="text-sm font-bold text-white mb-2 font-sans tracking-wide text-left">{children}</h1>,
+                                h2: ({ children }) => <h2 className="text-xs font-bold text-white mb-1.5 font-sans tracking-wide text-left">{children}</h2>,
+                                h3: ({ children }) => <h3 className="text-[11px] font-bold text-white mb-1 font-sans text-left">{children}</h3>,
+                              }}
+                            >
+                              {m.content}
+                            </ReactMarkdown>
+                          </div>
+                        </div>
+
+                        {/* Interactive Message Action Toolbar icons overlay */}
+                        <div className={`absolute bottom-[-14px] ${isBot ? 'left-2.5' : 'right-2.5'} flex items-center gap-1 bg-slate-950 border border-slate-800 px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200 shadow-[0_4px_12px_rgba(0,0,0,0.5)] z-20`}>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyMessage(m.content, m.id)}
+                            className="p-1 hover:bg-slate-850 rounded-lg text-slate-500 hover:text-cyan-400 transition-all cursor-pointer"
+                            title={copiedMessageId === m.id ? (lang === 'bn' ? 'কপি হয়েছে' : 'Copied!') : (lang === 'bn' ? 'মেসেজ কপি করুন' : 'Copy Message')}
+                          >
+                            {copiedMessageId === m.id ? (
+                              <span className="text-[7px] font-mono text-cyan-400 uppercase font-bold tracking-tight px-1 pb-0.5">COPIED</span>
+                            ) : (
+                              <Copy className="w-2.8 h-2.8" />
+                            )}
+                          </button>
+
+                          {!isBot ? (
+                            <button
+                              type="button"
+                              onClick={() => startEditingMessage(m.id, m.content)}
+                              className="p-1 hover:bg-slate-850 rounded-lg text-slate-500 hover:text-amber-400 transition-all cursor-pointer"
+                              title={lang === 'bn' ? 'মেসেজ পরিবর্তন করুন' : 'Edit Message'}
+                            >
+                              <Edit3 className="w-2.8 h-2.8" />
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleSpeak(m.content)}
+                              className="p-1 hover:bg-slate-850 rounded-lg text-slate-500 hover:text-emerald-400 transition-all cursor-pointer"
+                              title={lang === 'bn' ? 'উত্তরটি শুনুন' : 'Listen to Reply'}
+                            >
+                              <Volume2 className="w-2.8 h-2.8" />
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteMessage(m.id)}
+                            className="p-1 hover:bg-rose-950/40 rounded-lg text-slate-500 hover:text-rose-400 transition-all cursor-pointer"
+                            title={lang === 'bn' ? 'মেসেজটি মুছুন' : 'Delete Message'}
+                          >
+                            <Trash2 className="w-2.8 h-2.8" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     
                     <span className="text-[9px] text-slate-600 font-mono block px-1">
                       {m.timestamp}
@@ -1712,7 +2831,39 @@ export function ChatView({
             </span>
           </div>
 
+          {/* Image Attachment Thumbnail Preview Container */}
+          {attachmentPreview && (
+            <div className="relative inline-block mb-3 p-1.5 bg-slate-900 border border-slate-850/80 rounded-xl shadow-[0_4px_20px_rgba(0,0,0,0.6)] animate-in fade-in zoom-in duration-200">
+              <img 
+                src={attachmentPreview} 
+                alt="Selected asset preview" 
+                className="h-20 w-fit rounded-lg object-contain bg-slate-950 border border-slate-800" 
+                referrerPolicy="no-referrer"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setAttachmentImage(null);
+                  setAttachmentPreview(null);
+                }}
+                className="absolute -top-1.5 -right-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-full p-1 shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center border border-rose-700"
+                title={lang === 'bn' ? 'ছবি মুছুন' : 'Remove Image'}
+              >
+                <X className="w-2.8 h-2.8" />
+              </button>
+            </div>
+          )}
+
           <div className="flex items-center gap-2 bg-slate-900/70 border border-slate-800/90 rounded-full py-1.5 pl-4 pr-1.5 focus-within:border-cyan-500/50 shadow-[0_4px_24px_rgba(0,0,0,0.5)] focus-within:shadow-[0_0_24px_rgba(6,182,212,0.1)] transition-all">
+            {/* Native file input for visual attachment uploads */}
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={handleImageSelection} 
+              className="hidden" 
+              accept="image/*" 
+            />
+
             <input
               id="chat-input"
               type="text"
@@ -1726,6 +2877,17 @@ export function ChatView({
             
             {/* Embedded Action Panel */}
             <div className="flex items-center gap-1.5">
+              {/* Paperclip upload button */}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="p-2 rounded-full transition-all cursor-pointer bg-slate-950 text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-slate-800 flex items-center justify-center"
+                title={lang === 'bn' ? 'ছবি যুক্ত করুন' : 'Attach Image (Vision Mode for Gemini Flash)'}
+              >
+                {/* Paperclip is simulated by standard icon or lucide Plus/Sparkles / custom visual */}
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+
               <button
                 type="button"
                 onClick={handleEnhancePrompt}
@@ -1743,6 +2905,7 @@ export function ChatView({
               </button>
 
               <button
+                type="button"
                 onClick={toggleMic}
                 className={`p-2 rounded-full transition-all cursor-pointer ${
                   isListening 
@@ -1754,17 +2917,29 @@ export function ChatView({
                 {isListening ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
               </button>
               
-              <button
-                onClick={handleSendMessage}
-                disabled={!inputValue.trim()}
-                className={`p-2 rounded-full transition-all cursor-pointer ${
-                  inputValue.trim() 
-                    ? 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-[0_0_12px_rgba(6,182,212,0.3)]' 
-                    : 'bg-slate-950 text-slate-600 border border-slate-800 pointer-events-none'
-                }`}
-              >
-                <Send className="w-3.5 h-3.5" />
-              </button>
+              {isGenerating ? (
+                <button
+                  type="button"
+                  onClick={() => abortControllerRef.current?.abort()}
+                  className="p-2 rounded-full transition-all cursor-pointer bg-red-600 hover:bg-red-500 text-white shadow-[0_0_12px_rgba(239,68,68,0.4)] animate-pulse flex items-center justify-center"
+                  title={lang === 'bn' ? 'বন্ধ করুন' : 'Stop generating response'}
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleSendMessage()}
+                  disabled={!inputValue.trim() && !attachmentImage}
+                  className={`p-2 rounded-full transition-all cursor-pointer ${
+                    (inputValue.trim() || attachmentImage)
+                      ? 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-[0_0_12px_rgba(6,182,212,0.3)]' 
+                      : 'bg-slate-950 text-slate-600 border border-slate-800 pointer-events-none'
+                  }`}
+                >
+                  <Send className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           </div>
 

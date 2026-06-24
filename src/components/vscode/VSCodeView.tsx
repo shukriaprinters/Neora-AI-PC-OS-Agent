@@ -183,7 +183,7 @@ export default function App() {
       {/* Main Content Area */}
       <div className="flex-1 flex min-h-0">
         {/* Activity Bar */}
-        <ActivityBar activeView={activeView} setActiveView={setActiveView} />
+        <ActivityBar activeView={activeView} setActiveView={setActiveView as any} />
 
         {/* Side Panel */}
         <div className="w-64 border-r border-slate-800/80 bg-slate-950/80">{renderSidePanel()}</div>
