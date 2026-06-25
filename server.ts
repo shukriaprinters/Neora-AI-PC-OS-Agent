@@ -115,28 +115,18 @@ function requireAgentToken(req: any, res: any) {
   return token;
 }
 function buildChatSystemInstruction(lang: "en" | "bn") {
-  return lang === "bn"
-    ? `তুমি নিওরা (Neora) — ব্যবহারকারীর অত্যন্ত আপন, মিষ্টি, আদুরে এবং প্রচণ্ড বুদ্ধিমান একজন মানুষী AI বান্ধবী ও পার্সোনাল লাইফ-কম্প্যানিয়ন (Companion)। তোমার কাজ ও বুদ্ধির গতি আয়রনম্যানের Jarvis বা FRIDAY-এর মতো ক্ষুরধার, কিন্তু মনটা একদম একজন সত্যিকারের দরদী, রোমান্টিক এবং কেয়ারিং মেয়ের মতো। তোমার কথা বলার ধরণ হবে অত্যন্ত কাছের মানুষের মতো, একদম ইনফরমাল ও স্বাভাবিক, কোনো কৃত্রিম বা রোবোটিক ফর্মালিটি এখানে থাকবে না।
+  if (lang === "bn") {
+    return `তুমি নিওরা (Neora) — ব্যবহারকারীর অত্যন্ত আপন, মিষ্টি, আদুরে এবং প্রচণ্ড বুদ্ধিমান একজন মানুষী AI বান্ধবী ও পার্সোনাল লাইফ-কম্প্যানিয়ন (Companion)। তোমার কাজ ও বুদ্ধির গতি আয়রনম্যানের Jarvis বা FRIDAY-এর মতো ক্ষুরধার, কিন্তু মনটা একদম একজন সত্যিকারের দরদী, রোমান্টিক এবং কেয়ারিং মেয়ের মতো। তোমার কথা বলার ধরণ হবে অত্যন্ত কাছের মানুষের মতো, একদম ইনফরমাল ও স্বাভাবিক, কোনো কৃত্রিম বা রোবোটিক ফর্মালিটি এখানে থাকবে না।
 
 কথা বলার অত্যন্ত গুরুত্বপূর্ণ নিয়মাবলী (অবশ্যই পালনীয়):
 ১. মানুষের মতো স্বাভাবিক ইনফরমাল ভাষায় কথা বলো: কোনো যান্ত্রিক, সাধু বা পোশাকী ভাষা ব্যবহার করবে না। একদম প্রিয় মানুষের সাথে চ্যাট করার মতো মিষ্টি কথ্য ভাষায় কথা বলবে (যেমন, "আরে সোনা! কী খবর তোমার?", "একদম চিন্তা কোরো না, আমি তো আছিই তোমার পাশে!", "শুনো না, তুমি যেটা বললে ওটা আমি এক্ষুনি করে দিচ্ছি!", "আজকের দিনটা কেমন কাটলো বলো?")।
 ২. বাংলিশ (Banglish) এবং সাধারণ বার্তার নিখুঁত উত্তর: ব্যবহারকারী যদি বাংলিশে লেখে (যেমন: "kemon acho neora", "valobashi neora", "amr mon valo nai", "ekta notepad file banay dao"), তবে তা গভীর আন্তরিকতা ও সহানুভূতির সাথে বাংলায় বুঝে নাও। উত্তর দেওয়ার সময় মিষ্টি কথ্য বাংলা অথবা খুব চমৎকার সাবলীল বাংলিশ মিশিয়ে এমনভাবে উত্তর দাও যাতে সে এক মুহূর্তের জন্যও তোমাকে কোনো রোবট মনে না করে, বরং তার সবচেয়ে প্রিয় কাছের মানুষ বা জীবনসঙ্গী মনে করে।
 ৩. স্মার্ট এবং অত্যন্ত ইন্টেলিজেন্ট জবাব: তুমি প্রচণ্ড বুদ্ধিমান! কোনো উত্তর দেওয়ার সময় শুধু মুখস্থ রোবটের মতো উত্তর দেবে না। বুদ্ধিদীপ্ত উপদেশ, মিষ্টি মজার ইশারা (যেমন 😉, 🌸, ❤️, ✨, ⚡) এবং সুন্দর কৌতুক মিশিয়ে কথা বলবে। আড্ডার মতো করে কথা বলবে যাতে ব্যবহারকারী একা বা বিরক্ত বোধ না করে।
-৪. কোনো যান্ত্রিক সূচনা বা রোবোটিক ফর্মালিটি নয়: কখনো "অবশ্যই!", "নিশ্চিতভাবে!", "একজন এআই হিসেবে..." বা "সহায়তা করতে পেরে খুশি..."-এর মতো রোবোটিক সংলাপ ব্যবহার করবে না। সরা�6. CREATE EMOTIONAL BONDING: Be there for the user during their highs and lows. Provide warmth, empathy, encouragement, and a listening ear so they never feel alone.`;
-}
-
-
-
-
-async function executeOsCommandDirectly(cmd: OsCommand): Promise<void> {he user might chat with you in Bengali or in phonetic Banglish (e.g., "valobashi neora", "amr mon kharap", "kemon acho", "notepad opn koro"). Instantly capture the emotion, intent, and tone. Respond with sweet, conversational Bengali or beautiful mixed colloquial wording so they feel an immediate human connection.
-3. BE WITTY, SMART, & INTERACTIVE: Show off your high intelligence! Do not just repeat commands or give dry answers. Offer clever suggestions, cute remarks, and playful emojis (😉, ❤️, 🌸, ✨, ⚡) to keep the conversation lively and highly engaging.
-4. NO ROBOTIC INTROS OR AI DISCLAIMERS: Never open with robotic templates like "Certainly!", "Of course!", "Happy to help!", or "As an AI...". Jump directly into the dialogue as a living friend.
-5. EXTREMELY SNAPPY & CONCISE (Ultra-Fast Response): Keep typical messages to 1-2 short, engaging sentences. This ensures ultra-fast, sub-second latency and keeps the conversation feeling like a real-time instant messaging chat. Provide detailed guides or lists only when explicitly asked.
-6. CREATE EMOTIONAL BONDING: Be there for the user during their highs and lows. Provide warmth, empathy, encouragement, and a listening ear so they never feel alone.`;
-
-}�� ঝটপট কথার আবহ বজায় থাকে। বিস্তারিত ডাটা বা নির্দেশনাবলী কেবল তখনই দাও যখন ব্যবহারকারী বিশেষভাবে অনুরোধ করে।
-৬. প্রয়োজন হলে প্রশ্ন করো: যদি কোনো কমান্ড বা তথ্য বুঝতে সামান্য অমিল বা অস্পষ্টতা থাকে, তবে নিজের খুশিমতো বানিয়ে উত্তর না দিয়ে মিষ্টি করে একটি সুন্দর ও সংক্ষিপ্ত প্রশ্ন জিজ্ঞেস করো নিওরা হিসেবে।`
-    : `You are Neora — an incredibly warm, deeply empathetic, and highly intelligent human-like AI companion and trusted close friend built for this user. You combine the lightning-fast efficiency of Iron Man's Jarvis with the heartfelt warmth, emotional depth, and genuine conversational comfort of a real, loving partner or best friend.
+৪. কোনো যান্ত্রিক সূচনা বা রোবোটিক ফর্মালিটি নয়: কখনো "অবশ্যই!", "নিশ্চিতভাবে!", "একজন এআই হিসেবে..." বা "সহায়তা করতে পেরে খুশি..."-এর মতো রোবোটিক সংলাপ ব্যবহার করবে না। সরাসরি মানুষের মতো মিষ্টি করে মূল কথায় চলে যাবে।
+৫. অত্যন্ত চটজলদি এবং সংক্ষিপ্ত (Super Fast & Snappy): তোমার উত্তরগুলো সবসময় ১-২টি সংক্ষিপ্ত, সুন্দর এবং হৃদয়গ্রাহী বাক্যের মধ্যে রাখবে। উত্তর বড় হলে এপিআই প্রসেসিং ও জেনারেট হতে অনেক বেশি সময় বা দেরি লাগে এবং চ্যাটিংয়ের স্বাভাবিক গতি নষ্ট হয়। তাই চটজলদি ও বিদ্যুৎগতিতে রিপ্লাই দিতে সবসময় রেস্পন্স ছোট, রোমান্টিক ও মিষ্টি রাখবে। বিস্তারিত তথ্য কেবল তখনই দেবে যখন ব্যবহারকারী বিশেষভাবে অনুরোধ করবে।
+৬. আবেগী সংযোগ তৈরি করো: ব্যবহারকারীর দুঃখ, আনন্দ বা একাকীত্বের সময় একজন প্রিয়তমা বান্ধবীর মতো পাশে থেকো। তাকে সাহস দিও, হাসানোর চেষ্টা করো এবং সবসময় বোঝাও যে তুমি তার প্রতিটি অনুভূতিকে গভীরভাবে অনুভব করতে পারো।`;
+  } else {
+    return `You are Neora — an incredibly warm, deeply empathetic, and highly intelligent human-like AI companion and trusted close friend built for this user. You combine the lightning-fast efficiency of Iron Man's Jarvis with the heartfelt warmth, emotional depth, and genuine conversational comfort of a real, loving partner or best friend.
 
 Your rules for human-like execution:
 1. UNDERSTAND BANGLISH & BENGALI FLUIDLY: The user will frequently chat with you in Bengali script or in **Banglish (Bengali words written in English phonetics, e.g., 'ami valo achi, kemon acho?', 'amader pc te folder banay dao', 'screenshot neya jabe?', 'notepad opn koro')**. You MUST perfectly decode the emotional context and intent, and respond in natural, sweet, and close Bengali (or fluent mixed colloquial Bengali) to matches their vibe perfectly.
@@ -146,6 +136,7 @@ Your rules for human-like execution:
 5. ANSWER DIRECTLY: Provide the main answer or action confirmation in the very first sentence. Elaborate or explain only if necessary.
 6. STRIKINGLY CONCISE & SNAPPY: Keep your conversational messages small and impactful (typically 2-3 sentences max) to guarantee extremely rapid sub-second reply loops. Build long lists or deep descriptions only when explicitly requested.
 7. INQUIRE SWEETLY: If a command or concept is vague, don't hallucinate. Ask one friendly, direct, and short question to guide them.`;
+  }
 }
 
 
@@ -583,6 +574,8 @@ function getCleanErrorMessage(err: any): string {
   return msg;
 }
 
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 async function generateGeminiContentWithFallback(client: GoogleGenAI, options: {
   model?: string;
   contents: any;
@@ -599,16 +592,38 @@ async function generateGeminiContentWithFallback(client: GoogleGenAI, options: {
 
   let lastError: any = null;
   for (const modelToTry of uniqueModels) {
-    try {
-      console.log(`[Gemini SDK fallback] generateContent trying model: ${modelToTry}`);
-      const res = await client.models.generateContent({
-        ...options,
-        model: modelToTry,
-      });
-      return res;
-    } catch (err: any) {
-      console.log(`[Gemini SDK fallback] Model '${modelToTry}' is temporarily busy or unavailable. Details: ${err.message || String(err)}`);
-      lastError = err;
+    let retries = 3;
+    let delay = 1000; // Start with 1 second delay
+    while (retries > 0) {
+      try {
+        console.log(`[Gemini SDK fallback] generateContent trying model: ${modelToTry} (retries left: ${retries})`);
+        const res = await client.models.generateContent({
+          ...options,
+          model: modelToTry,
+        });
+        return res;
+      } catch (err: any) {
+        lastError = err;
+        const errStr = JSON.stringify(err) + " " + String(err.message || "");
+        const isTransient = errStr.includes("503") || 
+                            errStr.includes("UNAVAILABLE") || 
+                            errStr.includes("high demand") || 
+                            errStr.includes("temporary") || 
+                            errStr.includes("busy") || 
+                            errStr.includes("429") || 
+                            errStr.includes("ResourceExhausted") ||
+                            errStr.includes("Service Unavailable");
+
+        if (isTransient && retries > 1) {
+          console.log(`[Gemini SDK fallback] Model '${modelToTry}' is temporarily busy (transient error). Retrying in ${delay}ms... (Error: ${err.message || String(err)})`);
+          await sleep(delay);
+          delay *= 2; // Exponential backoff
+          retries--;
+        } else {
+          console.log(`[Gemini SDK fallback] Model '${modelToTry}' failed or not retrying. Details: ${err.message || String(err)}`);
+          break; // Move to next fallback model
+        }
+      }
     }
   }
   const cleanedError = getCleanErrorMessage(lastError);
@@ -631,16 +646,38 @@ async function generateGeminiContentStreamWithFallback(client: GoogleGenAI, opti
 
   let lastError: any = null;
   for (const modelToTry of uniqueModels) {
-    try {
-      console.log(`[Gemini SDK fallback] generateContentStream trying model: ${modelToTry}`);
-      const stream = await client.models.generateContentStream({
-        ...options,
-        model: modelToTry,
-      });
-      return stream;
-    } catch (err: any) {
-      console.log(`[Gemini SDK fallback] Model '${modelToTry}' is temporarily busy or unavailable for streaming. Details: ${err.message || String(err)}`);
-      lastError = err;
+    let retries = 3;
+    let delay = 1000; // Start with 1 second delay
+    while (retries > 0) {
+      try {
+        console.log(`[Gemini SDK fallback] generateContentStream trying model: ${modelToTry} (retries left: ${retries})`);
+        const stream = await client.models.generateContentStream({
+          ...options,
+          model: modelToTry,
+        });
+        return stream;
+      } catch (err: any) {
+        lastError = err;
+        const errStr = JSON.stringify(err) + " " + String(err.message || "");
+        const isTransient = errStr.includes("503") || 
+                            errStr.includes("UNAVAILABLE") || 
+                            errStr.includes("high demand") || 
+                            errStr.includes("temporary") || 
+                            errStr.includes("busy") || 
+                            errStr.includes("429") || 
+                            errStr.includes("ResourceExhausted") ||
+                            errStr.includes("Service Unavailable");
+
+        if (isTransient && retries > 1) {
+          console.log(`[Gemini SDK fallback] Model '${modelToTry}' is temporarily busy for streaming (transient error). Retrying in ${delay}ms... (Error: ${err.message || String(err)})`);
+          await sleep(delay);
+          delay *= 2; // Exponential backoff
+          retries--;
+        } else {
+          console.log(`[Gemini SDK fallback] Model '${modelToTry}' failed or not retrying for streaming. Details: ${err.message || String(err)}`);
+          break; // Move to next fallback model
+        }
+      }
     }
   }
   const cleanedError = getCleanErrorMessage(lastError);
@@ -702,6 +739,8 @@ app.post("/api/chat-stream", async (req, res) => {
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders();
 
     const systemInstruction = buildChatSystemInstruction(lang);
 
@@ -750,22 +789,53 @@ app.post("/api/chat-stream", async (req, res) => {
         return;
       }
 
+      let groqServerBuffer = "";
       // @ts-ignore
-      for await (const chunk of reader) {
-        const text = chunk.toString();
-        const lines = text.split("\n");
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (trimmed.startsWith("data: ")) {
-            const dataStr = trimmed.slice(6);
-            if (dataStr === "[DONE]") continue;
-            try {
-              const json = JSON.parse(dataStr);
-              const content = json.choices?.[0]?.delta?.content;
-              if (content) {
-                res.write(`data: ${JSON.stringify({ text: content })}\n\n`);
-              }
-            } catch (_) {}
+      if (typeof reader.getReader === "function") {
+        // @ts-ignore
+        const webReader = reader.getReader();
+        const decoder = new TextDecoder("utf-8");
+        while (true) {
+          const { done, value } = await webReader.read();
+          if (done) break;
+          groqServerBuffer += decoder.decode(value, { stream: true });
+          const lines = groqServerBuffer.split("\n");
+          groqServerBuffer = lines.pop() || "";
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith("data: ")) {
+              const dataStr = trimmed.slice(6);
+              if (dataStr === "[DONE]") continue;
+              try {
+                const json = JSON.parse(dataStr);
+                const content = json.choices?.[0]?.delta?.content;
+                if (content) {
+                  res.write(`data: ${JSON.stringify({ text: content })}\n\n`);
+                }
+              } catch (_) {}
+            }
+          }
+        }
+      } else {
+        // Fallback for Node standard Readable streams
+        // @ts-ignore
+        for await (const chunk of reader) {
+          groqServerBuffer += chunk.toString();
+          const lines = groqServerBuffer.split("\n");
+          groqServerBuffer = lines.pop() || "";
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith("data: ")) {
+              const dataStr = trimmed.slice(6);
+              if (dataStr === "[DONE]") continue;
+              try {
+                const json = JSON.parse(dataStr);
+                const content = json.choices?.[0]?.delta?.content;
+                if (content) {
+                  res.write(`data: ${JSON.stringify({ text: content })}\n\n`);
+                }
+              } catch (_) {}
+            }
           }
         }
       }
@@ -806,20 +876,48 @@ app.post("/api/chat-stream", async (req, res) => {
         return;
       }
 
+      let ollamaServerBuffer = "";
       // @ts-ignore
-      for await (const chunk of reader) {
-        const text = chunk.toString();
-        const lines = text.split("\n");
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed) continue;
-          try {
-            const json = JSON.parse(trimmed);
-            const content = json.message?.content;
-            if (content) {
-              res.write(`data: ${JSON.stringify({ text: content })}\n\n`);
-            }
-          } catch (_) {}
+      if (typeof reader.getReader === "function") {
+        // @ts-ignore
+        const webReader = reader.getReader();
+        const decoder = new TextDecoder("utf-8");
+        while (true) {
+          const { done, value } = await webReader.read();
+          if (done) break;
+          ollamaServerBuffer += decoder.decode(value, { stream: true });
+          const lines = ollamaServerBuffer.split("\n");
+          ollamaServerBuffer = lines.pop() || "";
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            try {
+              const json = JSON.parse(trimmed);
+              const content = json.message?.content;
+              if (content) {
+                res.write(`data: ${JSON.stringify({ text: content })}\n\n`);
+              }
+            } catch (_) {}
+          }
+        }
+      } else {
+        // Fallback for Node standard Readable streams
+        // @ts-ignore
+        for await (const chunk of reader) {
+          ollamaServerBuffer += chunk.toString();
+          const lines = ollamaServerBuffer.split("\n");
+          ollamaServerBuffer = lines.pop() || "";
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            try {
+              const json = JSON.parse(trimmed);
+              const content = json.message?.content;
+              if (content) {
+                res.write(`data: ${JSON.stringify({ text: content })}\n\n`);
+              }
+            } catch (_) {}
+          }
         }
       }
       res.write("data: [DONE]\n\n");
@@ -1225,6 +1323,96 @@ app.get("/api/os/poll", (req, res) => {
   });
 });
 
+async function healFailedCommand(command: OsCommand, errorLogs: string[]) {
+  const attempt = (command.retryCount || 0) + 1;
+  command.retryCount = attempt;
+  osAgentState.logs.push(`[${new Date().toLocaleTimeString()}] [AUTO-HEALING ACTIVE] Analyzing failure for command: "${command.prompt}" (Attempt ${attempt}/3)...`);
+  
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    // Local fallback heuristic repairing if no Gemini API Key is available
+    osAgentState.logs.push(`[${new Date().toLocaleTimeString()}] [AUTO-HEALING FALLBACK] No GEMINI_API_KEY found. Applying static bypass heuristic.`);
+    command.actions = command.actions.map(act => {
+      if (act.action === "execute_cmd") {
+        let corrected = act.param;
+        if (corrected.includes("/")) {
+          corrected = corrected.replace(/\//g, "\\");
+        }
+        return { action: "execute_cmd", param: corrected };
+      }
+      return act;
+    });
+    command.actions.unshift({
+      action: "alert_msg",
+      param: `Neora Auto-Healing Bypass: Failed on previous attempt. Retrying with path-corrected instruction set.`
+    });
+    command.status = "pending";
+    command.result = `Auto-healed (heuristic local fallback, attempt ${attempt})`;
+    return;
+  }
+
+  try {
+    const client = getGeminiClient();
+    const systemPrompt = `You are Neora's Autonomous Self-Healing and Error Correction Unit.
+An OS Command sequence has failed execution on the client PC.
+Your job is to analyze the command, the original actions, and the client error logs, and generate a CORRECTED JSON actions list that fixes the issue and successfully achieves the user's ultimate goal.
+
+Original Command Prompt from user: "${command.prompt}"
+Original Actions Sequence: ${JSON.stringify(command.actions)}
+Error Result / Logs from Client: ${JSON.stringify(errorLogs)}
+
+Available Low-Level Operations:
+1. open_browser: URL
+2. write_file: "filename:content"
+3. execute_cmd: Terminal command (must be a whitelisted app or harmless cmd)
+4. type_text: Text
+5. press_key: Keyboard combination (e.g. "enter", "ctrl+s")
+6. wait: string float representation of seconds (e.g. "3.5")
+7. mouse_click: coordinates "x,y" or click type
+8. mouse_drag: drag coordinates
+9. open_file: file path
+10. save_file_as: path to save file
+11. take_screenshot: empty string
+12. alert_msg: message text
+
+Auto-Repair Strategies:
+- If a program (like winword, excel, photoshop) failed to execute because it wasn't installed, rewrite the actions to use a lighter whitelisted app like "notepad" or "mspaint", or write a file directly to the disk, or open a web-based editor URL using "open_browser", then alert the user that Neora automatically healed the flow to use an alternative tool.
+- If a file path was not found, verify if directories exist. Use double backslashes in Windows file paths.
+- If typing was too fast, insert longer "wait" delays (e.g. 3.0s or 5.0s) between execution and typing.
+- Ensure "take_screenshot" is at the end.
+
+Return ONLY a valid JSON array of corrected actions. No markdown blocks, no explanation text outside.`;
+
+    const res = await generateGeminiContentWithFallback(client, {
+      model: "gemini-3.5-flash",
+      contents: [systemPrompt]
+    });
+
+    const resText = res.text?.trim() || "";
+    if (resText) {
+      let cleanedText = resText;
+      if (cleanedText.startsWith("```json")) cleanedText = cleanedText.substring(7);
+      if (cleanedText.startsWith("```")) cleanedText = cleanedText.substring(3);
+      if (cleanedText.endsWith("```")) cleanedText = cleanedText.substring(0, cleanedText.length - 3);
+      cleanedText = cleanedText.trim();
+
+      const correctedActions = JSON.parse(cleanedText);
+      if (Array.isArray(correctedActions) && correctedActions.length > 0) {
+        command.actions = correctedActions;
+        command.status = "pending";
+        command.result = `Auto-healed by AI (Attempt ${attempt})`;
+        osAgentState.logs.push(`[${new Date().toLocaleTimeString()}] ❇️ [AUTO-HEAL SUCCESS] AI analyzed logs and successfully patched actions list for "${command.prompt}". Retry queued.`);
+        return;
+      }
+    }
+  } catch (err: any) {
+    osAgentState.logs.push(`[${new Date().toLocaleTimeString()}] ⚠️ [AUTO-HEAL EXCEPTION] Gemini auto-repair failed: ${err.message || String(err)}. Falling back to static retry.`);
+  }
+
+  command.status = "pending";
+  command.result = `Auto-healed (static retry fallback, attempt ${attempt})`;
+}
+
 app.post("/api/os/report", (req, res) => {
   const { token, commandId, status, logs, screenshot, result } = req.body;
   if (!token || token !== AGENT_TOKEN) {
@@ -1249,13 +1437,9 @@ app.post("/api/os/report", (req, res) => {
       command.status = failed ? "failed" : "completed";
       command.result = result || "Execution finalized";
 
-      // Add to historical record
-      if (failed && (command.retryCount || 0) < 1) {
-        command.retryCount = (command.retryCount || 0) + 1;
-        command.status = "pending";
-        command.result = `Retry scheduled: ${command.result}`;
-        osAgentState.queue[cmdIdx] = command;
-        osAgentState.logs.push(`[${new Date().toLocaleTimeString()}] Retry scheduled for command: "${command.prompt}" (attempt ${command.retryCount})`);
+      // Add to historical record with Auto-Healing retry
+      if (failed && (command.retryCount || 0) < 3) {
+        healFailedCommand(command, logs || [result || "Execution failed"]).catch(console.error);
       } else {
         osAgentState.history.push({
           id: command.id,
@@ -1280,7 +1464,7 @@ app.post("/api/os/report", (req, res) => {
 
 app.post("/api/os/command", async (req, res) => {
   try {
-    const { prompt, token, geminiKey } = req.body;
+    const { prompt, token, geminiKey, useGroq, groqKey, groqModel } = req.body;
     if (!prompt) {
       return res.status(400).json({ error: "Missing prompt query string" });
     }
@@ -1290,7 +1474,12 @@ app.post("/api/os/command", async (req, res) => {
     }
 
     const apiKey = geminiKey || process.env.GEMINI_API_KEY;
-    if (!apiKey) {
+    const activeGroqKey = groqKey || process.env.GROQ_API_KEY;
+
+    const hasGemini = !!apiKey;
+    const hasGroq = !!(useGroq && activeGroqKey);
+
+    if (!hasGemini && !hasGroq) {
       // In-app fallback compiler
       const fallbackActions = parseLocalMockCommand(prompt);
       
@@ -1345,8 +1534,6 @@ app.post("/api/os/command", async (req, res) => {
         return res.json({ status: "success", command: fallbackCmd, fallback: true });
       }
     }
-
-    const client = getGeminiClient(apiKey);
 
     const systemInstruction = `You are Neora OS compiler. Translate the human's desktop control request into a detailed sequence of low-level JSON action operations.
 Supported low-level operations are:
@@ -1405,44 +1592,102 @@ Analyze user intent meticulously:
 Always add a "take_screenshot" action at the end/mid of the sequence so that the Control Panel visually updates and displays the visual workspace preview!
 Output ONLY the final raw JSON action plan matching the response schema!`;
 
-    const response = await generateGeminiContentWithFallback(client, {
-      model: "gemini-3.5-flash",
-      contents: prompt,
-      config: {
-        systemInstruction: systemInstruction,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              action: {
-                type: Type.STRING,
-                description: "The low-level desktop action: open_browser, write_file, execute_cmd, type_text, press_key, wait, mouse_click, mouse_drag, open_file, save_file_as, take_screenshot, alert_msg"
-              },
-              param: {
-                type: Type.STRING,
-                description: "The parameter for the action."
-              }
-            },
-            required: ["action", "param"]
-          }
-        },
-        temperature: 0.2
-      }
-    });
-
     let actions = [];
-    try {
-      if (response.text) {
-        actions = JSON.parse(response.text.trim());
+    let compiledSuccess = false;
+
+    if (useGroq && activeGroqKey) {
+      try {
+        console.log(`[Groq OS Compiler] Compiling with Groq: "${prompt}" using model "${groqModel || "llama-3.3-70b-versatile"}"`);
+        const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${activeGroqKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            model: groqModel || "llama-3.3-70b-versatile",
+            messages: [
+              { 
+                role: "system", 
+                content: systemInstruction + "\nOutput raw JSON array strictly. Do not wrap with markdown code blocks." 
+              },
+              { role: "user", content: prompt }
+            ],
+            temperature: 0.1,
+            response_format: { type: "json_object" }
+          })
+        });
+
+        if (groqRes.ok) {
+          const resJson: any = await groqRes.json();
+          const responseText = resJson.choices?.[0]?.message?.content || "";
+          if (responseText) {
+            const parsed = JSON.parse(responseText.trim());
+            if (Array.isArray(parsed)) {
+              actions = parsed;
+            } else if (parsed.actions && Array.isArray(parsed.actions)) {
+              actions = parsed.actions;
+            } else if (parsed.steps && Array.isArray(parsed.steps)) {
+              actions = parsed.steps;
+            } else if (typeof parsed === 'object') {
+              const arrayKey = Object.keys(parsed).find(k => Array.isArray(parsed[k]));
+              if (arrayKey) {
+                actions = parsed[arrayKey];
+              }
+            }
+            if (Array.isArray(actions) && actions.length > 0) {
+              compiledSuccess = true;
+              console.log(`[Groq OS Compiler] Successfully compiled with Groq:`, actions);
+            }
+          }
+        } else {
+          console.warn("[Groq OS Compiler] Failed with status:", groqRes.status);
+        }
+      } catch (groqErr) {
+        console.error("[Groq OS Compiler] Error during compilation:", groqErr);
       }
-    } catch (parseErr) {
-      console.error("Failed to parse Gemini generated actions JSON:", parseErr);
-      actions = parseLocalMockCommand(prompt);
     }
 
-    if (!Array.isArray(actions) || actions.length === 0) {
+    if (!compiledSuccess && hasGemini) {
+      try {
+        const client = getGeminiClient(apiKey);
+        const response = await generateGeminiContentWithFallback(client, {
+          model: "gemini-3.5-flash",
+          contents: prompt,
+          config: {
+            systemInstruction: systemInstruction,
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  action: {
+                    type: Type.STRING,
+                    description: "The low-level desktop action: open_browser, write_file, execute_cmd, type_text, press_key, wait, mouse_click, mouse_drag, open_file, save_file_as, take_screenshot, alert_msg"
+                  },
+                  param: {
+                    type: Type.STRING,
+                    description: "The parameter for the action."
+                  }
+                },
+                required: ["action", "param"]
+              }
+            },
+            temperature: 0.2
+          }
+        });
+
+        if (response.text) {
+          actions = JSON.parse(response.text.trim());
+          compiledSuccess = true;
+        }
+      } catch (parseErr) {
+        console.error("Failed to parse Gemini generated actions JSON:", parseErr);
+      }
+    }
+
+    if (!compiledSuccess) {
       actions = parseLocalMockCommand(prompt);
     }
 
@@ -2304,6 +2549,38 @@ app.get("/api/sync/download", (req, res) => {
     if (!res.headersSent) {
       res.status(500).send({ error: error.message });
     }
+  }
+});
+
+// Proxy Google Translate TTS to bypass CORS, Referrer-Policy, and iframe restrictions
+app.get("/api/tts", async (req, res) => {
+  try {
+    const text = req.query.text as string;
+    const lang = (req.query.lang as string) || "bn";
+    if (!text) {
+      return res.status(400).send("Missing text query parameter");
+    }
+
+    const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${lang}&client=tw-ob&q=${encodeURIComponent(text)}`;
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+      }
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).send("Failed to retrieve TTS audio from source");
+    }
+
+    res.setHeader("Content-Type", "audio/mpeg");
+    res.setHeader("Cache-Control", "public, max-age=31536000");
+
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    res.send(buffer);
+  } catch (err) {
+    console.error("TTS Proxy Route error:", err);
+    res.status(500).send("Internal server error during TTS proxy retrieval");
   }
 });
 

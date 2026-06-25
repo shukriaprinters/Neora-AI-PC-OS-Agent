@@ -782,9 +782,44 @@ export function PlannerView({ lang, autonomyLevel, setAutonomyLevel }: PlannerVi
       ...prev
     ]);
 
-    // Transition state and pause execution!
-    setSelfCorrectionState('pending');
-    setIsRunning(false);
+    if (autonomyLevel >= 4) {
+      addLog(`[AUTONOMIC LEVEL ${autonomyLevel} ACTIVE] ❇️ Auto-healing protocol triggered automatically! No human approval required.`);
+      setSelfCorrectionState('resolving');
+      await new Promise(r => setTimeout(r, 1500));
+
+      addLog(`Auto-Repair Engine: Releasing directory handles, creating missing directory pathways, and resolving lock...`);
+      await new Promise(r => setTimeout(r, 1500));
+
+      updatedSteps[1].status = 'completed';
+      updatedSteps[1].feedback = lang === 'bn' 
+        ? 'স্বয়ংক্রিয় সংশোধন সাকসেস: ডিরেক্টরি অবমুক্ত করা হয়েছে এবং প্রিন্ট-রেডি কোড ফাইলে সেভ করা হয়েছে।' 
+        : 'Auto-Repaired successfully: Lock handles purged. Directory created; assets/shukria_offset.html written.';
+      
+      setVirtualFiles(prev => {
+        return prev.map(f => {
+          if (f.name === 'shukria_offset.html') {
+            return {
+              ...f,
+              content: `<!-- COMPILATION SUCCESSFUL BY SECURE BYPASS DAEMON -->\n<div class="shukria-brochure">\n  <h2>High-Gloss Poster Output</h2>\n  <p>Status: Self-Healed and Verified Automatically</p>\n  <p>Vat Code standard: 15.00% VAT standard</p>\n  <p>Timestamp: ${new Date().toISOString()}</p>\n</div>`,
+              updated: new Date().toISOString().replace('T', ' ').substring(0, 16),
+              size: '720 B'
+            };
+          }
+          return f;
+        });
+      });
+
+      setSubAgents(prev => prev.map(a => a.id === 'sa-guard' ? { ...a, status: 'success', load: 5, thought: 'Lock cleared via automated bypass.' } : a));
+      setPlan(prev => prev ? { ...prev, steps: updatedSteps } : null);
+      addLog(`[AUTO-REPAIR SUCCESS] ❇️ Directory unlocked and written automatically. Continuing workflow.`);
+      setSelfCorrectionState('none');
+
+      await runRemainingSteps(updatedSteps);
+    } else {
+      // Transition state and pause execution for lower autonomy levels
+      setSelfCorrectionState('pending');
+      setIsRunning(false);
+    }
   };
 
   const handleApproveSelfRepair = async () => {

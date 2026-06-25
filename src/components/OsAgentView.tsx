@@ -15,6 +15,9 @@ interface OsAgentViewProps {
   lang: 'en' | 'bn';
   geminiKey: string;
   setGeminiKey: (val: string) => void;
+  useGroq?: boolean;
+  groqKey?: string;
+  groqModel?: string;
 }
 
 interface CommandAction {
@@ -44,7 +47,7 @@ interface HistoryItem {
   retryCount?: number;
 }
 
-export function OsAgentView({ lang, geminiKey, setGeminiKey }: OsAgentViewProps) {
+export function OsAgentView({ lang, geminiKey, setGeminiKey, useGroq, groqKey, groqModel }: OsAgentViewProps) {
   const [status, setStatus] = useState<'online' | 'offline'>('offline');
   const [token, setToken] = useState<string>('NEORA-X7-AGENT');
   const [lastPing, setLastPing] = useState<string | null>(null);
@@ -339,7 +342,14 @@ export function OsAgentView({ lang, geminiKey, setGeminiKey }: OsAgentViewProps)
       try {
         // Enqueue command on OS agent
         const promptString = `${step.title}: ${step.payload}`;
-        const res: any = await neoraPost('/api/os/command', { prompt: promptString });
+        const res: any = await neoraPost('/api/os/command', { 
+          prompt: promptString, 
+          token, 
+          geminiKey, 
+          useGroq, 
+          groqKey, 
+          groqModel 
+        });
         const commandId = res?.command?.id;
         
         if (commandId) {
@@ -473,7 +483,14 @@ export function OsAgentView({ lang, geminiKey, setGeminiKey }: OsAgentViewProps)
     setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Submitting control request: "${effectivePrompt}"...`]);
 
     try {
-      const resData: any = await neoraPost('/api/os/command', { prompt: effectivePrompt, token, geminiKey });
+      const resData: any = await neoraPost('/api/os/command', { 
+        prompt: effectivePrompt, 
+        token, 
+        geminiKey, 
+        useGroq, 
+        groqKey, 
+        groqModel 
+      });
       if (resData.status === 'success') {
         setPrompt('');
         fetchAgentStatus();

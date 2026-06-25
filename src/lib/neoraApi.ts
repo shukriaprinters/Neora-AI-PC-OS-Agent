@@ -54,21 +54,25 @@ async function fetchWithRetry(path: string, init: RequestInit, options?: NeoraFe
 }
 
 export async function neoraGet<T>(path: string, options?: NeoraFetchOptions): Promise<T> {
+  const token = typeof window !== 'undefined' ? (localStorage.getItem('neora_token') || 'NEORA-X7-AGENT') : 'NEORA-X7-AGENT';
   const response = await fetchWithRetry(path, {
     method: "GET",
     headers: {
       "Accept": "application/json",
+      "x-neora-token": token,
     },
   }, options);
   return parseResponse<T>(response);
 }
 
 export async function neoraPost<T>(path: string, body?: JsonObject, options?: NeoraFetchOptions): Promise<T> {
+  const token = typeof window !== 'undefined' ? (localStorage.getItem('neora_token') || 'NEORA-X7-AGENT') : 'NEORA-X7-AGENT';
   const response = await fetchWithRetry(path, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "Accept": "application/json",
+      "x-neora-token": token,
     },
     body: body ? JSON.stringify(body) : undefined,
   }, options);
@@ -76,10 +80,12 @@ export async function neoraPost<T>(path: string, body?: JsonObject, options?: Ne
 }
 
 export async function neoraDelete<T>(path: string, options?: NeoraFetchOptions): Promise<T> {
+  const token = typeof window !== 'undefined' ? (localStorage.getItem('neora_token') || 'NEORA-X7-AGENT') : 'NEORA-X7-AGENT';
   const response = await fetchWithRetry(path, {
     method: "DELETE",
     headers: {
       "Accept": "application/json",
+      "x-neora-token": token,
     },
   }, options);
   return parseResponse<T>(response);

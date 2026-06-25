@@ -509,6 +509,28 @@ export function ChatView({
     return () => window.removeEventListener('neora-submit-chat', handleGlobalSubmit);
   }, [inputValue, isGenerating]);
 
+  // Copy, Edit, Delete and Diagnostics actions
+  const handleCopyMessage = (text: string, id: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedMessageId(id);
+      setTimeout(() => setCopiedMessageId(null), 1500);
+    });
+  };
+
+  const startEditingMessage = (id: string, content: string) => {
+    setEditingMessageId(id);
+    setEditingContent(content);
+  };
+
+  const handleDeleteMessage = (id: string) => {
+    const updated = messages.filter(m => m.id !== id);
+    updateMessagesInThreads(updated);
+  };
+
+  const triggerResend = async (updatedMessages: Message[], text: string) => {
+    await handleSendMessage(text);
+  };
+
   const playSystemChirp = (type: 'boot' | 'listen' | 'success' | 'error') => {
     try {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
@@ -576,59 +598,7 @@ export function ChatView({
     }
   };
 
-  // Copy, Edit, Delete and Diagnostics actions
-  const handleCopyMessage = (text: string, id: string) => {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopiedMessageId(id);
-      setTimeout(() => setCopiedMessageId(null), 1500);
-    });
-  };
-
-  const startEditingMessage = (id: string, content: string) => {
-    setEditingMessageId(id);
-    setEditingContent(content);
-  };
-
-  // Triggers automated model fallback notifications
-  const triggerFallbackNotification = (from: string, to: string) => {
-    setFallbackNotification({ from: from.toUpperCase(), to: to.toUpperCase() });
-    setTimeout(() => {
-      setFallbackNotification(null);
-    }, 7000); // clear after 7 seconds automatically
-  };
-
-  // Run connection status heartbeats
-  const runHeartbeatDiagnostic = async () => {
-    setIsDiagnosticRunning(true);
-    try {
-      const res = await neoraPost<any>('/api/diagnostic/heartbeat', {
-        geminiKey: geminiKey || undefined,
-        groqKey: groqKey || undefined,
-        ollamaBaseUrl: ollamaBaseUrl
-      });
-      if (res && res.check) {
-        setConnectionStatus(res.check);
-      }
-    } catch (e: any) {
-      console.warn("Heartbeat diagnostic fetch error:", e);
-      setConnectionStatus({
-        gemini: { alive: !!(geminiKey || process.env.GEMINI_API_KEY), message: 'Presence Active' },
-        groq: { alive: !!(groqKey || process.env.GROQ_API_KEY), message: 'Presence Active' },
-        ollama: { alive: false, message: 'Offline (Not responding)' }
-      });
-    } finally {
-      setIsDiagnosticRunning(false);
-    }
-  };
-
-  // Poll heartbeat connection state every 30 seconds
-  useEffect(() => {
-    runHeartbeatDiagnostic();
-    const interval = setInterval(runHeartbeatDiagnostic, 30000);
-    return () => clearInterval(interval);
-  }, [geminiKey, groqKey, ollamaBaseUrl]);
-
-  // Clean rate limits update trigger
+    // Clean rate limits update trigger
   const updateRateLimits = (provider: 'groq' | 'gemini', serverResLimits: any) => {
     setRateLimits(prev => {
       const next = { ...prev };
@@ -726,239 +696,18 @@ export function ChatView({
   };
 
   const handleClearAllThreads = () => {
-    if (confirm(lang === 'bn' ? "আপনি কি সমস্ত চ্যাট হিস্ট্রি মুছে ফেলতে চান?" : "Are you sure you want to permanently clear all conversation threads?")) {
-      const defaultThread = {
+    if (confirm(lang === 'bn' ? "আপনি কি সমস্ত চ্যাট হিস্ট্রি মুছে ফেলতে চান?" : "Are you sure you want to clear all chat history?")) {
+      setThreads([{
         id: 'default',
         title: lang === 'bn' ? 'আলাপচারিতা #১' : 'Conversation #1',
         messages: [],
         timestamp: new Date().toLocaleDateString()
-      };
-      setThreads([defaultThread]);
+      }]);
       setActiveThreadId('default');
     }
   };
 
-  const handleDeleteMessage = (msgId: string) => {
-    const updated = messages.filter(m => m.id !== msgId);
-    updateMessagesInThreads(updated);
-  };
-
-  // Re-submission action when messages are edited by users
-  const triggerResend = async (updatedHistory: Message[], editedText: string) => {
-    setIsGenerating(true);
-
-    const attempts: ('gemini' | 'groq' | 'ollama')[] = [activeBrain];
-    if (autoFailover) {
-      if (activeBrain === 'ollama') {
-        attempts.push('groq');
-        attempts.push('gemini');
-      } else if (activeBrain === 'groq') {
-        attempts.push('gemini');
-        attempts.push('ollama');
-      } else {
-        attempts.push('groq');
-        attempts.push('ollama');
-      }
-    }
-
-    const getLoadingLabel = (p: 'gemini' | 'groq' | 'ollama') => {
-      if (p === 'ollama') {
-        return lang === 'bn' 
-          ? `নিওরা লোকাল ব্রেইন চিন্তাভাবনা করছে (Ollama: ${selectedOllamaModel} সক্রিয়)...` 
-          : `Neora offline brain is thinking (Ollama: ${selectedOllamaModel} Active)...`;
-      } else if (p === 'groq') {
-        return lang === 'bn' 
-          ? `নিওরা চিন্তাভাবনা করছে (Groq: ${groqModel.split('-')[0].toUpperCase()} সক্রিয়)...` 
-          : `Neora is thinking (Groq: ${groqModel.split('-')[0].toUpperCase()} Active)...`;
-      } else {
-        return lang === 'bn' 
-          ? 'নিওরা চিন্তাভাবনা করছে (Gemini Core সক্রিয়)...' 
-          : 'Neora is thinking (Gemini Core Active)...';
-      }
-    };
-
-    const loadingMsgId = Math.random().toString();
-    const loadingMsg: Message = {
-      id: loadingMsgId,
-      role: 'assistant',
-      content: getLoadingLabel(activeBrain),
-      timestamp: new Date().toLocaleTimeString()
-    };
-    
-    updateMessagesInThreads([...updatedHistory, loadingMsg]);
-
-    const executeBrainAttempt = async (provider: 'gemini' | 'groq' | 'ollama'): Promise<string> => {
-      const recentHistory = updatedHistory.slice(-8);
-
-      if (provider === 'ollama') {
-        if (ollamaConnectionMode === 'browser') {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 12000);
-          
-          const systemInstruction = lang === 'bn'
-            ? "আপনি নিওরা, শুকরিয়া প্রিন্টার্সের একজন অত্যন্ত বুদ্ধিমান এবং কাজের এআই সহকারী। অনুগ্রহ করে অত্যন্ত বিনয়ীভাবে উত্তর দিন।"
-            : "You are Neora, the super intelligent desktop companion and operations automation AI assistant for Shukria Printers. Keep responses professional, highly context-aware, and precise.";
-
-          const formattedMessages = [
-            { role: "system", content: systemInstruction },
-            ...recentHistory.map(m => ({
-              role: m.role === "assistant" ? "assistant" : "user",
-              content: m.content
-            }))
-          ];
-
-          const response = await fetch(`${ollamaBaseUrl.replace(/\/+$/, '')}/api/chat`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              model: selectedOllamaModel,
-              messages: formattedMessages,
-              stream: false
-            }),
-            signal: controller.signal
-          });
-
-          clearTimeout(timeoutId);
-          if (!response.ok) {
-            throw new Error(`Direct browser Ollama returned code ${response.status}`);
-          }
-          const result = await response.json();
-          return result?.message?.content || "";
-        } else {
-          const res = await neoraPost<any>('/api/chat-ollama', {
-            messages: recentHistory,
-            model: selectedOllamaModel,
-            lang: lang,
-            ollamaBaseUrl: ollamaBaseUrl
-          });
-          if (res.error) throw new Error(res.error);
-          return res.text || "";
-        }
-      } else if (provider === 'groq') {
-        const payload: any = {
-          messages: recentHistory,
-          model: groqModel,
-          lang: lang
-        };
-        if (groqKey) payload.key = groqKey;
-        const res = await neoraPost<any>('/api/chat-groq', payload);
-        if (res.status === 'api_key_missing') throw new Error(res.message);
-        if (res.error) throw new Error(res.error);
-        
-        if (res.rateLimits) {
-          updateRateLimits('groq', res.rateLimits);
-        }
-        
-        return res.data?.choices?.[0]?.message?.content || "";
-      } else {
-        const payload: any = {
-          messages: recentHistory,
-          lang: lang
-        };
-        if (geminiKey) payload.geminiKey = geminiKey;
-        const res = await neoraPost<any>('/api/chat-gemini', payload);
-        if (res.status === 'api_key_missing') throw new Error(res.message);
-        if (res.error) throw new Error(res.error);
-        
-        updateRateLimits('gemini', null);
-        
-        return res.text || "";
-      }
-    };
-
-    let finalResponseText = '';
-    let success = false;
-    let actualUsedProvider: 'gemini' | 'groq' | 'ollama' | 'offline' = activeBrain;
-
-    if (autoFailover && !(activeBrain === 'ollama' && ollamaConnectionMode === 'browser')) {
-      try {
-        const result = await neoraChatWithFallback(activeBrain, {
-          messages: updatedHistory.slice(-8),
-          lang: lang,
-          geminiKey: geminiKey || undefined,
-          groqKey: groqKey || undefined,
-          key: groqKey || undefined,
-          model: activeBrain === 'ollama' ? selectedOllamaModel : (activeBrain === 'groq' ? groqModel : undefined),
-          ollamaBaseUrl: ollamaBaseUrl
-        });
-
-        actualUsedProvider = result.modelUsed;
-        
-        if (result.modelUsed !== activeBrain) {
-          triggerFallbackNotification(activeBrain, result.modelUsed);
-        }
-
-        if (result.modelUsed === 'gemini') {
-          finalResponseText = result.response.text;
-          updateRateLimits('gemini', null);
-        } else if (result.modelUsed === 'groq') {
-          finalResponseText = result.response.data?.choices?.[0]?.message?.content || "";
-          if (result.response.rateLimits) {
-            updateRateLimits('groq', result.response.rateLimits);
-          }
-        } else if (result.modelUsed === 'ollama') {
-          finalResponseText = result.response.text || "";
-        }
-        success = !!finalResponseText;
-      } catch (err: any) {
-        console.error("neoraChatWithFallback failed on edit retry:", err);
-      }
-    }
-
-    if (!success) {
-      for (let i = 0; i < attempts.length; i++) {
-        const currentProvider = attempts[i];
-        actualUsedProvider = currentProvider;
-
-        if (i > 0) {
-          triggerFallbackNotification(attempts[i-1], currentProvider);
-
-          updateMessagesInThreads(prev => prev.map(m => m.id === loadingMsgId ? {
-            ...m,
-            content: lang === 'bn'
-              ? `পূর্ববর্তী সংযোগ কাজ করেনি! স্বয়ংক্রিয় ব্যাকআপ ট্রাই করা হচ্ছে (${currentProvider === 'gemini' ? 'Gemini' : currentProvider === 'groq' ? 'Groq' : 'Ollama'})...`
-              : `Attempt failed! Falling over to next active brain (${currentProvider.toUpperCase()})...`
-          } : m));
-        }
-
-        try {
-          const text = await executeBrainAttempt(currentProvider);
-          finalResponseText = text;
-          success = true;
-          break;
-        } catch (err: any) {
-          console.warn(`Fallback route ${currentProvider} failed:`, err);
-        }
-      }
-    }
-
-    if (success && finalResponseText) {
-      const botResponse: Message = {
-        id: Math.random().toString(),
-        role: 'assistant',
-        content: finalResponseText,
-        timestamp: new Date().toLocaleTimeString(),
-        brainUsed: actualUsedProvider as any
-      };
-
-      updateMessagesInThreads([...updatedHistory, botResponse]);
-      handleSpeak(finalResponseText);
-    } else {
-      const errorResponse: Message = {
-        id: Math.random().toString(),
-        role: 'assistant',
-        content: lang === 'bn'
-          ? "দুঃখিত বস, কিন্তু সবকটি এআই সার্ভার সংযোগ সম্পূর্ণ ব্যর্থ হয়েছে। আপনার এপিআই কি এবং নেটওয়ার্ক চেক করুন।"
-          : "All configured LLM brain nodes returned offline failures. Please verify your internet or API key parameters in settings.",
-        timestamp: new Date().toLocaleTimeString(),
-        brainUsed: 'offline'
-      };
-      updateMessagesInThreads([...updatedHistory, errorResponse]);
-    }
-    setIsGenerating(false);
-  };
-
-  const handleUpdateMessage = async (id: string, newText: string) => {
+const handleUpdateMessage = async (id: string, newText: string) => {
     if (!newText.trim()) return;
     setEditingMessageId(null);
     
@@ -1043,34 +792,31 @@ export function ChatView({
       const containsBangla = /[\u0980-\u09FF]/.test(sentenceText);
       const isBn = lang === 'bn' || containsBangla;
 
-      if (isBn) {
-        // Try sweet high-fidelity Google Translate TTS wrapper
-        try {
-          const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=bn&client=tw-ob&q=${encodeURIComponent(sentenceText)}`;
-          const audio = new Audio(ttsUrl);
-          audio.playbackRate = voiceRate; // Apply custom user rate
-          currentAudio = audio;
-          
-          audio.onended = () => {
-            if (currentAudio === audio) currentAudio = null;
-            index++;
-            speakNext();
-          };
-          
-          audio.onerror = (e) => {
-            console.warn("Google Translate TTS failed, falling back to local SpeechSynthesis:", e);
-            if (currentAudio === audio) currentAudio = null;
-            playLocalSynthesis();
-          };
-
-          audio.play().catch(err => {
-            console.warn("Audio play blocked/failed, falling back to local SpeechSynthesis:", err);
-            playLocalSynthesis();
-          });
-        } catch (err) {
+      // Try sweet high-fidelity CORS-safe Proxy TTS endpoint for both BN and EN
+      try {
+        const ttsLang = isBn ? 'bn' : 'en';
+        const ttsUrl = `/api/tts?lang=${ttsLang}&text=${encodeURIComponent(sentenceText)}`;
+        const audio = new Audio(ttsUrl);
+        audio.playbackRate = voiceRate; // Apply custom user rate
+        currentAudio = audio;
+        
+        audio.onended = () => {
+          if (currentAudio === audio) currentAudio = null;
+          index++;
+          speakNext();
+        };
+        
+        audio.onerror = (e) => {
+          console.warn("Proxy TTS failed, falling back to local SpeechSynthesis:", e);
+          if (currentAudio === audio) currentAudio = null;
           playLocalSynthesis();
-        }
-      } else {
+        };
+
+        audio.play().catch(err => {
+          console.warn("Audio play blocked/failed, falling back to local SpeechSynthesis:", err);
+          playLocalSynthesis();
+        });
+      } catch (err) {
         playLocalSynthesis();
       }
 

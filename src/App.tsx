@@ -2512,6 +2512,9 @@ export default function App() {
                         lang={lang}
                         geminiKey={geminiKey}
                         setGeminiKey={setGeminiKey}
+                        useGroq={useGroq}
+                        groqKey={groqKey}
+                        groqModel={groqModel}
                       />
                     )}
 
