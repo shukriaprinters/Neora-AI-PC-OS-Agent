@@ -30,14 +30,24 @@ async function parseResponse<T>(response: Response): Promise<T> {
 }
 
 async function fetchWithRetry(path: string, init: RequestInit, options?: NeoraFetchOptions): Promise<Response> {
-  const retries = options?.retries ?? 2;
-  const retryDelayMs = options?.retryDelayMs ?? 400;
+  const retries = options?.retries ?? 3;
+  const retryDelayMs = options?.retryDelayMs ?? 300;
   let lastError: unknown;
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     try {
       const response = await fetch(path, init);
-      if (response.ok || attempt === retries || response.status < 500) {
+      // If response is OK, we are good.
+      // If response has status >= 500 (e.g. 503), we want to retry unless it is the last attempt
+      if (response.ok) {
+        return response;
+      }
+      if (response.status < 500) {
+        // Client errors (4xx) shouldn't be retried
+        return response;
+      }
+      // If it's 5xx and we have attempts remaining, loop to retry
+      if (attempt === retries) {
         return response;
       }
     } catch (error) {
@@ -47,7 +57,9 @@ async function fetchWithRetry(path: string, init: RequestInit, options?: NeoraFe
       }
     }
 
-    await sleep(retryDelayMs * (attempt + 1));
+    // Exponential backoff: retryDelayMs * 2^attempt (e.g., 300ms, 600ms, 1200ms)
+    const backoffDelay = retryDelayMs * Math.pow(2, attempt);
+    await sleep(backoffDelay);
   }
 
   throw new NeoraApiError(path, lastError instanceof Error ? lastError.message : "Request failed");
@@ -167,3 +179,59 @@ export async function neoraChatWithFallback(
 
   throw new Error(`All LLM models in fallback chain failed. Last error: ${lastError?.message || lastError}`);
 }
+
+export interface UnifiedLlmResponse {
+  text: string;
+  provider: 'gemini' | 'groq' | 'ollama';
+  modelUsed: string;
+  voiceText: string;
+}
+
+export interface UnifiedLlmOptions {
+  messages: any[];
+  lang?: string;
+  geminiKey?: string;
+  groqKey?: string;
+  ollamaBaseUrl?: string;
+  model?: string;
+  signal?: AbortSignal;
+}
+
+export function sanitizeTextForVoice(text: string): string {
+  if (!text) return "";
+  let clean = text;
+  // Strip code blocks
+  clean = clean.replace(/```[\s\S]*?```/g, "");
+  // Strip inline code
+  clean = clean.replace(/`([^`]+)`/g, "$1");
+  // Strip bold/italic asterisks
+  clean = clean.replace(/\*\*([^*]+)\*\*/g, "$1");
+  clean = clean.replace(/\*([^*]+)\*/g, "$1");
+  // Strip emojis
+  clean = clean.replace(/[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDC00-\uDFFF]/g, "");
+  // Strip hash tags / system markers
+  clean = clean.replace(/#+/g, "");
+  return clean.trim();
+}
+
+export const UnifiedLlmService = {
+  async chat(provider: 'gemini' | 'groq' | 'ollama', options: UnifiedLlmOptions): Promise<UnifiedLlmResponse> {
+    const result = await neoraChatWithFallback(provider, {
+      messages: options.messages,
+      lang: options.lang,
+      geminiKey: options.geminiKey,
+      groqKey: options.groqKey,
+      model: options.model,
+      ollamaBaseUrl: options.ollamaBaseUrl
+    });
+
+    const rawText = result.response?.text || result.response?.content || result.response?.choices?.[0]?.message?.content || "";
+    
+    return {
+      text: rawText,
+      provider: result.modelUsed,
+      modelUsed: options.model || (result.modelUsed === 'gemini' ? 'gemini-3.5-flash' : result.modelUsed === 'groq' ? 'llama3' : 'ollama-default'),
+      voiceText: sanitizeTextForVoice(rawText)
+    };
+  }
+};

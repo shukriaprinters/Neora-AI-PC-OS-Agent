@@ -8,6 +8,7 @@ import { VoiceCommandPanel } from "./components/VoiceCommandPanel";
 import { NeoraNotifications } from "./components/NeoraNotifications";
 import { CommandStatusIndicator } from "./components/CommandStatusIndicator";
 import { SystemEventLog } from "./components/SystemEventLog";
+import { AutoHealRegistry } from "./components/AutoHealRegistry";
 function lazyRetry<T extends React.ComponentType<any>>(
   factory: () => Promise<any>,
   name: string,
@@ -332,6 +333,347 @@ export default function App() {
     localStorage.setItem("neora_lang", lang);
   }, [lang]);
 
+  // Groq API client config states
+  const [useGroq, setUseGroq] = useState<boolean>(() => {
+    return localStorage.getItem("neora_use_groq") === "true";
+  });
+  const [groqKey, setGroqKey] = useState<string>(() => {
+    return localStorage.getItem("neora_groq_key") || "";
+  });
+  const [groqModel, setGroqModel] = useState<string>(() => {
+    return (
+      localStorage.getItem("neora_groq_model") || "llama-3.3-70b-versatile"
+    );
+  });
+  const [geminiKey, setGeminiKey] = useState<string>(() => {
+    return localStorage.getItem("neora_gemini_key") || "";
+  });
+
+  React.useEffect(() => {
+    localStorage.setItem("neora_gemini_key", geminiKey);
+  }, [geminiKey]);
+
+  React.useEffect(() => {
+    localStorage.setItem("neora_use_groq", useGroq.toString());
+  }, [useGroq]);
+
+  React.useEffect(() => {
+    localStorage.setItem("neora_groq_key", groqKey);
+  }, [groqKey]);
+
+  React.useEffect(() => {
+    localStorage.setItem("neora_groq_model", groqModel);
+  }, [groqModel]);
+
+  // --- NATIVE WEB SPEECH SYNTHESIS ENGINE (PRIMARY) ---
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const speakQueueRef = React.useRef<{ cancel: () => void } | null>(null);
+
+  const neoraSpeak = React.useCallback((text: string, onSpeechFinished?: () => void) => {
+    setIsSpeaking(true);
+    const synth = typeof window !== "undefined" ? window.speechSynthesis : null;
+    
+    if (speakQueueRef.current) {
+      speakQueueRef.current.cancel();
+    }
+    if (synth) {
+      synth.cancel();
+    }
+
+    const cleanText = text.replace(/[`*#_\[\]]/g, "").replace(/\*\*/g, "").slice(0, 1800);
+    const sentences: string[] = [];
+    const rawSentences = cleanText
+      .split(/[।\n!?.;]/)
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
+
+    for (const s of rawSentences) {
+      if (s.length <= 150) {
+        sentences.push(s);
+      } else {
+        // Splitting safely by spaces, commas, semicolons or Bengali punctuation marks to stay under 150 chars
+        const parts = s.split(/([\s,，、])/);
+        let currentChunk = "";
+        for (const part of parts) {
+          if ((currentChunk + part).length > 150) {
+            if (currentChunk.trim().length > 0) {
+              sentences.push(currentChunk.trim());
+            }
+            currentChunk = part;
+          } else {
+            currentChunk += part;
+          }
+        }
+        if (currentChunk.trim().length > 0) {
+          sentences.push(currentChunk.trim());
+        }
+      }
+    }
+
+    if (sentences.length === 0) {
+      setIsSpeaking(false);
+      onSpeechFinished?.();
+      return;
+    }
+
+    let index = 0;
+    let cancelled = false;
+    let currentAudio: HTMLAudioElement | null = null;
+
+    const cancel = () => {
+      cancelled = true;
+      setIsSpeaking(false);
+      if (synth) {
+        synth.cancel();
+      }
+      if (currentAudio) {
+        currentAudio.pause();
+        currentAudio = null;
+      }
+    };
+
+    speakQueueRef.current = { cancel };
+
+    const speakNext = () => {
+      if (cancelled) {
+        setIsSpeaking(false);
+        return;
+      }
+      if (index >= sentences.length) {
+        setIsSpeaking(false);
+        onSpeechFinished?.();
+        return;
+      }
+
+      const sentenceText = sentences[index];
+      const containsBangla = /[\u0980-\u09FF]/.test(sentenceText);
+      const isBn = lang === "bn" || containsBangla;
+
+      const playProxyTts = () => {
+        if (cancelled) return;
+        try {
+          const ttsLang = isBn ? "bn" : "en";
+          const ttsUrl = `/api/tts?lang=${ttsLang}&text=${encodeURIComponent(sentenceText)}`;
+          const audio = new Audio(ttsUrl);
+          currentAudio = audio;
+
+          audio.onended = () => {
+            if (currentAudio === audio) currentAudio = null;
+            index++;
+            speakNext();
+          };
+
+          audio.onerror = () => {
+            if (currentAudio === audio) currentAudio = null;
+            console.warn("Proxy TTS failed, falling back to native SpeechSynthesis");
+            playLocalSynthesis();
+          };
+
+          audio.play().catch((err) => {
+            if (currentAudio === audio) currentAudio = null;
+            console.warn("Audio play blocked, falling back to native SpeechSynthesis", err);
+            playLocalSynthesis();
+          });
+        } catch (err) {
+          playLocalSynthesis();
+        }
+      };
+
+      const playLocalSynthesis = () => {
+        if (cancelled) return;
+        if (!synth) {
+          index++;
+          speakNext();
+          return;
+        }
+
+        const utterance = new SpeechSynthesisUtterance(sentenceText);
+        utterance.lang = isBn ? "bn-BD" : "en-US";
+        utterance.rate = 1.05;
+        utterance.pitch = 1.0;
+
+        const voices = synth.getVoices();
+        let preferredVoice = null;
+        if (isBn) {
+          preferredVoice = voices.find(v => {
+            const lLower = v.lang.toLowerCase();
+            const nameLower = v.name.toLowerCase();
+            return (lLower === "bn-bd" || lLower === "bn_bd") && (
+              nameLower.includes("sabina") ||
+              nameLower.includes("kalpana") ||
+              nameLower.includes("female") ||
+              nameLower.includes("online") ||
+              nameLower.includes("google")
+            );
+          }) || voices.find(v => {
+            const lLower = v.lang.toLowerCase();
+            return lLower === "bn-bd" || lLower === "bn_bd" || lLower.startsWith("bn");
+          }) || voices.find(v => {
+            const nameLower = v.name.toLowerCase();
+            return nameLower.includes("bengali") || nameLower.includes("bangla") || nameLower.includes("বাংলা");
+          });
+        } else {
+          preferredVoice = voices.find(v => {
+            const nameLower = v.name.toLowerCase();
+            return v.lang.toLowerCase().startsWith("en") && (
+              nameLower.includes("zira") ||
+              nameLower.includes("samantha") ||
+              nameLower.includes("female") ||
+              nameLower.includes("google")
+            );
+          }) || voices.find(v => v.lang.toLowerCase().startsWith("en"));
+        }
+
+        if (preferredVoice) {
+          utterance.voice = preferredVoice;
+        }
+
+        utterance.onend = () => {
+          index++;
+          speakNext();
+        };
+
+        utterance.onerror = (e) => {
+          console.warn("Native SpeechSynthesis failed fully:", e);
+          index++;
+          speakNext();
+        };
+
+        try {
+          synth.speak(utterance);
+          setTimeout(() => {
+            if (!synth.speaking && !cancelled) {
+              synth.resume();
+            }
+          }, 150);
+        } catch (err) {
+          console.warn("synth.speak failed:", err);
+          index++;
+          speakNext();
+        }
+      };
+
+      // Always try the premium Google Translate human-like proxy voice FIRST
+      playProxyTts();
+    };
+
+    speakNext();
+  }, [lang]);
+
+  const neoraStopSpeaking = React.useCallback(() => {
+    setIsSpeaking(false);
+    if (speakQueueRef.current) {
+      speakQueueRef.current.cancel();
+    }
+    const synth = typeof window !== "undefined" ? window.speechSynthesis : null;
+    if (synth) {
+      synth.cancel();
+    }
+  }, []);
+
+  React.useEffect(() => {
+    (window as any).neoraSpeak = neoraSpeak;
+    (window as any).neoraStopSpeaking = neoraStopSpeaking;
+    return () => {
+      delete (window as any).neoraSpeak;
+      delete (window as any).neoraStopSpeaking;
+    };
+  }, [neoraSpeak, neoraStopSpeaking]);
+
+  // --- REAL-TIME CENTRAL DIAGNOSTICS & RETRY EXPONENTIAL BACKOFF ---
+  const [ollamaStatus, setOllamaStatus] = useState<"available" | "partial" | "not_installed" | "checking" | "error_backoff" | "not_responding">("checking");
+  const [groqStatus, setGroqStatus] = useState<"available" | "offline" | "checking" | "missing_key">("checking");
+  const [diagnosticWarnings, setDiagnosticWarnings] = useState<string[]>([]);
+  const [diagnosticsBackoff, setDiagnosticsBackoff] = useState<number>(1);
+
+  React.useEffect(() => {
+    let active = true;
+    let timerId: NodeJS.Timeout | null = null;
+
+    const runDiagnostics = async () => {
+      if (!active) return;
+      
+      const geminiK = localStorage.getItem("neora_gemini_key") || "";
+      const groqK = localStorage.getItem("neora_groq_key") || "";
+      const ollamaUrl = localStorage.getItem("neora_ollama_base_url") || "http://127.0.0.1:11434";
+
+      try {
+        const result: any = await neoraPost("/api/diagnostic/heartbeat", {
+          geminiKey: geminiK,
+          groqKey: groqK,
+          ollamaBaseUrl: ollamaUrl
+        });
+
+        if (!active) return;
+
+        if (result && result.status === "success" && result.check) {
+          setDiagnosticsBackoff(1);
+
+          const check = result.check;
+          
+          if (check.ollama.alive) {
+            setOllamaStatus("available");
+          } else {
+            setOllamaStatus("not_installed");
+          }
+
+          if (!groqK) {
+            setGroqStatus("missing_key");
+          } else if (check.groq.alive) {
+            setGroqStatus("available");
+          } else {
+            setGroqStatus("offline");
+          }
+
+          const warnings: string[] = [];
+          if (!check.ollama.alive) {
+            warnings.push(lang === "bn" 
+              ? "সিস্টেম সতর্কবার্তা: ওলামা (Ollama) অফলাইন বা বন্ধ অবস্থায় আছে।" 
+              : "Ollama LLM is unreachable or stopped. Local acceleration is offline."
+            );
+          }
+          if (useGroq && !groqK) {
+            warnings.push(lang === "bn"
+              ? "সিস্টেম সতর্কবার্তা: গ্রক (Groq) এপিআই কি সেটিংস এ সেট করা নেই।"
+              : "Groq is active but API key is missing. Update keys in Settings."
+            );
+          } else if (useGroq && !check.groq.alive) {
+            warnings.push(lang === "bn"
+              ? "সিস্টেম সতর্কবার্তা: গ্রক এপিআই কানেক্ট করা যাচ্ছে না।"
+              : "Groq service is currently unreachable."
+            );
+          }
+
+          setDiagnosticWarnings(warnings);
+        }
+      } catch (err: any) {
+        if (!active) return;
+        setDiagnosticsBackoff(prev => Math.min(15, prev * 2));
+        setOllamaStatus("error_backoff");
+        setGroqStatus("offline");
+        
+        const warnings = [
+          lang === "bn"
+            ? "সিস্টেম সতর্কবার্তা: ডায়াগনস্টিক সার্ভিস সংযোগ ব্যর্থ হয়েছে, পুনরায় চেষ্টা করা হচ্ছে।"
+            : "Diagnostic heartbeat failed. Entering error backoff mode."
+        ];
+        setDiagnosticWarnings(warnings);
+      } finally {
+        if (active) {
+          const nextPollDelay = 20000 * diagnosticsBackoff;
+          timerId = setTimeout(runDiagnostics, nextPollDelay);
+        }
+      }
+    };
+
+    runDiagnostics();
+
+    return () => {
+      active = false;
+      if (timerId) clearTimeout(timerId);
+    };
+  }, [useGroq, diagnosticsBackoff, lang]);
+
   // Ambient sound states
   const ambientManager = React.useRef<AmbientHumManager | null>(null);
   const [ambientPlaying, setAmbientPlaying] = useState<boolean>(() => {
@@ -392,6 +734,10 @@ export default function App() {
   >(() => {
     return (localStorage.getItem("neora_active_tab") || "home") as any;
   });
+
+  React.useEffect(() => {
+    localStorage.setItem("neora_active_tab", activeTab);
+  }, [activeTab]);
 
   // Dynamic collections
   const [tasks, setTasks] = useState<Task[]>([
@@ -473,43 +819,6 @@ export default function App() {
   ]);
 
   const [autonomyLevel, setAutonomyLevel] = useState<number>(3);
-
-  // Groq API client config states
-  const [useGroq, setUseGroq] = useState<boolean>(() => {
-    return localStorage.getItem("neora_use_groq") === "true";
-  });
-  const [groqKey, setGroqKey] = useState<string>(() => {
-    return localStorage.getItem("neora_groq_key") || "";
-  });
-  const [groqModel, setGroqModel] = useState<string>(() => {
-    return (
-      localStorage.getItem("neora_groq_model") || "llama-3.3-70b-versatile"
-    );
-  });
-  const [geminiKey, setGeminiKey] = useState<string>(() => {
-    return localStorage.getItem("neora_gemini_key") || "";
-  });
-
-  React.useEffect(() => {
-    localStorage.setItem("neora_gemini_key", geminiKey);
-  }, [geminiKey]);
-
-  // Save activeTab state to LocalStorage
-  React.useEffect(() => {
-    localStorage.setItem("neora_active_tab", activeTab);
-  }, [activeTab]);
-
-  React.useEffect(() => {
-    localStorage.setItem("neora_use_groq", useGroq.toString());
-  }, [useGroq]);
-
-  React.useEffect(() => {
-    localStorage.setItem("neora_groq_key", groqKey);
-  }, [groqKey]);
-
-  React.useEffect(() => {
-    localStorage.setItem("neora_groq_model", groqModel);
-  }, [groqModel]);
 
   // Specifications state binders (persisted selectedSectionId)
   const [selectedSectionId, setSelectedSectionId] = useState<string>(() => {
@@ -1286,6 +1595,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
+      <AutoHealRegistry lang={lang} />
       <AppShell
         activeTab={activeTab as any}
         onChangeTab={setActiveTab as any}
@@ -1307,6 +1617,16 @@ export default function App() {
           className={`flex-1 flex flex-col h-full min-h-0 w-full font-sans overflow-hidden print:bg-white print:text-black relative ${clickInspectorMode ? "cursor-crosshair" : ""}`}
           style={{ background: "#000814", color: "#cce8ff" }}
         >
+          {diagnosticWarnings.length > 0 && (
+            <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-1.5 flex items-center gap-2 text-amber-400 font-mono text-[10px] z-50">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
+              <div className="flex-1 flex flex-wrap gap-x-4">
+                {diagnosticWarnings.map((warn, i) => (
+                  <span key={i}>{warn}</span>
+                ))}
+              </div>
+            </div>
+          )}
           {clickInspectorMode && (
             <div className="pointer-events-none fixed right-4 top-16 z-[70] rounded-2xl border border-fuchsia-500/20 bg-fuchsia-500/10 px-3 py-2 text-xs text-fuchsia-100 backdrop-blur-xl space-y-1">
               <div>Click Inspector: ON</div>
@@ -1566,18 +1886,19 @@ export default function App() {
                       </span>
                     </div>
 
-                    <div
+                    <button
                       id="lang-toggle-btn"
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-mono font-bold bg-[#00d4ff]/10 border border-[#00d4ff]/25 text-[#00d4ff]"
-                      title="UI language automatically detected based on your system locale & timezone contexts."
+                      onClick={() => setLang((prev) => (prev === "en" ? "bn" : "en"))}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-mono font-bold bg-[#00d4ff]/15 hover:bg-[#00d4ff]/25 border border-[#00d4ff]/35 text-[#00d4ff] cursor-pointer transition-colors"
+                      title="Click to toggle language manually between English and Bengali."
                     >
                       <Languages className="w-3.5 h-3.5 animate-pulse" />
                       <span>
                         {lang === "bn"
-                          ? "স্বয়ংক্রিয় ভাষা: বাংলা"
-                          : "Auto Locale: EN"}
+                          ? "ভাষা: বাংলা"
+                          : "Language: EN"}
                       </span>
-                    </div>
+                    </button>
                   </div>
                 </div>
               </header>

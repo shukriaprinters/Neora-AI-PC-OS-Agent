@@ -576,16 +576,67 @@ function getCleanErrorMessage(err: any): string {
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+interface CircuitBreaker {
+  state: 'CLOSED' | 'OPEN' | 'HALF-OPEN';
+  failuresCount: number;
+  lastFailureTime: number;
+  openTimeoutMs: number;
+}
+
+const geminiCircuitBreaker: CircuitBreaker = {
+  state: 'CLOSED',
+  failuresCount: 0,
+  lastFailureTime: 0,
+  openTimeoutMs: 15000,
+};
+
+function recordGeminiSuccess() {
+  geminiCircuitBreaker.failuresCount = 0;
+  geminiCircuitBreaker.state = 'CLOSED';
+}
+
+function recordGeminiFailure() {
+  geminiCircuitBreaker.failuresCount += 1;
+  geminiCircuitBreaker.lastFailureTime = Date.now();
+  if (geminiCircuitBreaker.failuresCount >= 3) {
+    geminiCircuitBreaker.state = 'OPEN';
+    console.warn(`[CIRCUIT BREAKER OPEN] Gemini API high demand detected. Circuit Breaker tripped! Cooling down for ${geminiCircuitBreaker.openTimeoutMs}ms.`);
+  }
+}
+
+function isGeminiRequestAllowed(): boolean {
+  if (geminiCircuitBreaker.state === 'CLOSED') {
+    return true;
+  }
+  if (geminiCircuitBreaker.state === 'OPEN') {
+    const elapsed = Date.now() - geminiCircuitBreaker.lastFailureTime;
+    if (elapsed >= geminiCircuitBreaker.openTimeoutMs) {
+      geminiCircuitBreaker.state = 'HALF-OPEN';
+      console.log(`[CIRCUIT BREAKER HALF-OPEN] Testing Gemini availability after cooldown.`);
+      return true;
+    }
+    return false;
+  }
+  return true;
+}
+
 async function generateGeminiContentWithFallback(client: GoogleGenAI, options: {
   model?: string;
   contents: any;
   config?: any;
 }) {
+  if (!isGeminiRequestAllowed()) {
+    throw new Error("Gemini Service is temporarily down (Circuit Breaker OPEN due to high demand / consecutive 503 errors). Please retry in 15 seconds, or select another provider.");
+  }
+
   const baseModel = options.model || "gemini-3.5-flash";
   const fallbacks = [
     baseModel,
-    "gemini-3.1-flash-lite",
+    "gemini-2.0-flash",
     "gemini-2.5-flash",
+    "gemini-1.5-flash",
+    "gemini-1.5-flash-8b",
+    "gemini-3.1-flash-lite",
     "gemini-flash-latest"
   ];
   const uniqueModels = [...new Set(fallbacks)];
@@ -601,6 +652,7 @@ async function generateGeminiContentWithFallback(client: GoogleGenAI, options: {
           ...options,
           model: modelToTry,
         });
+        recordGeminiSuccess();
         return res;
       } catch (err: any) {
         lastError = err;
@@ -614,13 +666,19 @@ async function generateGeminiContentWithFallback(client: GoogleGenAI, options: {
                             errStr.includes("ResourceExhausted") ||
                             errStr.includes("Service Unavailable");
 
-        if (isTransient && retries > 1) {
-          console.log(`[Gemini SDK fallback] Model '${modelToTry}' is temporarily busy (transient error). Retrying in ${delay}ms... (Error: ${err.message || String(err)})`);
-          await sleep(delay);
-          delay *= 2; // Exponential backoff
-          retries--;
+        if (isTransient) {
+          recordGeminiFailure();
+          if (retries > 1) {
+            console.log(`[Gemini SDK fallback] Model '${modelToTry}' is temporarily busy (transient error). Retrying in ${delay}ms... (Error: ${err.message || String(err)})`);
+            await sleep(delay);
+            delay *= 2; // Exponential backoff
+            retries--;
+          } else {
+            console.log(`[Gemini SDK fallback] Model '${modelToTry}' failed or not retrying. Details: ${err.message || String(err)}`);
+            break; // Move to next fallback model
+          }
         } else {
-          console.log(`[Gemini SDK fallback] Model '${modelToTry}' failed or not retrying. Details: ${err.message || String(err)}`);
+          console.log(`[Gemini SDK fallback] Model '${modelToTry}' failed with non-transient error. Details: ${err.message || String(err)}`);
           break; // Move to next fallback model
         }
       }
@@ -635,11 +693,18 @@ async function generateGeminiContentStreamWithFallback(client: GoogleGenAI, opti
   contents: any;
   config?: any;
 }) {
+  if (!isGeminiRequestAllowed()) {
+    throw new Error("Gemini Service is temporarily down (Circuit Breaker OPEN due to high demand / consecutive 503 errors). Please retry in 15 seconds, or select another provider.");
+  }
+
   const baseModel = options.model || "gemini-3.5-flash";
   const fallbacks = [
     baseModel,
-    "gemini-3.1-flash-lite",
+    "gemini-2.0-flash",
     "gemini-2.5-flash",
+    "gemini-1.5-flash",
+    "gemini-1.5-flash-8b",
+    "gemini-3.1-flash-lite",
     "gemini-flash-latest"
   ];
   const uniqueModels = [...new Set(fallbacks)];
@@ -655,6 +720,7 @@ async function generateGeminiContentStreamWithFallback(client: GoogleGenAI, opti
           ...options,
           model: modelToTry,
         });
+        recordGeminiSuccess();
         return stream;
       } catch (err: any) {
         lastError = err;
@@ -668,13 +734,19 @@ async function generateGeminiContentStreamWithFallback(client: GoogleGenAI, opti
                             errStr.includes("ResourceExhausted") ||
                             errStr.includes("Service Unavailable");
 
-        if (isTransient && retries > 1) {
-          console.log(`[Gemini SDK fallback] Model '${modelToTry}' is temporarily busy for streaming (transient error). Retrying in ${delay}ms... (Error: ${err.message || String(err)})`);
-          await sleep(delay);
-          delay *= 2; // Exponential backoff
-          retries--;
+        if (isTransient) {
+          recordGeminiFailure();
+          if (retries > 1) {
+            console.log(`[Gemini SDK fallback] Model '${modelToTry}' is temporarily busy for streaming (transient error). Retrying in ${delay}ms... (Error: ${err.message || String(err)})`);
+            await sleep(delay);
+            delay *= 2; // Exponential backoff
+            retries--;
+          } else {
+            console.log(`[Gemini SDK fallback] Model '${modelToTry}' failed or not retrying for streaming. Details: ${err.message || String(err)}`);
+            break; // Move to next fallback model
+          }
         } else {
-          console.log(`[Gemini SDK fallback] Model '${modelToTry}' failed or not retrying for streaming. Details: ${err.message || String(err)}`);
+          console.log(`[Gemini SDK fallback] Model '${modelToTry}' failed with non-transient error for streaming. Details: ${err.message || String(err)}`);
           break; // Move to next fallback model
         }
       }
@@ -702,7 +774,18 @@ app.post("/api/chat-gemini", async (req, res) => {
 
     const client = getGeminiClient(apiKey);
 
-    const systemInstruction = buildChatSystemInstruction(lang);
+    // Auto-detect Bengali/Banglish input to dynamically use Bengali system instructions
+    const lastMessage = messages[messages.length - 1];
+    const lastMessageText = lastMessage?.content || "";
+    const hasBanglaCharacters = /[\u0980-\u09FF]/.test(lastMessageText);
+    const hasBanglishKeywords = /\b(kemon|acho|kmn|aso|valobashi|valo|bhalo|amr|amar|tumi|apni|tumar|tomar|korso|koro|ki|korchen|korcho|din|rattri|shokal|shubho)\b/i.test(lastMessageText);
+    
+    let activeLang = lang;
+    if (hasBanglaCharacters || hasBanglishKeywords) {
+      activeLang = "bn";
+    }
+
+    const systemInstruction = buildChatSystemInstruction(activeLang);
 
     const formattedContents = messages.map(m => ({
       role: m.role === "assistant" ? "model" : "user",
@@ -742,7 +825,18 @@ app.post("/api/chat-stream", async (req, res) => {
     res.setHeader("X-Accel-Buffering", "no");
     res.flushHeaders();
 
-    const systemInstruction = buildChatSystemInstruction(lang);
+    // Auto-detect Bengali/Banglish input to dynamically use Bengali system instructions
+    const lastMessage = messages[messages.length - 1];
+    const lastMessageText = lastMessage?.content || "";
+    const hasBanglaCharacters = /[\u0980-\u09FF]/.test(lastMessageText);
+    const hasBanglishKeywords = /\b(kemon|acho|kmn|aso|valobashi|valo|bhalo|amr|amar|tumi|apni|tumar|tomar|korso|koro|ki|korchen|korcho|din|rattri|shokal|shubho)\b/i.test(lastMessageText);
+    
+    let activeLang = lang;
+    if (hasBanglaCharacters || hasBanglishKeywords) {
+      activeLang = "bn";
+    }
+
+    const systemInstruction = buildChatSystemInstruction(activeLang);
 
     if (provider === "groq") {
       const activeKey = groqKey || process.env.GROQ_API_KEY;

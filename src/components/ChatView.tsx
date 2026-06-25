@@ -334,6 +334,9 @@ export function ChatView({
   const [voiceRate, setVoiceRate] = useState<number>(() => {
     return Number(localStorage.getItem('neora_voice_rate') || '1.0');
   });
+  const [voiceInputMode, setVoiceInputMode] = useState<'browser' | 'whisper'>(() => {
+    return (localStorage.getItem('neora_voice_input_mode') as 'browser' | 'whisper') || 'browser';
+  });
 
   // Whisper Speech Recording refs and state
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -412,6 +415,8 @@ export function ChatView({
       ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
       : 'bg-red-500/10 text-red-400 border-red-500/20';
 
+  const [ollamaBackoff, setOllamaBackoff] = useState(1);
+
   const checkOllamaStatus = async () => {
     try {
       if (ollamaConnectionMode === 'browser') {
@@ -426,6 +431,7 @@ export function ChatView({
         if (response.ok) {
           const data = await response.json();
           setOllamaStatus('available');
+          setOllamaBackoff(1); // Reset backoff
           const modelsList = data.models || [];
           setOllamaModels(modelsList);
           if (modelsList.length > 0) {
@@ -442,6 +448,7 @@ export function ChatView({
         // Server proxy check, passing custom base URL Encoded
         const data: any = await neoraGet(`/api/ollama/status?url=${encodeURIComponent(ollamaBaseUrl)}`);
         setOllamaStatus(data.status);
+        setOllamaBackoff(1); // Reset backoff
         setOllamaModels(data.models || []);
         if (data.models && data.models.length > 0) {
           const names = data.models.map((m: any) => m.name);
@@ -451,16 +458,19 @@ export function ChatView({
         }
       }
     } catch (err) {
-      console.warn("Ollama status check failed: ", err);
       setOllamaStatus('not_installed');
+      // Exponential backoff: slow down polling up to a maximum of 5 minutes (20 * 15s)
+      setOllamaBackoff(prev => Math.min(20, prev * 2));
     }
   };
 
   useEffect(() => {
     checkOllamaStatus();
-    const interval = setInterval(checkOllamaStatus, 15000); // Poll status every 15s
-    return () => clearInterval(interval);
-  }, [ollamaConnectionMode, ollamaBaseUrl]);
+    const timer = setTimeout(function poll() {
+      checkOllamaStatus();
+    }, 15000 * ollamaBackoff);
+    return () => clearTimeout(timer);
+  }, [ollamaConnectionMode, ollamaBaseUrl, ollamaBackoff]);
 
   useEffect(() => {
     const loadWorkspaceState = async () => {
@@ -737,6 +747,15 @@ const handleUpdateMessage = async (id: string, newText: string) => {
       if (onSpeechFinished) onSpeechFinished();
       return;
     }
+
+    if (typeof (window as any).neoraSpeak === "function") {
+      (window as any).neoraSpeak(text, () => {
+        setIsSpeaking(false);
+        if (onSpeechFinished) onSpeechFinished();
+      });
+      return;
+    }
+
     const cleanText = text.replace(/[`*#_\[\]]/g, '').replace(/\*\*/g, '').slice(0, 1800);
     const synth = window.speechSynthesis;
     
@@ -766,6 +785,9 @@ const handleUpdateMessage = async (id: string, newText: string) => {
     const cancel = () => {
       cancelled = true;
       setIsSpeaking(false);
+      if (typeof (window as any).neoraStopSpeaking === "function") {
+        (window as any).neoraStopSpeaking();
+      }
       if (synth) {
         synth.cancel();
       }
@@ -1212,33 +1234,53 @@ const handleUpdateMessage = async (id: string, newText: string) => {
     }
 
     const rec = new SpeechRecognition();
+    (window as any)._activeSpeechRec = rec;
     rec.continuous = false;
     rec.interimResults = false;
     rec.lang = lang === 'bn' ? 'bn-BD' : 'en-US';
 
     rec.onstart = () => {
       setIsListening(true);
+      setWhisperStatus('recording');
     };
 
     rec.onresult = (event: any) => {
       const transcript = event.results[0][0].transcript;
       setInputValue(transcript);
       setIsListening(false);
+      setWhisperStatus('idle');
       handleSpeechCommand(transcript);
     };
 
     rec.onerror = () => {
       setIsListening(false);
+      setWhisperStatus('error');
     };
 
     rec.onend = () => {
       setIsListening(false);
+      setWhisperStatus('idle');
     };
 
     rec.start();
   };
 
   const toggleMic = async () => {
+    if (voiceInputMode === 'browser') {
+      if (isListening) {
+        setIsListening(false);
+        setWhisperStatus('idle');
+        if ((window as any)._activeSpeechRec) {
+          try {
+            (window as any)._activeSpeechRec.stop();
+          } catch (e) {}
+        }
+      } else {
+        runLocalSpeechRecognition();
+      }
+      return;
+    }
+
     if (isListening) {
       // Stop recording and process Audio
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
@@ -2028,6 +2070,50 @@ const handleUpdateMessage = async (id: string, newText: string) => {
               {lang === 'bn'
                 ? '✦ মেম্বার মডেলে কী-ভুল বা সংযোগ বিচ্ছিন্নতা থাকলে নিওরা লাইভ ব্যাকআপে (Gemini Core বা ওল্লামা) চলে যাবে।'
                 : '✦ If your chosen active brain fails on requests, Neora recovers the dialogue using sequential active fallbacks.'}
+            </p>
+
+            {/* Voice Input Mode Toggle */}
+            <div className="flex items-center justify-between border-t border-slate-900/80 pt-2.5 text-[10px] mt-2">
+              <span className="text-slate-400 flex items-center gap-1">
+                <span>🎙️</span>
+                <span>{lang === 'bn' ? 'ভয়েস রিকগনিশন মোড:' : 'Speech Recognition Engine:'}</span>
+              </span>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setVoiceInputMode('browser');
+                    localStorage.setItem('neora_voice_input_mode', 'browser');
+                  }}
+                  className={`px-2 py-0.5 rounded text-[8px] font-bold tracking-wide transition-all cursor-pointer ${
+                    voiceInputMode === 'browser'
+                      ? 'bg-cyan-950 text-cyan-400 border border-cyan-500/30'
+                      : 'bg-slate-900 text-slate-500 border border-slate-850'
+                  }`}
+                >
+                  {lang === 'bn' ? 'ব্রাউজার লোকাল' : 'Browser Local'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setVoiceInputMode('whisper');
+                    localStorage.setItem('neora_voice_input_mode', 'whisper');
+                  }}
+                  className={`px-2 py-0.5 rounded text-[8px] font-bold tracking-wide transition-all cursor-pointer ${
+                    voiceInputMode === 'whisper'
+                      ? 'bg-indigo-950 text-indigo-400 border border-indigo-500/30'
+                      : 'bg-slate-900 text-slate-500 border border-slate-850'
+                  }`}
+                >
+                  OpenAI Whisper
+                </button>
+              </div>
+            </div>
+            
+            <p className="text-[8px] text-slate-500 leading-tight">
+              {lang === 'bn'
+                ? '✦ "ব্রাউজার লোকাল" মোডে কোনো এপিআই কি ছাড়াই অত্যন্ত দ্রুত বাংলা ও ইংরেজি ভয়েস কমান্ড রিয়েল-টাইমে কাজ করে।'
+                : '✦ "Browser Local" runs instant zero-latency on-device speech dictation without any API Key.'}
             </p>
           </div>
 
