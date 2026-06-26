@@ -73,6 +73,7 @@ export function AutoHealRegistry({ lang }: { lang: "en" | "bn" }) {
       const PatchedWebSocket = function(url: string, protocols?: string | string[]) {
         try {
           const ws = new OriginalWebSocket(url, protocols);
+          
           ws.addEventListener("error", () => {
             // Silently catch and self-heal
             const customEvt = new CustomEvent("neora-system-event", {
@@ -88,6 +89,60 @@ export function AutoHealRegistry({ lang }: { lang: "en" | "bn" }) {
             });
             window.dispatchEvent(customEvt);
           });
+
+          ws.addEventListener("close", (event) => {
+            const customEvt = new CustomEvent("neora-system-event", {
+              detail: {
+                id: "heal-ws-close-" + Math.floor(Math.random() * 100000),
+                timestamp: new Date().toTimeString().split(" ")[0],
+                category: "system_heal",
+                level: "WARNING",
+                message: "WebSocket closed. AutoHealRegistry initiating silent reconnection with capped backoff...",
+                details: `Code: ${event.code}, Reason: ${event.reason || "None"}`
+              }
+            });
+            window.dispatchEvent(customEvt);
+
+            let attempt = 0;
+            const maxDelay = 10000; // Capped at 10s
+            const tryReconnect = () => {
+              attempt++;
+              const delay = Math.min(1000 * Math.pow(2, attempt), maxDelay);
+              console.log(`[AutoHealRegistry] Attempting silent WebSocket reconnect in ${delay}ms (attempt ${attempt})...`);
+              
+              setTimeout(() => {
+                try {
+                  const reconnectWs = new OriginalWebSocket(url, protocols);
+                  reconnectWs.addEventListener("open", () => {
+                    const okEvt = new CustomEvent("neora-system-event", {
+                      detail: {
+                        id: "heal-ws-reconnect-" + Math.floor(Math.random() * 100000),
+                        timestamp: new Date().toTimeString().split(" ")[0],
+                        category: "system_heal",
+                        level: "SUCCESS",
+                        message: "WebSocket connection successfully re-established silently!",
+                        details: `Connection restored after ${attempt} retry attempt(s).`
+                      }
+                    });
+                    window.dispatchEvent(okEvt);
+                  });
+                  reconnectWs.addEventListener("close", () => {
+                    if (attempt < 5) {
+                      tryReconnect();
+                    }
+                  });
+                  reconnectWs.addEventListener("error", () => {});
+                } catch (err) {
+                  if (attempt < 5) {
+                    tryReconnect();
+                  }
+                }
+              }, delay);
+            };
+
+            tryReconnect();
+          });
+
           return ws;
         } catch (e) {
           // Return a mock websocket

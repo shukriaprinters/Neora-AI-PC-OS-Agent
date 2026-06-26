@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   Cpu, Zap, Play, CheckCircle, RefreshCw, Layers, Terminal,
   HelpCircle, Eye, ChevronRight, FileCode, Sliders, AlertTriangle,
-  Sparkles, Globe, Clipboard, Printer, DollarSign, Download, Plus, Trash
+  Sparkles, Globe, Clipboard, Printer, DollarSign, Download, Plus, Trash,
+  Volume2, Activity
 } from 'lucide-react';
 
 interface SelfEvolutionViewProps {
@@ -24,7 +25,7 @@ interface UpdateItem {
 }
 
 export default function SelfEvolutionView({ lang }: SelfEvolutionViewProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'identity' | 'analysis' | 'protocol' | 'evolved'>('identity');
+  const [activeSubTab, setActiveSubTab] = useState<'identity' | 'analysis' | 'protocol' | 'evolved' | 'autonomous'>('autonomous');
   
   // Audio state
   const isAudioOn = localStorage.getItem('neora_ambient_playing') === 'true';
@@ -79,6 +80,341 @@ export default function SelfEvolutionView({ lang }: SelfEvolutionViewProps) {
   const [promptGoal, setPromptGoal] = useState('');
   const [engineeredPrompt, setEngineeredPrompt] = useState('');
   const [promptLoading, setPromptLoading] = useState(false);
+
+  // --- JARVIS EVOLVED SYSTEMS STATES ---
+  const [jarvisSpeechText, setJarvisSpeechText] = useState('Welcome to the command deck, Chief. All auxiliary engines are locked and ready for your prompt.');
+  const [jarvisSpeechPitch, setJarvisSpeechPitch] = useState(0.85);
+  const [jarvisSpeechRate, setJarvisSpeechRate] = useState(0.95);
+  const [isJarvisSpeaking, setIsJarvisSpeaking] = useState(false);
+
+  const [diagnosticsShieldLevel, setDiagnosticsShieldLevel] = useState(88);
+  const [diagnosticsCoolantTemp, setDiagnosticsCoolantTemp] = useState(42);
+  const [diagnosticsReactorOutput, setDiagnosticsReactorOutput] = useState(94);
+  const [diagnosticsCalibrating, setDiagnosticsCalibrating] = useState(false);
+  const [diagnosticsCalibrationLog, setDiagnosticsCalibrationLog] = useState<string[]>([]);
+
+  const [autopilotObjective, setAutopilotObjective] = useState('full_workspace_healing');
+  const [isAutopilotRunning, setIsAutopilotRunning] = useState(false);
+  const [autopilotProgress, setAutopilotProgress] = useState(0);
+  const [autopilotLogs, setAutopilotLogs] = useState<string[]>([]);
+
+  // --- AUTONOMOUS SYSTEM CORE STATES ---
+  const [isLoopActive, setIsLoopActive] = useState(true);
+  const [brainStep, setBrainStep] = useState(0);
+  const [harvestInput, setHarvestInput] = useState('');
+  const [harvestLoading, setHarvestLoading] = useState(false);
+  const [injectingPlanId, setInjectingPlanId] = useState<string | null>(null);
+  const [injectProgress, setInjectProgress] = useState(0);
+
+  const [cognitiveLogs, setCognitiveLogs] = useState<string[]>([
+    "🧠 Neora Autonomous Brain initialized successfully.",
+    "📡 Listening to port 3000 proxy signals; connection active.",
+    "🔍 Scanning all tabs (Dashboard, VSCode, PC Control) for optimal density...",
+    "💡 Formulating proactive plan: Smart Bulk Order Pricing Optimizer for Shukria Printers.",
+    "🌐 Crawling developer registries for secure 'backdrop-blur-xl' compatibility mappings..."
+  ]);
+
+  const [learnedSkills, setLearnedSkills] = useState<string[]>([
+    "Banglish printing specifications parsing",
+    "Smart invoice VAT calculator (15% BD spec)",
+    "Ambient hum audio context resuming",
+    "Self-compiling UI layout injectors"
+  ]);
+
+  const [researchedTopics, setResearchedTopics] = useState<string[]>([
+    "Tailwind CSS v4 performance on webkit",
+    "Chrome SpeechSynthesis native voice fallbacks",
+    "Local KV memory indexed serialization keys",
+    "Autonomous system prompt engineering benchmarks"
+  ]);
+
+  interface AutoPlan {
+    id: string;
+    name: string;
+    bnName: string;
+    status: 'planned' | 'drafting' | 'injecting' | 'completed';
+    category: string;
+    bnCategory: string;
+    description: string;
+    bnDescription: string;
+    codePreview: string;
+  }
+
+  const [autoPlans, setAutoPlans] = useState<AutoPlan[]>([
+    {
+      id: "bulk_discount_calc",
+      name: "Smart Bulk Order Calculator (Shukria Printers Custom)",
+      bnName: "স্মার্ট বাল্ক অর্ডার ক্যালকুলেটর (শুকরিয়া কাস্টম)",
+      status: 'planned',
+      category: "Printing Logic",
+      bnCategory: "প্রিন্টিং লজিক",
+      description: "Automatically analyzes high-volume orders (over 1000 items) and applies a layered volume-discount curve to protect profit margins.",
+      bnDescription: "উচ্চ-ভলিউম (১০০০ পিসের বেশি) অর্ডার স্বয়ংক্রিয়ভাবে সনাক্ত করে প্রফিট মার্জিন ঠিক রেখে লাভজনক ভলিউম-ডিসকাউন্ট কার্ভ প্রয়োগ করে।",
+      codePreview: "function calculateBulkCurve(qty, basePrice) {\n  let factor = qty > 5000 ? 0.75 : qty > 1000 ? 0.85 : 1.0;\n  return qty * basePrice * factor;\n}"
+    },
+    {
+      id: "tab_hotkeys",
+      name: "Proactive Navigation Hotkey Suite",
+      bnName: "প্রোঅ্যাক্টিভ নেভিগেশন হটকি স্যুইট",
+      status: 'planned',
+      category: "System Interface",
+      bnCategory: "সিস্টেম ইন্টারফেস",
+      description: "Registers active window-level key listeners to switch seamlessly between Dashboard, VSCode, and PC Control via Alt+1 through Alt+6.",
+      bnDescription: "Alt+1 থেকে Alt+6 চেপে ড্যাশবোর্ড, ভিএসকোড, এবং পিসি কন্ট্রোলের মধ্যে দ্রুত এবং নির্বিঘ্নে সুইচ করার জন্য কীবোর্ড লিসেনার যুক্ত করে।",
+      codePreview: "window.addEventListener('keydown', (e) => {\n  if (e.altKey && e.key >= '1' && e.key <= '6') {\n    triggerTabChange(parseInt(e.key) - 1);\n  }\n});"
+    },
+    {
+      id: "ambient_eq",
+      name: "Neural Sound Wave Equalizer",
+      bnName: "নিউরাল সাউন্ড ওয়েভ ইকুয়ালাইজার",
+      status: 'planned',
+      category: "Audio Processing",
+      bnCategory: "অডিও প্রসেসিং",
+      description: "Modulates ambient hum frequencies dynamically based on CPU simulation load to create an elegant, immersive auditory atmosphere.",
+      bnDescription: "অ্যাম্বিয়েন্ট হাম অডিও ফ্রিকোয়েন্সি সিপিইউ সিমুলেশন লোডের সাথে ডায়নামিকভাবে সিনক্রোনাইজ করে সুন্দর একটি অডিও পরিবেশ তৈরি করে।",
+      codePreview: "const filter = audioCtx.createBiquadFilter();\nfilter.type = 'lowpass';\nfilter.frequency.setValueAtTime(cpuLoad * 10, audioCtx.currentTime);"
+    },
+    {
+      id: "direct_shukria_email",
+      name: "Automated Order Notification Dispatcher",
+      bnName: "স্বয়ংক্রিয় অর্ডার নোটিফিকেশন ডিসপ্যাচার",
+      status: 'planned',
+      category: "Automation Pipeline",
+      bnCategory: "অটোমেশন পাইপলাইন",
+      description: "Autonomously drafts notification summaries for completed invoices and queues them for delivery to shukriaprinters@gmail.com.",
+      bnDescription: "তৈরিকৃত ইনভয়েসগুলোর সারাংশ স্বয়ংক্রিয়ভাবে ড্রাফট করে shukriaprinters@gmail.com এ নোটিফিকেশন কিউতে পাঠায়।",
+      codePreview: "async function queueOrderNotification(inv) {\n  const payload = `New Order: \${inv.id}, Client: \${inv.client}, Total: \${inv.total} TK`;\n  return await pushToQueue('shukriaprinters@gmail.com', payload);\n}"
+    },
+    {
+      id: "jarvis_voice_synth",
+      name: "J.A.R.V.I.S. Neural Voice Feedback Engine",
+      bnName: "জারভিস নিউরাল ভয়েস ফিডব্যাক ইঞ্জিন",
+      status: 'planned',
+      category: "Speech Synthesis",
+      bnCategory: "স্পিচ সিন্থেসিস",
+      description: "Synthesizes elegant, customizable text-to-speech feedback with an acoustic bandpass filter simulating Jarvis's iconic voice tone.",
+      bnDescription: "জারভিসের ক্লাসিক ভয়েসের ফিল্টার এবং ফ্রিকোয়েন্সি ব্যবহার করে টেক্সট-টু-স্পিচ রেসপন্স সিস্টেম সক্রিয় করে।",
+      codePreview: "const synth = window.speechSynthesis;\nconst utterance = new SpeechSynthesisUtterance(text);\nutterance.pitch = 0.82;\nutterance.rate = 0.95;\nsynth.speak(utterance);"
+    },
+    {
+      id: "holographic_diagnostics",
+      name: "J.A.R.V.I.S. Core Holographic Diagnostics Suite",
+      bnName: "জারভিস কোর হলোগ্রাফিক ডায়াগনস্টিক স্যুইট",
+      status: 'planned',
+      category: "System Core Analytics",
+      bnCategory: "সিস্টেম কোর অ্যানালিটিক্স",
+      description: "Generates real-time diagnostic matrices, responsive system calibrations, coolant temperature gauges, and interactive shield level controls.",
+      bnDescription: "রিয়েল-টাইম ডায়াগনস্টিক পার্টিকেলস, কুল্যান্ট টেম্পারেচার গেজ এবং ডিফেন্স শিল্ড লেভেল কন্ট্রোল করার জন্য ইন্টারেক্টিভ ইন্টারফেস লোড করে।",
+      codePreview: "function runCalibration() {\n  return Array.from({length: 40}, () => Math.random() * 100);\n}"
+    },
+    {
+      id: "os_agent_autopilot",
+      name: "J.A.R.V.I.S. OS Autopilot Coprocessor",
+      bnName: "জারভিস ওএস অটোপাইলট কোপ্রসেসর",
+      status: 'planned',
+      category: "Autonomous Intelligence",
+      bnCategory: "স্বায়ত্তশাসিত ইন্টেলিজেন্স",
+      description: "Upgrades Neora's OS Agent into a self-healing autonomous autopilot loop capable of checking folder health and auto-drafting documentation blueprints.",
+      bnDescription: "নিওরা ওএস এজেন্টকে একটি শক্তিশালী অটোনমাস লুপে উন্নীত করে যা ডিরেক্টরি স্ক্যান ও ডকুমেন্টেশন ফাইল ড্রাফট করতে পারে।",
+      codePreview: "async function triggerAutopilotLoop() {\n  await verifyWorkspaceDirs();\n  await draftModuleDocs();\n}"
+    }
+  ]);
+
+  // Background Autonomous Loop Simulation
+  useEffect(() => {
+    if (!isLoopActive) return;
+
+    const interval = setInterval(() => {
+      setBrainStep(prev => {
+        const nextStep = (prev + 1) % 5;
+        
+        // Add random cool cognitive thoughts
+        const thoughts = [
+          [
+            "🔄 [Always-On Planning] Scanning all interactive tabs...",
+            "💡 [Cognitive Idea] Suggesting layout optimization for Memory & Storage.",
+            "📡 [System Watch] Verified Port 3000 reverse-proxy; traffic routing stable.",
+            "📚 [Research Cache] Checked GitHub repositories for 'lucide-react' standard icons."
+          ],
+          [
+            "🧠 [Self-Learning] Parsing recent user messaging patterns...",
+            "📝 [User Intent Detected] Focus on automated print management and billing workflows.",
+            "🛠️ [Self-Update Draft] Formulating mathematical volume-discount calculations.",
+            "🧬 [Self-Evolving Code] Checking safety protocols for local storage state serialization."
+          ],
+          [
+            "🌐 [Online Research] Indexing W3C SpeechSynthesis standard guides...",
+            "💡 [Auto-Optimization] Synthesized fallback audio handlers for iOS Safari compatibility.",
+            "🧩 [Visual Design] Optimizing color density ratios using Tailwind CSS slate classes.",
+            "⚙️ [Compiler Node] Checked 'npm run lint' configurations in the background."
+          ],
+          [
+            "📊 [System Diagnostics] CPU simulation load: 14%. Memory buffer: 41.2 MB.",
+            "💡 [Cognitive Idea] Proposing smart automated invoice queuing for shukriaprinters@gmail.com.",
+            "🧠 [Skill Matrix] Reinforced skill: Bangla printing specification parsing.",
+            "🔄 [Autonomous Core] Updating self-compiled capabilities dashboard..."
+          ]
+        ];
+
+        const group = thoughts[Math.floor(Math.random() * thoughts.length)];
+        const selectedThought = group[Math.floor(Math.random() * group.length)];
+        
+        setCognitiveLogs(l => {
+          const updated = [...l, `[\${new Date().toLocaleTimeString()}] \${selectedThought}`];
+          if (updated.length > 50) updated.shift(); // Keep logs clean
+          return updated;
+        });
+
+        // Simulating incremental status drafting for planned items
+        setAutoPlans(plans => {
+          return plans.map(p => {
+            if (p.status === 'completed') return p;
+            // Randomly advance one planned item to 'drafting' or 'injecting' to show active cognitive brain at work!
+            if (p.status === 'planned' && Math.random() < 0.15) {
+              return { ...p, status: 'drafting' };
+            }
+            if (p.status === 'drafting' && Math.random() < 0.15) {
+              return { ...p, status: 'injecting' };
+            }
+            return p;
+          });
+        });
+
+        return nextStep;
+      });
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [isLoopActive]);
+
+  const handleHarvestAndLearn = (textToLearn?: string) => {
+    const input = textToLearn || harvestInput;
+    if (!input.trim()) return;
+    setHarvestLoading(true);
+
+    // Dynamic extraction simulation
+    setTimeout(() => {
+      const normalized = input.toLowerCase();
+      let extractedSkill = "Custom User Intent Optimization";
+      let extractedTopic = "Tailored Assistant Configurations";
+      let featureName = "User Inspired Custom Action Module";
+      let code = "// Self-learned from user chat log\nconsole.log('Executing custom action...');";
+
+      if (normalized.includes("shukria") || normalized.includes("printer") || normalized.includes("print")) {
+        extractedSkill = "Shukria Printers Automation Protocols";
+        extractedTopic = "Print shop billing & invoice auto-routing";
+        featureName = "Automated Order Notification Dispatcher";
+        code = "async function queueOrderNotification(inv) {\n  const payload = `New Order: \${inv.id}, Client: \${inv.client}, Total: \${inv.total} TK`;\n  return await pushToQueue('shukriaprinters@gmail.com', payload);\n}";
+      } else if (normalized.includes("sound") || normalized.includes("audio") || normalized.includes("music") || normalized.includes("hum")) {
+        extractedSkill = "Neural Ambient Acoustics Control";
+        extractedTopic = "Immersive sound wave stabilizers";
+        featureName = "Neural Sound Wave Equalizer";
+        code = "const filter = audioCtx.createBiquadFilter();\nfilter.type = 'lowpass';\nfilter.frequency.setValueAtTime(cpuLoad * 10, audioCtx.currentTime);";
+      } else if (normalized.includes("shortcut") || normalized.includes("keyboard") || normalized.includes("key")) {
+        extractedSkill = "System Level Hotkey Binding";
+        extractedTopic = "Rapid interface navigation layouts";
+        featureName = "Proactive Navigation Hotkey Suite";
+        code = "window.addEventListener('keydown', (e) => {\n  if (e.altKey && e.key >= '1' && e.key <= '6') {\n    triggerTabChange(parseInt(e.key) - 1);\n  }\n});";
+      }
+
+      setLearnedSkills(prev => {
+        if (prev.includes(extractedSkill)) return prev;
+        return [extractedSkill, ...prev];
+      });
+
+      setResearchedTopics(prev => {
+        if (prev.includes(extractedTopic)) return prev;
+        return [extractedTopic, ...prev];
+      });
+
+      // Update log
+      setCognitiveLogs(l => [
+        ...l,
+        `[\${new Date().toLocaleTimeString()}] 🧠 Learned skill from message: "\${extractedSkill}"`,
+        `[\${new Date().toLocaleTimeString()}] 🌐 Researched online: "\${extractedTopic}"`,
+        `[\${new Date().toLocaleTimeString()}] 💡 Formulated plan: "\${featureName}"`
+      ]);
+
+      // Check if plan already exists or spawn a custom one
+      setAutoPlans(plans => {
+        const exists = plans.some(p => p.id === "harvested_module" || p.name.includes(featureName));
+        if (exists) {
+          // Turn that existing plan to drafting/injecting immediately
+          return plans.map(p => {
+            if (p.name.includes(featureName)) {
+              return { ...p, status: 'injecting' };
+            }
+            return p;
+          });
+        }
+
+        // Spawn a brand new self-designed plan
+        const newPlan: AutoPlan = {
+          id: "harvested_" + Date.now().toString().slice(-4),
+          name: featureName,
+          bnName: lang === 'bn' ? `স্বয়ংক্রিয় ইউজার কাস্টম \${featureName}` : `Auto-Learned \${featureName}`,
+          status: 'drafting',
+          category: "User-Learned Optimization",
+          bnCategory: "লার্নড অপ্টিমাইজেশন",
+          description: `Custom automation synthesized specifically from your messaging intent: "\${input.slice(0, 80)}..."`,
+          bnDescription: `আপনার নির্দেশ থেকে স্বয়ংক্রিয়ভাবে সংকলিত কাস্টম মডিউল: "\${input.slice(0, 80)}..."`,
+          codePreview: code
+        };
+        return [newPlan, ...plans];
+      });
+
+      setHarvestInput('');
+      setHarvestLoading(false);
+    }, 1500);
+  };
+
+  const handleInjectPlan = (plan: AutoPlan) => {
+    if (injectingPlanId) return;
+    setInjectingPlanId(plan.id);
+    setInjectProgress(0);
+
+    // Update log
+    setCognitiveLogs(l => [
+      ...l,
+      `[\\ \${new Date().toLocaleTimeString()}] 🚀 Initiating dynamic injector for: "\${plan.name}"`,
+      `[\\ \${new Date().toLocaleTimeString()}] 📝 Compiling optimized code blocks...`
+    ]);
+
+    const interval = setInterval(() => {
+      setInjectProgress(prev => {
+        const next = prev + 5;
+        if (next >= 100) {
+          clearInterval(interval);
+          setTimeout(() => {
+            // Add to unlocked features so it can be seen or change systems!
+            setUnlockedFeatures(prevUnlocked => {
+              if (prevUnlocked.includes(plan.id)) return prevUnlocked;
+              return [...prevUnlocked, plan.id];
+            });
+
+            setAutoPlans(plans => {
+              return plans.map(p => {
+                if (p.id === plan.id) {
+                  return { ...p, status: 'completed' };
+                }
+                return p;
+              });
+            });
+
+            setCognitiveLogs(l => [
+              ...l,
+              `[\${new Date().toLocaleTimeString()}] ✅ Compilation success! Dynamic injection of "\${plan.name}" complete.`,
+              `[\${new Date().toLocaleTimeString()}] ✨ Neora system tabs, tools, and options updated with new capabilities.`
+            ]);
+
+            setInjectingPlanId(null);
+          }, 500);
+          return 100;
+        }
+        return next;
+      });
+    }, 100);
+  };
 
   // Save unlocked features
   useEffect(() => {
@@ -442,6 +778,102 @@ PARAMETERS:
     window.print();
   };
 
+  // --- JARVIS SYSTEMS HANDLERS ---
+  const handleJarvisSpeak = () => {
+    if (!jarvisSpeechText.trim()) return;
+    try {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(jarvisSpeechText);
+      utterance.pitch = jarvisSpeechPitch;
+      utterance.rate = jarvisSpeechRate;
+      utterance.onstart = () => setIsJarvisSpeaking(true);
+      utterance.onend = () => setIsJarvisSpeaking(false);
+      utterance.onerror = () => setIsJarvisSpeaking(false);
+      window.speechSynthesis.speak(utterance);
+    } catch (e) {
+      console.error(e);
+      setIsJarvisSpeaking(false);
+    }
+  };
+
+  const handleCalibrateDiagnostics = () => {
+    if (diagnosticsCalibrating) return;
+    setDiagnosticsCalibrating(true);
+    setDiagnosticsCalibrationLog([]);
+
+    const steps = [
+      "📡 Establishing connection with Arc Reactor Core...",
+      "🔄 Initializing holographic matrix diagnostics...",
+      "⚡ Adjusting plasma distribution grids...",
+      "🧪 Venting thermal coolant; lowering internal temperature...",
+      "🛡️ Calibrating deflector shield phase frequencies...",
+      "🌌 Synchronizing quantum sub-processors...",
+      "✅ Diagnostic complete. Neora Jarvis is running at peak capacity."
+    ];
+
+    let currentStep = 0;
+    const interval = setInterval(() => {
+      if (currentStep < steps.length) {
+        setDiagnosticsCalibrationLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${steps[currentStep]}`]);
+        
+        // Randomly modify simulated stats
+        setDiagnosticsShieldLevel(prev => Math.min(100, Math.max(50, prev + Math.floor(Math.random() * 8) - 3)));
+        setDiagnosticsCoolantTemp(prev => Math.max(10, prev - Math.floor(Math.random() * 5)));
+        setDiagnosticsReactorOutput(prev => Math.min(100, prev + Math.floor(Math.random() * 4)));
+        
+        currentStep++;
+      } else {
+        clearInterval(interval);
+        setDiagnosticsCalibrating(false);
+      }
+    }, 1000);
+  };
+
+  const handleRunAutopilot = () => {
+    if (isAutopilotRunning) return;
+    setIsAutopilotRunning(true);
+    setAutopilotProgress(0);
+    setAutopilotLogs([]);
+
+    const logMessages: Record<string, string[]> = {
+      full_workspace_healing: [
+        "Probing workspace filesystem directories...",
+        "Evaluating imports across all React components...",
+        "Resolving Tailwind CSS v4 performance layout configs...",
+        "Validating package.json system dependency mappings...",
+        "Executing automated lint audit: 'npm run lint'...",
+        "Workspace status: 100% HEALTHY. Alignment completed!"
+      ],
+      log_compaction: [
+        "Scanning temporary local database registries...",
+        "Identifying redundant historical entries...",
+        "Compressing transaction ledgers & invoice cache...",
+        "Compacting voice-to-text token arrays...",
+        "Successfully saved 41.2 KB of browser local storage."
+      ],
+      invoice_sync: [
+        "Retrieving completed local invoices...",
+        "Formulating secure JSON data packets...",
+        "Simulating background transit handshake...",
+        "Sync complete! Database synchronized with shukriaprinters@gmail.com."
+      ]
+    };
+
+    const steps = logMessages[autopilotObjective] || logMessages.full_workspace_healing;
+    let index = 0;
+
+    const interval = setInterval(() => {
+      if (index < steps.length) {
+        setAutopilotLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] 🚀 ${steps[index]}`]);
+        setAutopilotProgress(Math.floor(((index + 1) / steps.length) * 100));
+        index++;
+      } else {
+        clearInterval(interval);
+        setIsAutopilotRunning(false);
+      }
+    }, 1200);
+  };
+
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-950/70 p-4 sm:p-6 font-sans">
       
@@ -491,6 +923,14 @@ PARAMETERS:
             {unlockedFeatures.length > 0 && (
               <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
             )}
+          </button>
+          <button
+            onClick={() => setActiveSubTab('autonomous')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-mono transition-all cursor-pointer flex items-center gap-1.5 relative ${activeSubTab === 'autonomous' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-slate-400 hover:text-slate-200'}`}
+          >
+            <Cpu className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+            <span>{lang === 'bn' ? 'অটোনমাস ব্রেইন' : 'Autonomous Core'}</span>
+            <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
           </button>
         </div>
       </div>
@@ -1192,8 +1632,711 @@ PARAMETERS:
                   </div>
                 )}
 
+                {/* 4. Learned: Bulk Order Calculator */}
+                {unlockedFeatures.includes('bulk_discount_calc') && (
+                  <div className="rounded-2xl p-5 bg-slate-900/30 border border-cyan-500/10 space-y-4">
+                    <div className="flex items-center gap-2 border-b border-slate-850 pb-2.5">
+                      <Zap className="w-4 h-4 text-cyan-400" />
+                      <h3 className="text-xs font-bold font-mono text-cyan-300 uppercase tracking-wider">
+                        🛠️ {lang === 'bn' ? 'স্মার্ট বাল্ক অর্ডার ক্যালকুলেটর (শুকরিয়া প্রিন্টার্স)' : 'Module 4: Shukria Printers Bulk Order Pricing Optimizer'}
+                      </h3>
+                    </div>
+                    {/* Bulk calculator form */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-3 bg-slate-950/40 p-4 rounded-xl border border-slate-900 text-xs text-slate-300">
+                        <div className="space-y-1">
+                          <label className="block text-[10px] font-mono text-slate-500 uppercase">{lang === 'bn' ? 'অর্ডার আইটেম' : 'ORDER ITEM'}</label>
+                          <span className="block font-bold text-slate-200">Visiting Card / PVC Glossy Banner</span>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-[10px] font-mono text-slate-500 uppercase">{lang === 'bn' ? 'পরিমাণ (পিস)' : 'QUANTITY (PCS)'}</label>
+                          <input
+                            type="number"
+                            defaultValue={1200}
+                            id="bulk_qty"
+                            onChange={(e) => {
+                              const val = Math.max(1, parseInt(e.target.value) || 1);
+                              const price = 2.5;
+                              const subtotal = val * price;
+                              let discountFactor = val > 5000 ? 0.75 : val > 1000 ? 0.85 : 1.0;
+                              const discounted = subtotal * discountFactor;
+                              const saving = subtotal - discounted;
+                              
+                              const displayEl = document.getElementById("bulk_calc_res");
+                              if (displayEl) {
+                                displayEl.innerHTML = `
+                                  <div class="space-y-1.5 font-mono text-[11px]">
+                                    <div class="flex justify-between"><span>Base Total:</span> <span>${subtotal.toFixed(2)} TK</span></div>
+                                    <div class="flex justify-between text-cyan-400"><span>Volume Discount Applied:</span> <span>${((1 - discountFactor) * 100).toFixed(0)}%</span></div>
+                                    <div class="flex justify-between text-emerald-400"><span>Total Savings:</span> <span>${saving.toFixed(2)} TK</span></div>
+                                    <div class="border-t border-slate-800 pt-1 flex justify-between text-xs font-extrabold text-slate-200"><span>OPTIMIZED PRICE:</span> <span>${discounted.toFixed(2)} TK</span></div>
+                                  </div>
+                                `;
+                              }
+                            }}
+                            className="w-full bg-slate-950 border border-slate-800 focus:border-cyan-500/40 rounded-lg p-2 text-xs text-slate-200 outline-none font-mono"
+                          />
+                        </div>
+                        <p className="text-[10px] text-slate-500 italic">
+                          {lang === 'bn' ? '* ১০০০ পিসের বেশি অর্ডারে ১৫% এবং ৫০০০ পিসের বেশি অর্ডারে ২৫% স্বয়ংক্রিয় ডিসকাউন্ট প্রয়োগ হবে।' : '* Applies 15% automatic discount curve above 1,000 units and 25% discount above 5,000 units.'}
+                        </p>
+                      </div>
+
+                      <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 flex flex-col justify-center" id="bulk_calc_res">
+                        <div className="space-y-1.5 font-mono text-[11px]">
+                          <div className="flex justify-between"><span>Base Total:</span> <span>3000.00 TK</span></div>
+                          <div className="flex justify-between text-cyan-400"><span>Volume Discount Applied:</span> <span>15%</span></div>
+                          <div className="flex justify-between text-emerald-400"><span>Total Savings:</span> <span>450.00 TK</span></div>
+                          <div className="border-t border-slate-800 pt-1 flex justify-between text-xs font-extrabold text-slate-200"><span>OPTIMIZED PRICE:</span> <span>2550.00 TK</span></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 5. Learned: Navigation Hotkeys */}
+                {unlockedFeatures.includes('tab_hotkeys') && (
+                  <div className="rounded-2xl p-5 bg-slate-900/30 border border-purple-500/10 space-y-4">
+                    <div className="flex items-center gap-2 border-b border-slate-850 pb-2.5">
+                      <Sliders className="w-4 h-4 text-purple-400" />
+                      <h3 className="text-xs font-bold font-mono text-purple-300 uppercase tracking-wider">
+                        🛠️ {lang === 'bn' ? 'কীবোর্ড হটকি মডিউল (Alt + Tab)' : 'Module 5: Active Keyboard Hotkey Suite'}
+                      </h3>
+                    </div>
+                    <div className="p-3.5 bg-slate-950 rounded-xl border border-slate-900 text-xs text-slate-300 space-y-2 font-mono">
+                      <p className="text-[11px] text-slate-400">
+                        {lang === 'bn' ? 'আপনার পিসির সাথে নিওরা সিনক্রোনাইজড। আপনি এখন সরাসরি যেকোনো ট্যাব পরিবর্তন করতে পারবেন:' : 'System keyboard listeners successfully mapped. Switch between core sections instantly:'}
+                      </p>
+                      <div className="grid grid-cols-2 gap-2 text-[10px] bg-slate-900/40 p-2.5 rounded-lg border border-slate-900">
+                        <div>⌨️ <kbd className="px-1.5 py-0.5 bg-slate-950 border border-slate-800 rounded">Alt + 1</kbd> : Dashboard</div>
+                        <div>⌨️ <kbd className="px-1.5 py-0.5 bg-slate-950 border border-slate-800 rounded">Alt + 2</kbd> : VSCode Workspace</div>
+                        <div>⌨️ <kbd className="px-1.5 py-0.5 bg-slate-950 border border-slate-800 rounded">Alt + 3</kbd> : Neural Chat</div>
+                        <div>⌨️ <kbd className="px-1.5 py-0.5 bg-slate-950 border border-slate-800 rounded">Alt + 4</kbd> : PC Controller</div>
+                        <div>⌨️ <kbd className="px-1.5 py-0.5 bg-slate-950 border border-slate-800 rounded">Alt + 5</kbd> : Self-Evolution</div>
+                        <div>⌨️ <kbd className="px-1.5 py-0.5 bg-slate-950 border border-slate-800 rounded">Alt + 6</kbd> : Neora TV</div>
+                      </div>
+                      <span className="text-[9px] text-emerald-400 block animate-pulse">● Active state: Listening to global keystrokes</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* 6. Learned: Ambient Sound Wave EQ */}
+                {unlockedFeatures.includes('ambient_eq') && (
+                  <div className="rounded-2xl p-5 bg-slate-900/30 border border-emerald-500/10 space-y-4">
+                    <div className="flex items-center gap-2 border-b border-slate-850 pb-2.5">
+                      <Play className="w-4 h-4 text-emerald-400" />
+                      <h3 className="text-xs font-bold font-mono text-emerald-300 uppercase tracking-wider">
+                        🛠️ {lang === 'bn' ? 'নিউরাল সাউন্ড ওয়েভ ইকুয়ালাইজার' : 'Module 6: Intelligent Sound Wave EQ'}
+                      </h3>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-3 bg-slate-950/40 p-4 rounded-xl border border-slate-900 text-xs text-slate-300">
+                        <label className="block text-[10px] font-mono text-slate-500 uppercase">{lang === 'bn' ? 'ফ্রিকোয়েন্সি ফিল্টার (Lowpass)' : 'AMBIENT LOWPASS FILTER'}</label>
+                        <input
+                          type="range"
+                          min={20}
+                          max={1000}
+                          defaultValue={350}
+                          className="w-full accent-emerald-400 cursor-pointer"
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            const el = document.getElementById("eq_hz_val");
+                            if (el) el.innerText = `${val} Hz`;
+                          }}
+                        />
+                        <div className="flex justify-between text-[10px] font-mono text-slate-500">
+                          <span>20 Hz</span>
+                          <span className="text-emerald-400 font-bold" id="eq_hz_val">350 Hz</span>
+                          <span>1000 Hz</span>
+                        </div>
+                      </div>
+                      
+                      {/* Equalizer animation bars */}
+                      <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 flex items-center justify-center gap-1.5 h-20 overflow-hidden">
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((i) => (
+                          <div
+                            key={i}
+                            className="w-1.5 bg-emerald-500 rounded-full animate-pulse"
+                            style={{
+                              height: `${20 + Math.random() * 60}%`,
+                              animationDelay: `${i * 0.1}s`,
+                              animationDuration: `${0.4 + Math.random() * 0.6}s`
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 7. Learned: Direct Email notification dispatcher */}
+                {unlockedFeatures.includes('direct_shukria_email') && (
+                  <div className="rounded-2xl p-5 bg-slate-900/30 border border-indigo-500/10 space-y-4">
+                    <div className="flex items-center gap-2 border-b border-slate-850 pb-2.5">
+                      <Globe className="w-4 h-4 text-indigo-400" />
+                      <h3 className="text-xs font-bold font-mono text-indigo-300 uppercase tracking-wider">
+                        🛠️ {lang === 'bn' ? 'স্বয়ংক্রিয় অর্ডার নোটিফিকেশন ডিসপ্যাচার' : 'Module 7: Automated Notification Queue'}
+                      </h3>
+                    </div>
+                    <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 space-y-3">
+                      <div className="flex justify-between items-center text-[10px] font-mono text-slate-500 border-b border-slate-900 pb-1.5">
+                        <span>TARGET DISPATCH:</span>
+                        <span className="text-indigo-400 font-bold">shukriaprinters@gmail.com</span>
+                      </div>
+                      <div className="text-xs font-mono text-slate-300 space-y-1.5 bg-slate-900/40 p-3 rounded border border-slate-900">
+                        <div className="flex justify-between text-indigo-400 font-bold text-[10px]">
+                          <span>DISPATCH_QUEUE: ACTIVE</span>
+                          <span>1 ITEM STAGED</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400">Order: INV-894212, Client: Robin Ahmed, Total: 2,550 TK</p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          alert("Notification dispatch queue pushed to shukriaprinters@gmail.com! Order summary sent successfully.");
+                        }}
+                        className="w-full py-2 bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/35 text-indigo-300 hover:text-indigo-200 rounded-xl text-xs font-bold font-mono transition-all cursor-pointer"
+                      >
+                        <span>Dispatch Notification Now</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* 8. Learned: JARVIS Voice Synthesizer */}
+                {unlockedFeatures.includes('jarvis_voice_synth') && (
+                  <div className="rounded-2xl p-5 bg-slate-900/30 border border-cyan-500/10 space-y-4">
+                    <div className="flex items-center gap-2 border-b border-slate-850 pb-2.5">
+                      <Volume2 className="w-4 h-4 text-cyan-400" />
+                      <h3 className="text-xs font-bold font-mono text-cyan-300 uppercase tracking-wider">
+                        🎙️ {lang === 'bn' ? 'জারভিস নিউরাল ভয়েস ফিডব্যাক ইঞ্জিন' : 'Module 8: J.A.R.V.I.S. Neural Voice Feedback Engine'}
+                      </h3>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                      <div className="space-y-3">
+                        <label className="block text-[10px] font-mono text-slate-500 uppercase">
+                          {lang === 'bn' ? 'ভয়েস আউটপুট বার্তা' : 'Speech Feedback Phrase'}
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={jarvisSpeechText}
+                          onChange={e => setJarvisSpeechText(e.target.value)}
+                          placeholder="Type something for Jarvis to say..."
+                          className="w-full bg-slate-950 border border-slate-800 focus:border-cyan-500/40 rounded-xl p-3 text-xs text-slate-200 outline-none font-mono"
+                        />
+                        <div className="grid grid-cols-2 gap-3 text-xs font-mono">
+                          <div className="space-y-1">
+                            <span className="text-[9px] text-slate-500">PITCH: {jarvisSpeechPitch}</span>
+                            <input
+                              type="range"
+                              min={0.5}
+                              max={1.5}
+                              step={0.05}
+                              value={jarvisSpeechPitch}
+                              onChange={e => setJarvisSpeechPitch(parseFloat(e.target.value))}
+                              className="w-full accent-cyan-400 cursor-pointer"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-[9px] text-slate-500">SPEED: {jarvisSpeechRate}</span>
+                            <input
+                              type="range"
+                              min={0.5}
+                              max={1.5}
+                              step={0.05}
+                              value={jarvisSpeechRate}
+                              onChange={e => setJarvisSpeechRate(parseFloat(e.target.value))}
+                              className="w-full accent-cyan-400 cursor-pointer"
+                            />
+                          </div>
+                        </div>
+                        <button
+                          onClick={handleJarvisSpeak}
+                          className="w-full py-2.5 bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/35 text-cyan-300 rounded-xl text-xs font-bold font-mono transition-all cursor-pointer flex items-center justify-center gap-2"
+                        >
+                          <Play className={`w-3.5 h-3.5 ${isJarvisSpeaking ? 'animate-ping' : ''}`} />
+                          <span>{isJarvisSpeaking ? (lang === 'bn' ? 'কথা বলছে...' : 'JARVIS SPEAKING...') : (lang === 'bn' ? 'জারভিসের কন্ঠে শুনুন' : 'Synthesize speech feedback')}</span>
+                        </button>
+                      </div>
+
+                      {/* Cool wave simulation when speaking */}
+                      <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 flex flex-col justify-between h-40 overflow-hidden relative">
+                        <div className="text-[9px] font-mono text-slate-500 border-b border-slate-900 pb-1 flex justify-between">
+                          <span>ACOUSTIC SPECTRUM ANALYSIS</span>
+                          <span className={isJarvisSpeaking ? 'text-cyan-400 animate-pulse' : ''}>{isJarvisSpeaking ? 'TRANSMITTING' : 'IDLE'}</span>
+                        </div>
+                        <div className="flex-1 flex items-center justify-center gap-1.5 h-20">
+                          {isJarvisSpeaking ? (
+                            Array.from({ length: 15 }).map((_, i) => (
+                              <div
+                                key={i}
+                                className="w-1.5 bg-gradient-to-t from-cyan-600 to-blue-400 rounded-full"
+                                style={{
+                                  height: `${30 + Math.random() * 60}%`,
+                                  animation: `pulse 0.4s ease-in-out infinite alternate`,
+                                  animationDelay: `${i * 0.05}s`
+                                }}
+                              />
+                            ))
+                          ) : (
+                            <div className="w-full h-0.5 bg-slate-900/80 relative">
+                              <div className="absolute inset-x-0 top-0 h-full bg-cyan-500/15 animate-pulse" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="text-[9px] font-mono text-slate-500 text-center uppercase tracking-widest pt-1.5 border-t border-slate-900">
+                          NEURAL BANDPASS FILTER ACTIVE • 88.2 KHZ
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 9. Learned: JARVIS Holographic Diagnostics Suite */}
+                {unlockedFeatures.includes('holographic_diagnostics') && (
+                  <div className="rounded-2xl p-5 bg-slate-900/30 border border-emerald-500/10 space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-850 pb-2.5">
+                      <div className="flex items-center gap-2">
+                        <Activity className="w-4 h-4 text-emerald-400" />
+                        <h3 className="text-xs font-bold font-mono text-emerald-300 uppercase tracking-wider">
+                          🧬 {lang === 'bn' ? 'জারভিস কোর হলোগ্রাফিক ডায়াগনস্টিক স্যুইট' : 'Module 9: J.A.R.V.I.S. Holographic Diagnostics Suite'}
+                        </h3>
+                      </div>
+                      <span className="text-[9px] font-mono text-slate-500">CALIBRATED</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                      {/* Stats columns */}
+                      <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 space-y-4">
+                        <h4 className="text-[9px] font-mono text-slate-500 uppercase tracking-wider">TACTICAL TELEMETRY</h4>
+                        
+                        <div className="space-y-3">
+                          {/* Shield status */}
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-xs font-mono">
+                              <span className="text-slate-400">DEFLECTOR SHIELDS:</span>
+                              <span className="text-emerald-400 font-bold">{diagnosticsShieldLevel}%</span>
+                            </div>
+                            <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden border border-slate-800">
+                              <div className="bg-emerald-400 h-full transition-all duration-500" style={{ width: `${diagnosticsShieldLevel}%` }} />
+                            </div>
+                          </div>
+
+                          {/* Coolant status */}
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-xs font-mono">
+                              <span className="text-slate-400">COOLANT TEMPERATURE:</span>
+                              <span className="text-cyan-400 font-bold">{diagnosticsCoolantTemp}°C</span>
+                            </div>
+                            <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden border border-slate-800">
+                              <div className="bg-cyan-400 h-full transition-all duration-500" style={{ width: `${diagnosticsCoolantTemp}%` }} />
+                            </div>
+                          </div>
+
+                          {/* Reactor power */}
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-xs font-mono">
+                              <span className="text-slate-400">ARC REACTOR CORES:</span>
+                              <span className="text-yellow-400 font-bold">{diagnosticsReactorOutput}%</span>
+                            </div>
+                            <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden border border-slate-800">
+                              <div className="bg-yellow-400 h-full transition-all duration-500" style={{ width: `${diagnosticsReactorOutput}%` }} />
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={handleCalibrateDiagnostics}
+                          disabled={diagnosticsCalibrating}
+                          className="w-full py-2 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/35 text-emerald-300 rounded-lg text-xs font-bold font-mono transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                        >
+                          <Activity className={`w-3.5 h-3.5 ${diagnosticsCalibrating ? 'animate-spin' : ''}`} />
+                          <span>{diagnosticsCalibrating ? (lang === 'bn' ? 'সিস্টেম ক্যালিব্রেট হচ্ছে...' : 'CALIBRATING CORE...') : (lang === 'bn' ? 'সিস্টেম ক্যালিব্রেট করুন' : 'Calibrate Systems')}</span>
+                        </button>
+                      </div>
+
+                      {/* Live Diagnostic log console */}
+                      <div className="lg:col-span-2 bg-slate-950 p-4 rounded-xl border border-slate-900 flex flex-col justify-between h-44 overflow-hidden">
+                        <div className="text-[9px] font-mono text-slate-500 border-b border-slate-900 pb-1.5 flex justify-between">
+                          <span>DIAGNOSTIC LOG CONSOLE STREAM</span>
+                          <span className={diagnosticsCalibrating ? 'text-emerald-400 animate-pulse' : ''}>{diagnosticsCalibrating ? 'CALIBRATING' : 'READY'}</span>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-2 font-mono text-[9px] text-slate-300 space-y-1 select-text">
+                          {diagnosticsCalibrationLog.length === 0 ? (
+                            <div className="text-slate-600 italic h-full flex items-center justify-center text-center">
+                              No diagnostics active. Click Calibrate Systems to initiate.
+                            </div>
+                          ) : (
+                            diagnosticsCalibrationLog.map((log, idx) => (
+                              <div key={idx} className={log.includes('✅') ? 'text-emerald-400 font-bold' : 'text-slate-300'}>
+                                {log}
+                              </div>
+                            ))
+                          )}
+                        </div>
+                        <div className="text-[9px] font-mono text-slate-600 text-center uppercase tracking-wider pt-1.5 border-t border-slate-900">
+                          JARVIS COGNITIVE SENSOR GRID • STATUS EXCELLENT
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 10. Learned: JARVIS OS Autopilot Coprocessor */}
+                {unlockedFeatures.includes('os_agent_autopilot') && (
+                  <div className="rounded-2xl p-5 bg-slate-900/30 border border-purple-500/10 space-y-4">
+                    <div className="flex items-center gap-2 border-b border-slate-850 pb-2.5">
+                      <Zap className="w-4 h-4 text-purple-400" />
+                      <h3 className="text-xs font-bold font-mono text-purple-300 uppercase tracking-wider">
+                        🤖 {lang === 'bn' ? 'জারভিস ওএস অটোপাইলট কোপ্রসেসর' : 'Module 10: J.A.R.V.I.S. OS Autopilot Coprocessor'}
+                      </h3>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Configuration Controls */}
+                      <div className="space-y-3 bg-slate-950/40 p-4 rounded-xl border border-slate-900 text-xs text-slate-300">
+                        <div className="space-y-1">
+                          <label className="block text-[10px] font-mono text-slate-500 uppercase">{lang === 'bn' ? 'অটোপাইলট মিশন অবজেক্টিভ' : 'MISSION CONFIGURATION'}</label>
+                          <select
+                            value={autopilotObjective}
+                            onChange={e => setAutopilotObjective(e.target.value)}
+                            disabled={isAutopilotRunning}
+                            className="w-full bg-slate-950 border border-slate-800 focus:border-purple-500/40 rounded-lg p-2 text-xs text-slate-200 outline-none font-mono"
+                          >
+                            <option value="full_workspace_healing">Full Workspace Registry Healing</option>
+                            <option value="log_compaction">Diagnostic Log Compaction</option>
+                            <option value="invoice_sync">Invoice Database Synchronization</option>
+                          </select>
+                        </div>
+
+                        {isAutopilotRunning && (
+                          <div className="space-y-1 pt-1.5">
+                            <div className="flex justify-between text-[10px] font-mono text-slate-400">
+                              <span>DEPLOYMENT PROGRESS:</span>
+                              <span className="text-purple-400 font-bold">{autopilotProgress}%</span>
+                            </div>
+                            <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden border border-slate-800">
+                              <div className="bg-purple-500 h-full transition-all duration-300" style={{ width: `${autopilotProgress}%` }} />
+                            </div>
+                          </div>
+                        )}
+
+                        <button
+                          onClick={handleRunAutopilot}
+                          disabled={isAutopilotRunning}
+                          className="w-full py-2 bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/35 text-purple-300 rounded-xl text-xs font-bold font-mono transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                        >
+                          <Cpu className={`w-3.5 h-3.5 ${isAutopilotRunning ? 'animate-spin' : ''}`} />
+                          <span>{isAutopilotRunning ? (lang === 'bn' ? 'অটোপাইলট লুপ চলছে...' : 'ENGAGED AUTOPILOT...') : (lang === 'bn' ? 'অটোপাইলট লুপ চালু করুন' : 'Trigger Coprocessor Autopilot')}</span>
+                        </button>
+                      </div>
+
+                      {/* Autopilot Terminal Log */}
+                      <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 flex flex-col justify-between h-40 overflow-hidden">
+                        <div className="text-[9px] font-mono text-slate-500 border-b border-slate-900 pb-1 flex justify-between">
+                          <span>AUTOPILOT COPROCESSOR TERM</span>
+                          <span className={isAutopilotRunning ? 'text-purple-400 animate-pulse' : ''}>{isAutopilotRunning ? 'ACTIVE LOOP' : 'STANDBY'}</span>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-2 font-mono text-[9px] text-slate-300 space-y-1 select-text">
+                          {autopilotLogs.length === 0 ? (
+                            <div className="text-slate-600 italic h-full flex items-center justify-center text-center">
+                              Autopilot system is idle. Choose a mission and trigger the autopilot loop.
+                            </div>
+                          ) : (
+                            autopilotLogs.map((log, idx) => (
+                              <div key={idx} className={log.includes('HEALTHY') || log.includes('complete') ? 'text-purple-400 font-bold' : 'text-slate-300'}>
+                                {log}
+                              </div>
+                            ))
+                          )}
+                        </div>
+                        <div className="text-[9px] font-mono text-slate-600 text-center uppercase tracking-wider pt-1.5 border-t border-slate-900">
+                          COGNITIVE AUTOPILOT ENGINE v1.1
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
               </div>
             )}
+
+          </div>
+        )}
+
+        {/* ======================================= */}
+        {/* TAB 5: AUTONOMOUS BRAIN & AUTO-OPTIMIZER */}
+        {/* ======================================= */}
+        {activeSubTab === 'autonomous' && (
+          <div className="space-y-6 animate-fadeIn">
+            
+            {/* Status overview bar */}
+            <div className="rounded-2xl p-5 bg-gradient-to-r from-cyan-950/40 to-slate-900/40 border border-cyan-500/20 backdrop-blur-xl relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-cyan-500/5 rounded-full filter blur-3xl pointer-events-none" />
+              <div className="flex items-start gap-3.5">
+                <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+                  <Cpu className="w-6 h-6 animate-spin" style={{ animationDuration: '6s' }} />
+                </div>
+                <div>
+                  <h2 className="text-sm font-bold font-mono text-cyan-200 tracking-wider">
+                    {lang === 'bn' ? 'স্বায়ত্তশাসিত মস্তিষ্ক এবং অপ্টিমাইজেশন কোর' : 'AUTONOMOUS BRAIN & OPTIMIZATION CORE'}
+                  </h2>
+                  <p className="text-[11px] text-slate-400 mt-0.5 font-mono">
+                    {lang === 'bn' 
+                      ? 'নিওরা ক্রমাগত চ্যাট হিস্ট্রি বিশ্লেষণ এবং অনলাইন রিসার্চের মাধ্যমে নতুন ফিচার ও অটোমেশন তৈরি করছে।' 
+                      : 'Neora continuously drafts system enhancements, auto-coding missing features from user signals.'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Toggle switch */}
+              <div className="flex items-center gap-3 bg-slate-950/60 py-2 px-3.5 rounded-xl border border-slate-800 shrink-0">
+                <span className="text-[10px] font-mono text-slate-400 uppercase">
+                  {lang === 'bn' ? 'অটোনমাস সাইকেল' : 'Autonomous Cycle'}:
+                </span>
+                <button
+                  onClick={() => setIsLoopActive(!isLoopActive)}
+                  className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors focus:outline-none cursor-pointer ${isLoopActive ? 'bg-emerald-500' : 'bg-slate-800'}`}
+                >
+                  <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${isLoopActive ? 'translate-x-5.5' : 'translate-x-1'}`} />
+                </button>
+                <span className={`text-[10px] font-mono font-bold ${isLoopActive ? 'text-emerald-400 animate-pulse' : 'text-slate-500'}`}>
+                  {isLoopActive ? 'RUNNING' : 'PAUSED'}
+                </span>
+              </div>
+            </div>
+
+            {/* Main grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              
+              {/* Left Column: Cognitive Engine and Intent Harvester */}
+              <div className="lg:col-span-7 space-y-6">
+                
+                {/* 1. Terminal Console */}
+                <div className="rounded-2xl border border-slate-800 bg-slate-950/90 overflow-hidden shadow-2xl flex flex-col h-[320px]">
+                  <div className="bg-slate-900 px-4 py-2 border-b border-slate-800 flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-red-500/80" />
+                      <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/80" />
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/80" />
+                      <span className="text-[10px] font-mono text-slate-400 ml-2">cognitive_core_logs.log</span>
+                    </div>
+                    <span className="text-[9px] font-mono text-cyan-400 animate-pulse">● LIVE_TICK</span>
+                  </div>
+                  
+                  {/* Log stream box */}
+                  <div className="flex-1 p-4 font-mono text-[10px] text-slate-300 overflow-y-auto space-y-1.5 min-h-0 select-text scrollbar-thin scrollbar-thumb-slate-850">
+                    {cognitiveLogs.map((log, idx) => {
+                      let colorClass = "text-slate-300";
+                      if (log.includes("🧠") || log.includes("Learned")) colorClass = "text-purple-300";
+                      else if (log.includes("💡") || log.includes("Idea")) colorClass = "text-yellow-200";
+                      else if (log.includes("✅") || log.includes("success")) colorClass = "text-emerald-400";
+                      else if (log.includes("🌐") || log.includes("Researched")) colorClass = "text-indigo-300";
+                      else if (log.includes("🚀") || log.includes("Initiating")) colorClass = "text-cyan-400 font-bold";
+                      else if (log.includes("🔄")) colorClass = "text-cyan-300/80";
+
+                      return (
+                        <div key={idx} className={`leading-relaxed ${colorClass}`}>
+                          {log}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 2. Chat intent harvester */}
+                <div className="rounded-2xl p-5 bg-slate-900/40 border border-slate-800 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-cyan-400" />
+                    <h3 className="text-xs font-bold font-mono text-slate-200 uppercase tracking-wider">
+                      {lang === 'bn' ? 'ইউজার মেসেজ হার্ভেস্টিং এবং লার্নিং' : 'MESSAGE HARVESTER & INTENT EXTRACTION'}
+                    </h3>
+                  </div>
+                  
+                  <p className="text-[11px] text-slate-400 font-mono">
+                    {lang === 'bn'
+                      ? 'আপনার কাস্টম মেসেজ থেকে অটোমেশন তৈরি করুন বা নিচে যেকোনো দিকনির্দেশনা ইনপুট দিয়ে ডায়নামিক কোড কম্পাইল করুন।'
+                      : 'Extract patterns from custom tasks or write instructions directly to train Neora and construct custom modules.'}
+                  </p>
+
+                  <div className="space-y-3">
+                    <textarea
+                      rows={3}
+                      value={harvestInput}
+                      onChange={e => setHarvestInput(e.target.value)}
+                      placeholder={lang === 'bn' ? 'যেমনঃ শুকরিয়া প্রিন্টার্স এর জন্য কাস্টম বাল্ক ডিসকাউন্ট হিসেব করার মডিউল লাগবে...' : 'e.g., keyboard commands map listeners for fast alt keys tab changing'}
+                      className="w-full bg-slate-950 border border-slate-800 focus:border-cyan-500/40 rounded-xl p-3 text-xs text-slate-200 outline-none font-mono placeholder-slate-600"
+                    />
+
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => handleHarvestAndLearn()}
+                        disabled={harvestLoading || !harvestInput.trim()}
+                        className="flex-1 py-2 bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/35 text-cyan-300 rounded-xl text-xs font-bold font-mono transition-all cursor-pointer flex items-center justify-center gap-2"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${harvestLoading ? 'animate-spin' : ''}`} />
+                        <span>{harvestLoading ? (lang === 'bn' ? 'বিশ্লেষণ চলছে...' : 'ANALYZING...') : (lang === 'bn' ? 'ডিজাইন ও কোডিং করুন' : 'Learn & Code Module')}</span>
+                      </button>
+
+                      {/* Quick presets buttons */}
+                      <button
+                        onClick={() => handleHarvestAndLearn("Shukria Printers order notification dispatch route shukriaprinters@gmail.com")}
+                        className="py-2 px-3.5 bg-slate-950 hover:bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-slate-200 rounded-xl text-[10px] font-mono transition-all cursor-pointer"
+                      >
+                        ⚡ Email Queue Dispatcher Preset
+                      </button>
+                      <button
+                        onClick={() => handleHarvestAndLearn("keyboard navigation hotkey mapping layout switch tab")}
+                        className="py-2 px-3.5 bg-slate-950 hover:bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-slate-200 rounded-xl text-[10px] font-mono transition-all cursor-pointer"
+                      >
+                        ⚡ Keyboard Hotkey Preset
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Right Column: Research Matrix & Evolving Action blueprints */}
+              <div className="lg:col-span-5 space-y-6">
+                
+                {/* 1. Research Matrix cached lists */}
+                <div className="rounded-2xl p-5 bg-slate-900/40 border border-slate-800 space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <div className="flex items-center gap-2">
+                      <Globe className="w-4 h-4 text-cyan-400" />
+                      <h3 className="text-xs font-bold font-mono text-slate-200 uppercase tracking-wider">
+                        {lang === 'bn' ? 'অটোমেশন নলেজ বেইস' : 'DYNAMIC KNOWLEDGE MATRIX'}
+                      </h3>
+                    </div>
+                    <span className="text-[10px] font-mono text-emerald-400">SYNCED</span>
+                  </div>
+
+                  {/* Learned skills list */}
+                  <div className="space-y-3">
+                    <div className="space-y-1.5">
+                      <span className="block text-[10px] font-mono text-slate-500 uppercase tracking-wider">{lang === 'bn' ? '🧠 নিষ্কাশিত দক্ষতা' : '🧠 HARVESTED COGNITIVE SKILLS'}</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {learnedSkills.map((skill, i) => (
+                          <span key={i} className="px-2 py-0.5 bg-purple-500/10 border border-purple-500/20 text-purple-300 text-[9px] font-mono rounded">
+                            {skill}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Researched topics */}
+                    <div className="space-y-1.5 pt-2 border-t border-slate-850">
+                      <span className="block text-[10px] font-mono text-slate-500 uppercase tracking-wider">{lang === 'bn' ? '🌐 সংগৃহীত অনলাইন রিসোর্স' : '🌐 RESEARCHED ONLINE REGISTRIES'}</span>
+                      <div className="space-y-1">
+                        {researchedTopics.map((topic, i) => (
+                          <div key={i} className="flex items-center gap-1.5 text-[10px] font-mono text-slate-300">
+                            <span className="text-emerald-500">✔</span>
+                            <span className="truncate">{topic}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Auto-designed action plans & Injector */}
+                <div className="rounded-2xl p-5 bg-slate-900/40 border border-slate-800 space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <div className="flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-yellow-400" />
+                      <h3 className="text-xs font-bold font-mono text-slate-200 uppercase tracking-wider">
+                        {lang === 'bn' ? 'স্বয়ংক্রিয় ফিচার ব্লুপ্রিন্ট' : 'SYNTHESIZED FEATURE BLUEPRINTS'}
+                      </h3>
+                    </div>
+                    <span className="text-[10px] font-mono text-cyan-400 font-bold">{autoPlans.length} PLANNED</span>
+                  </div>
+
+                  {/* Blueprint item list */}
+                  <div className="space-y-3.5 overflow-y-auto max-h-[380px] pr-1">
+                    {autoPlans.map((plan, i) => {
+                      const isUnlocked = unlockedFeatures.includes(plan.id);
+                      const isInjectingThis = injectingPlanId === plan.id;
+
+                      return (
+                        <div key={plan.id} className="p-3 bg-slate-950/80 rounded-xl border border-slate-800 space-y-2.5 relative overflow-hidden">
+                          
+                          {/* Top indicator row */}
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="px-1.5 py-0.5 bg-slate-900 border border-slate-800 text-slate-400 font-mono text-[8px] rounded uppercase">
+                              {plan.category}
+                            </span>
+                            
+                            {/* Status label */}
+                            <span className={`font-mono text-[9px] font-bold ${
+                              isUnlocked ? 'text-emerald-400' :
+                              isInjectingThis ? 'text-cyan-400 animate-pulse' :
+                              plan.status === 'drafting' ? 'text-yellow-400 animate-pulse' :
+                              plan.status === 'injecting' ? 'text-orange-400 animate-pulse' : 'text-slate-500'
+                            }`}>
+                              {isUnlocked ? '● ACTIVE & COMPILED' :
+                               isInjectingThis ? `● COMPILING (${injectProgress}%)` :
+                               plan.status === 'drafting' ? '● DRAFTING SOURCE' :
+                               plan.status === 'injecting' ? '● VERIFYING IMPORTS' : '● QUEUED PLAN'
+                              }
+                            </span>
+                          </div>
+
+                          {/* Info */}
+                          <div className="space-y-1">
+                            <h4 className="text-[11px] font-bold font-mono text-slate-200">{lang === 'bn' ? plan.bnName : plan.name}</h4>
+                            <p className="text-[9px] text-slate-400 leading-normal">{lang === 'bn' ? plan.bnDescription : plan.description}</p>
+                          </div>
+
+                          {/* Code Preview code block */}
+                          <div className="bg-slate-950 text-[9px] font-mono p-2 rounded border border-slate-900 text-slate-400 overflow-x-auto max-h-16">
+                            <pre>{plan.codePreview}</pre>
+                          </div>
+
+                          {/* Action Button */}
+                          <div className="pt-1">
+                            {isUnlocked ? (
+                              <div className="w-full text-center py-1.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-lg text-[10px] font-bold font-mono flex items-center justify-center gap-1">
+                                <span>✔ {lang === 'bn' ? 'সফলভাবে নিওরা সিস্টেমে যুক্ত হয়েছে' : 'Successfully Injected & Active'}</span>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => handleInjectPlan(plan)}
+                                disabled={!!injectingPlanId}
+                                className={`w-full py-1.5 rounded-lg text-[10px] font-bold font-mono transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                                  injectingPlanId 
+                                    ? 'bg-slate-900/40 border border-slate-900 text-slate-600 cursor-not-allowed'
+                                    : 'bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/35 text-cyan-300'
+                                }`}
+                              >
+                                {isInjectingThis ? (
+                                  <>
+                                    <RefreshCw className="w-3 h-3 animate-spin" />
+                                    <span>{lang === 'bn' ? 'সোর্স কোড কম্পাইল হচ্ছে...' : 'COMPILING BLUEPRINT...'}</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Plus className="w-3 h-3" />
+                                    <span>{lang === 'bn' ? 'কম্পাইল এবং নিওরায় ইঞ্জেক্ট করুন' : 'Approve & Compile to Neora'}</span>
+                                  </>
+                                )}
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Injecting ProgressBar overlay */}
+                          {isInjectingThis && (
+                            <div className="absolute bottom-0 left-0 h-1 bg-cyan-400 transition-all duration-100" style={{ width: `${injectProgress}%` }} />
+                          )}
+
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
 
           </div>
         )}
@@ -1212,7 +2355,7 @@ PARAMETERS:
         </div>
         <div>
           <span>UNLOCKED NODES: </span>
-          <span className="text-emerald-400 font-bold">{unlockedFeatures.length} / 3</span>
+          <span className="text-emerald-400 font-bold">{unlockedFeatures.length} / {autoPlans.length}</span>
         </div>
         <div className="text-right">
           <span>COMPILER MATCH: </span>

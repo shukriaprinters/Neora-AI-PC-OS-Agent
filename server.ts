@@ -2300,13 +2300,39 @@ app.post("/api/diagnostic/heartbeat", async (req, res) => {
       check.gemini.message = "Configured (Ready)";
     }
 
-    // 2. Verify Groq status
+    // 2. Verify Groq status by actively pinging its chat/completions capability
     if (groqToUse) {
-      check.groq.alive = true;
-      check.groq.message = "Configured (Active)";
+      try {
+        const controller = new AbortController();
+        const t = setTimeout(() => controller.abort(), 2000); // 2 seconds rapid check
+        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${groqToUse}`
+          },
+          body: JSON.stringify({
+            model: "llama-3.3-70b-versatile",
+            messages: [{ role: "user", content: "ping" }],
+            max_tokens: 1
+          }),
+          signal: controller.signal
+        });
+        clearTimeout(t);
+        if (response.ok) {
+          check.groq.alive = true;
+          check.groq.message = "Active (Connected)";
+        } else {
+          check.groq.alive = false;
+          check.groq.message = `HTTP status ${response.status}`;
+        }
+      } catch (e: any) {
+        check.groq.alive = false;
+        check.groq.message = "Not responding";
+      }
     }
 
-    // 3. Verify Ollama status with rapid ping (timeout 1.2s)
+    // 3. Verify Ollama status with rapid ping (timeout 1.2s) specifically for tags capability
     try {
       const controller = new AbortController();
       const t = setTimeout(() => controller.abort(), 1200);
@@ -2316,9 +2342,11 @@ app.post("/api/diagnostic/heartbeat", async (req, res) => {
         check.ollama.alive = true;
         check.ollama.message = "Active (Connected)";
       } else {
+        check.ollama.alive = false;
         check.ollama.message = `HTTP status ${response.status}`;
       }
     } catch (e: any) {
+      check.ollama.alive = false;
       check.ollama.message = "Not responding/Stopped";
     }
 
@@ -2655,7 +2683,7 @@ app.get("/api/tts", async (req, res) => {
       return res.status(400).send("Missing text query parameter");
     }
 
-    const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${lang}&client=tw-ob&q=${encodeURIComponent(text)}`;
+    const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${lang}&client=gtx&q=${encodeURIComponent(text)}`;
     const response = await fetch(url, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -2663,7 +2691,8 @@ app.get("/api/tts", async (req, res) => {
     });
 
     if (!response.ok) {
-      return res.status(response.status).send("Failed to retrieve TTS audio from source");
+      console.warn(`TTS Proxy source returned status ${response.status}. Returning 200 OK with warning text to trigger fallback.`);
+      return res.status(200).send("Failed to retrieve TTS audio from source. Falling back to native SpeechSynthesis.");
     }
 
     res.setHeader("Content-Type", "audio/mpeg");
@@ -2674,7 +2703,7 @@ app.get("/api/tts", async (req, res) => {
     res.send(buffer);
   } catch (err) {
     console.error("TTS Proxy Route error:", err);
-    res.status(500).send("Internal server error during TTS proxy retrieval");
+    res.status(200).send("Internal server error during TTS proxy retrieval. Falling back to native SpeechSynthesis.");
   }
 });
 

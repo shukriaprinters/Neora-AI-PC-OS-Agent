@@ -123,6 +123,12 @@ const SelfEvolutionView = lazyRetry<any>(
   () => import("./components/SelfEvolutionView"),
   "SelfEvolutionView",
 );
+const EvolutionaryStatusView = lazyRetry<any>(
+  () => import("./components/EvolutionaryStatusView"),
+  "EvolutionaryStatusView",
+);
+import { usePredictiveLayout } from "./components/DashboardManager";
+import { MetaAgent } from "./components/MetaAgent";
 import { SECTIONS, RAW_MASTER_PROMPT } from "./masterPromptText";
 import { Task, Reminder, Note, Memory } from "./types";
 import { TRANSLATIONS } from "./translations";
@@ -155,6 +161,7 @@ import {
   Music,
   ChevronLeft,
   ChevronRight,
+  Sparkles,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -333,6 +340,16 @@ export default function App() {
     localStorage.setItem("neora_lang", lang);
   }, [lang]);
 
+  React.useEffect(() => {
+    const handleForceLang = () => {
+      setLang("bn");
+    };
+    window.addEventListener("neora-force-lang-bn", handleForceLang);
+    return () => {
+      window.removeEventListener("neora-force-lang-bn", handleForceLang);
+    };
+  }, []);
+
   // Groq API client config states
   const [useGroq, setUseGroq] = useState<boolean>(() => {
     return localStorage.getItem("neora_use_groq") === "true";
@@ -365,6 +382,62 @@ export default function App() {
     localStorage.setItem("neora_groq_model", groqModel);
   }, [groqModel]);
 
+  // Dedicated hook for monitoring Vite WebSocket and connection error events
+  React.useEffect(() => {
+    const handleViteError = (event: Event) => {
+      const errDetail = (event as any).detail || {};
+      const errorMessage = errDetail.message || "Vite Connection Disruption / Error detected.";
+      
+      const isWsClosedWithoutOpened = errorMessage.includes("WebSocket closed without opened") || 
+                                     errorMessage.includes("failed to connect to websocket") ||
+                                     JSON.stringify(errDetail).includes("WebSocket closed without opened");
+
+      // Dispatch to SystemEventLog as info/warning, but NEVER reload the page
+      const customEvt = new CustomEvent("neora-system-event", {
+        detail: {
+          id: "vite-error-" + Date.now(),
+          timestamp: new Date().toTimeString().split(" ")[0],
+          category: "system_heal",
+          level: "INFO",
+          message: lang === "bn"
+            ? "Vite HMR সংযোগ ত্রুটি উপেক্ষিত হয়েছে (স্ট্যাটাস বজায় রাখতে)"
+            : "Vite HMR WebSocket disconnected (ignoring to protect state)",
+          details: `Error Details: ${errorMessage}. This error is expected and ignored to prevent unexpected page reloads and protect active user work.`
+        }
+      });
+      window.dispatchEvent(customEvt);
+    };
+
+    window.addEventListener("vite:error", handleViteError);
+    
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason?.message || String(event.reason);
+      if (reason.includes("WebSocket closed without opened")) {
+        handleViteError(new CustomEvent("vite:error", {
+          detail: { message: "WebSocket closed without opened (via Unhandled Rejection)" }
+        }));
+      }
+    };
+    
+    const handleWindowError = (event: ErrorEvent) => {
+      const message = event.message || "";
+      if (message.includes("WebSocket closed without opened")) {
+        handleViteError(new CustomEvent("vite:error", {
+          detail: { message: "WebSocket closed without opened (via Window Error)" }
+        }));
+      }
+    };
+
+    window.addEventListener("unhandledrejection", handleUnhandledRejection);
+    window.addEventListener("error", handleWindowError);
+
+    return () => {
+      window.removeEventListener("vite:error", handleViteError);
+      window.removeEventListener("unhandledrejection", handleUnhandledRejection);
+      window.removeEventListener("error", handleWindowError);
+    };
+  }, [lang]);
+
   // --- NATIVE WEB SPEECH SYNTHESIS ENGINE (PRIMARY) ---
   const [isSpeaking, setIsSpeaking] = useState(false);
   const speakQueueRef = React.useRef<{ cancel: () => void } | null>(null);
@@ -372,6 +445,14 @@ export default function App() {
   const neoraSpeak = React.useCallback((text: string, onSpeechFinished?: () => void) => {
     setIsSpeaking(true);
     const synth = typeof window !== "undefined" ? window.speechSynthesis : null;
+    
+    if (synth && synth.getVoices().length === 0) {
+      console.log("[neoraSpeak] speechSynthesis.getVoices() is empty/not ready. Retrying in 500ms...");
+      setTimeout(() => {
+        neoraSpeak(text, onSpeechFinished);
+      }, 500);
+      return;
+    }
     
     if (speakQueueRef.current) {
       speakQueueRef.current.cancel();
@@ -449,6 +530,20 @@ export default function App() {
       const containsBangla = /[\u0980-\u09FF]/.test(sentenceText);
       const isBn = lang === "bn" || containsBangla;
 
+      const voices = synth ? synth.getVoices() : [];
+      const bnBDVoices = voices.filter(v => {
+        const lLower = v.lang.toLowerCase();
+        const nameLower = v.name.toLowerCase();
+        return (
+          lLower === "bn-bd" || 
+          lLower === "bn_bd" || 
+          lLower.startsWith("bn") || 
+          nameLower.includes("bengali") || 
+          nameLower.includes("bangla") || 
+          nameLower.includes("বাংলা")
+        );
+      });
+
       const playProxyTts = () => {
         if (cancelled) return;
         try {
@@ -492,10 +587,9 @@ export default function App() {
         utterance.rate = 1.05;
         utterance.pitch = 1.0;
 
-        const voices = synth.getVoices();
         let preferredVoice = null;
         if (isBn) {
-          preferredVoice = voices.find(v => {
+          preferredVoice = bnBDVoices.find(v => {
             const lLower = v.lang.toLowerCase();
             const nameLower = v.name.toLowerCase();
             return (lLower === "bn-bd" || lLower === "bn_bd") && (
@@ -505,13 +599,7 @@ export default function App() {
               nameLower.includes("online") ||
               nameLower.includes("google")
             );
-          }) || voices.find(v => {
-            const lLower = v.lang.toLowerCase();
-            return lLower === "bn-bd" || lLower === "bn_bd" || lLower.startsWith("bn");
-          }) || voices.find(v => {
-            const nameLower = v.name.toLowerCase();
-            return nameLower.includes("bengali") || nameLower.includes("bangla") || nameLower.includes("বাংলা");
-          });
+          }) || bnBDVoices[0];
         } else {
           preferredVoice = voices.find(v => {
             const nameLower = v.name.toLowerCase();
@@ -535,8 +623,13 @@ export default function App() {
 
         utterance.onerror = (e) => {
           console.warn("Native SpeechSynthesis failed fully:", e);
-          index++;
-          speakNext();
+          if (isBn && bnBDVoices.length > 0) {
+            console.warn("Native Bengali SpeechSynthesis failed, falling back to Proxy TTS.");
+            playProxyTts();
+          } else {
+            index++;
+            speakNext();
+          }
         };
 
         try {
@@ -548,13 +641,23 @@ export default function App() {
           }, 150);
         } catch (err) {
           console.warn("synth.speak failed:", err);
-          index++;
-          speakNext();
+          if (isBn && bnBDVoices.length > 0) {
+            playProxyTts();
+          } else {
+            index++;
+            speakNext();
+          }
         }
       };
 
-      // Always try the premium Google Translate human-like proxy voice FIRST
-      playProxyTts();
+      // Priority-based voice fallback check
+      if (isBn && bnBDVoices.length > 0) {
+        // Try native bn-BD voice directly first
+        playLocalSynthesis();
+      } else {
+        // Otherwise route through proxy TTS
+        playProxyTts();
+      }
     };
 
     speakNext();
@@ -582,7 +685,7 @@ export default function App() {
 
   // --- REAL-TIME CENTRAL DIAGNOSTICS & RETRY EXPONENTIAL BACKOFF ---
   const [ollamaStatus, setOllamaStatus] = useState<"available" | "partial" | "not_installed" | "checking" | "error_backoff" | "not_responding">("checking");
-  const [groqStatus, setGroqStatus] = useState<"available" | "offline" | "checking" | "missing_key">("checking");
+  const [groqStatus, setGroqStatus] = useState<"available" | "offline" | "checking" | "missing_key" | "not_responding">("checking");
   const [diagnosticWarnings, setDiagnosticWarnings] = useState<string[]>([]);
   const [diagnosticsBackoff, setDiagnosticsBackoff] = useState<number>(1);
 
@@ -614,7 +717,7 @@ export default function App() {
           if (check.ollama.alive) {
             setOllamaStatus("available");
           } else {
-            setOllamaStatus("not_installed");
+            setOllamaStatus("not_responding");
           }
 
           if (!groqK) {
@@ -622,7 +725,11 @@ export default function App() {
           } else if (check.groq.alive) {
             setGroqStatus("available");
           } else {
-            setGroqStatus("offline");
+            setGroqStatus("not_responding");
+            if (useGroq) {
+              setUseGroq(false);
+              localStorage.setItem("neora_use_groq", "false");
+            }
           }
 
           const warnings: string[] = [];
@@ -738,6 +845,8 @@ export default function App() {
   React.useEffect(() => {
     localStorage.setItem("neora_active_tab", activeTab);
   }, [activeTab]);
+
+  const [evolutionSubTab, setEvolutionSubTab] = useState<"protocol" | "status">("protocol");
 
   // Dynamic collections
   const [tasks, setTasks] = useState<Task[]>([
@@ -986,6 +1095,31 @@ export default function App() {
       return localStorage.getItem("neora_dashboard_optimized") === "true";
     },
   );
+
+  const [unlockedFeatures, setUnlockedFeatures] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("neora_unlocked_features") || "[]");
+    } catch {
+      return [];
+    }
+  });
+
+  const handleUnlockFeature = (featId: string) => {
+    setUnlockedFeatures((prev) => {
+      const next = prev.includes(featId) ? prev : [...prev, featId];
+      localStorage.setItem("neora_unlocked_features", JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const {
+    widgets: predictiveWidgets,
+    setWidgets: setPredictiveWidgets,
+    adaptiveMode: isAdaptiveMode,
+    setAdaptiveMode: setIsAdaptiveMode,
+    trackWidgetInteraction,
+    optimizeLayoutAllInterfaces
+  } = usePredictiveLayout();
 
   React.useEffect(() => {
     const checkAndTriggerBackup = async () => {
@@ -1476,7 +1610,11 @@ export default function App() {
   };
 
   const handleSelfEvolution = (action: string) => {
-    if (action === "optimize-dashboard") {
+    if (action === "optimize-all-interfaces") {
+      optimizeLayoutAllInterfaces();
+      setIsDashboardOptimized(true);
+      localStorage.setItem("neora_dashboard_optimized", "true");
+    } else if (action === "optimize-dashboard") {
       setIsDashboardOptimized(true);
       localStorage.setItem("neora_dashboard_optimized", "true");
 
@@ -1596,6 +1734,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <AutoHealRegistry lang={lang} />
+      <MetaAgent lang={lang} activeTab={activeTab} />
       <AppShell
         activeTab={activeTab as any}
         onChangeTab={setActiveTab as any}
@@ -1995,6 +2134,12 @@ export default function App() {
                       icon: Terminal,
                       color: "#00d4ff",
                     },
+                    {
+                      id: "evolution",
+                      label: lang === "bn" ? "ইভোলিউশন" : "EVOLUTION",
+                      icon: Cpu,
+                      color: "#a78bfa",
+                    },
                   ] as { id: any; label: string; icon: any; color: string }[]
                 ).map(({ id, label, icon: Icon, color }) => {
                   const isActive = activeTab === id;
@@ -2033,709 +2178,777 @@ export default function App() {
                 })}
               </nav>
             )}
-
-            {/* ===== JARVIS COMMAND CENTER — Dashboard tab only (fills remaining height) ===== */}
+                               {/* ===== JARVIS COMMAND CENTER — Dashboard tab only (fills remaining height) ===== */}
             {activeTab === "home" && (
               <section className="px-4 py-3 print:hidden flex-1 overflow-y-auto min-h-0">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-2.5 max-w-[1600px] mx-auto">
-                  {/* Main workspace card */}
-                  <div
-                    className="col-span-1 md:col-span-2 xl:col-span-2 relative rounded-xl overflow-hidden p-4 flex flex-col justify-between"
-                    style={{
-                      background:
-                        "linear-gradient(135deg, rgba(0,15,40,0.9) 0%, rgba(0,8,22,0.85) 100%)",
-                      border: "1px solid rgba(0,212,255,0.18)",
-                      boxShadow:
-                        "0 0 0 1px rgba(0,212,255,0.05), 0 8px 32px rgba(0,0,0,0.5), inset 0 0 40px rgba(0,212,255,0.03)",
-                      backdropFilter: "blur(20px)",
-                      minHeight: "140px",
-                    }}
-                  >
-                    {/* Corner accent lines */}
-                    <div
-                      className="absolute top-0 left-0 w-8 h-px"
-                      style={{ background: "rgba(0,212,255,0.6)" }}
-                    />
-                    <div
-                      className="absolute top-0 left-0 w-px h-8"
-                      style={{ background: "rgba(0,212,255,0.6)" }}
-                    />
-                    <div
-                      className="absolute bottom-0 right-0 w-8 h-px"
-                      style={{ background: "rgba(0,212,255,0.3)" }}
-                    />
-                    <div
-                      className="absolute bottom-0 right-0 w-px h-8"
-                      style={{ background: "rgba(0,212,255,0.3)" }}
-                    />
-                    <div
-                      className="absolute top-0 left-0 right-0 h-px"
-                      style={{
-                        background:
-                          "linear-gradient(90deg, transparent, rgba(0,212,255,0.5), transparent)",
-                      }}
-                    />
-
-                    <div>
-                      <div className="flex justify-between items-center mb-1.5">
-                        <div className="jarvis-label">
-                          WORKSPACE COMMAND CENTER
-                        </div>
-                        <div className="text-[9px] font-mono flex items-center gap-1.5">
-                          <span
-                            className={`w-1.5 h-1.5 rounded-full ${
-                              dataSyncStatus === "consistent"
-                                ? "bg-emerald-400"
-                                : dataSyncStatus === "reconciled"
-                                  ? "bg-amber-400"
-                                  : "bg-cyan-400 animate-pulse"
-                            }`}
-                          />
-                          <span className="text-slate-500 uppercase">
-                            {dataSyncStatus === "checking"
-                              ? "Verifying..."
-                              : dataSyncStatus === "consistent"
-                                ? "DB Consistent"
-                                : dataSyncStatus === "reconciled"
-                                  ? "DB Balanced"
-                                  : "Standby"}
-                          </span>
-                        </div>
-                      </div>
-                      <h2
-                        className="font-jarvis text-base font-bold mb-1"
-                        style={{
-                          color: "#00d4ff",
-                          textShadow: "0 0 15px rgba(0,212,255,0.4)",
-                        }}
-                      >
-                        {lang === "bn"
-                          ? "এক নজরে Neora workspace"
-                          : "NEORA AI SYSTEM"}
-                      </h2>
-                      <p className="text-[11px] text-slate-400 leading-normal">
-                        {lang === "bn"
-                          ? "চ্যাট, অটোমেশন, মেমরি, এবং OS agent এক স্ক্রিনে।"
-                          : "Neural interface · Autonomous operations · Memory persistence · OS control"}
-                      </p>
-                    </div>
-
-                    {isDashboardOptimized && (
-                      <div className="mt-2 p-1.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-mono text-[9px] flex items-center justify-between animate-pulse">
-                        <span className="flex items-center gap-1">
-                          <Cpu className="w-3.5 h-3.5" />
-                          <span>COGNITIVE SHIELD ACTIVE</span>
-                        </span>
-                        <span className="font-bold">EVOLVED v2.4</span>
-                      </div>
-                    )}
-
-                    <div className="flex flex-wrap gap-1.5 mt-3">
-                      {(
-                        [
-                          { label: "CHAT", tab: "chat", color: "#00d4ff" },
-                          {
-                            label: "OS AGENT",
-                            tab: "osAgent",
-                            color: "#00ff88",
-                          },
-                          {
-                            label: "PLANNER",
-                            tab: "autonomy",
-                            color: "#1a9fff",
-                          },
-                          {
-                            label: "ROADMAP",
-                            tab: "roadmap",
-                            color: "#7c3aed",
-                          },
-                        ] as { label: string; tab: any; color: string }[]
-                      ).map(({ label, tab, color }) => (
-                        <button
-                          key={tab}
-                          onClick={() => setActiveTab(tab)}
-                          className="px-2.5 py-1 rounded text-[10px] font-mono font-bold uppercase transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
-                          style={{
-                            background: `${color}12`,
-                            border: `1px solid ${color}30`,
-                            color: color,
-                            textShadow: `0 0 6px ${color}60`,
-                          }}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Tasks metric */}
-                  <div
-                    className="col-span-1 md:col-span-1 xl:col-span-1 relative rounded-xl overflow-hidden p-3 flex flex-col justify-between transition-all duration-300"
-                    style={{
-                      background:
-                        "linear-gradient(135deg, rgba(0,15,35,0.92), rgba(0,8,20,0.85))",
-                      border: "1px solid rgba(0,212,255,0.15)",
-                      boxShadow: "inset 0 0 20px rgba(0,212,255,0.03)",
-                      backdropFilter: "blur(20px)",
-                      minHeight: "140px",
-                    }}
-                  >
-                    <div
-                      className="absolute top-0 left-0 right-0 h-px"
-                      style={{
-                        background:
-                          "linear-gradient(90deg, transparent, rgba(0,212,255,0.4), transparent)",
-                      }}
-                    />
-                    <div>
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="jarvis-label">TASKS</span>
-                        <span className="text-[10px] text-cyan-400 font-mono font-bold bg-cyan-950/30 px-1.5 py-0.5 rounded border border-cyan-500/10 shrink-0">
-                          {tasks.filter((x) => x.completed).length}/
-                          {tasks.length} DONE
-                        </span>
-                      </div>
-
-                      {/* Clickable Priority Pill Filters */}
-                      <div className="flex flex-wrap gap-1 mt-1.5 mb-1.5">
-                        {(["critical", "high", "medium", "low"] as const).map(
-                          (p) => {
-                            const isSelected =
-                              selectedDashboardPriorities.includes(p);
-                            const colors = {
-                              critical: {
-                                activeBg: "bg-rose-500/20",
-                                text: "text-rose-400",
-                                border: "border-rose-500/30",
-                              },
-                              high: {
-                                activeBg: "bg-amber-500/20",
-                                text: "text-amber-400",
-                                border: "border-amber-500/30",
-                              },
-                              medium: {
-                                activeBg: "bg-cyan-500/20",
-                                text: "text-cyan-400",
-                                border: "border-cyan-500/30",
-                              },
-                              low: {
-                                activeBg: "bg-slate-500/20",
-                                text: "text-slate-400",
-                                border: "border-slate-500/30",
-                              },
-                            }[p];
-                            return (
-                              <button
-                                key={p}
-                                onClick={() => toggleDashboardPriority(p)}
-                                className={`text-[8px] font-bold font-mono px-1.5 py-0.5 rounded border uppercase transition-all cursor-pointer ${
-                                  isSelected
-                                    ? `${colors.activeBg} ${colors.text} ${colors.border} shadow-[0_0_5px_rgba(0,180,255,0.1)]`
-                                    : "bg-slate-900/40 text-slate-550 border-transparent opacity-50 hover:opacity-100"
-                                }`}
-                              >
-                                {p}
-                              </button>
-                            );
-                          },
-                        )}
-                      </div>
-
-                      {/* Scrollable priority task filters list */}
-                      <div className="overflow-y-auto max-h-[80px] space-y-1 pr-1 custom-scrollbar mb-2 text-left">
-                        {tasks
-                          .filter(
-                            (tk) =>
-                              !tk.completed &&
-                              selectedDashboardPriorities.includes(tk.priority),
-                          )
-                          .map((tk) => {
-                            const priorityColor = {
-                              critical: "text-rose-400",
-                              high: "text-amber-400",
-                              medium: "text-cyan-400",
-                              low: "text-slate-400",
-                            }[tk.priority];
-                            return (
-                              <div
-                                key={tk.id}
-                                className="text-[10px] bg-slate-950/45 border border-slate-900/40 px-2 py-0.5 rounded flex justify-between items-center gap-1"
-                              >
-                                <span className="truncate text-slate-300 flex-1 font-sans font-medium">
-                                  {tk.title}
-                                </span>
-                                <span
-                                  className={`text-[7px] font-mono font-bold uppercase shrink-0 ${priorityColor}`}
-                                >
-                                  {tk.priority}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        {tasks.filter(
-                          (tk) =>
-                            !tk.completed &&
-                            selectedDashboardPriorities.includes(tk.priority),
-                        ).length === 0 && (
-                          <div className="text-[8px] font-mono text-slate-550 text-center py-1.5 italic">
-                            No active tasks in selected priorities
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="flex justify-between items-center text-[10px] mb-1">
-                        <span className="text-slate-400">
-                          {tasks.filter((x) => !x.completed).length} active
-                        </span>
-                        <span className="text-[8px] font-mono font-bold flex items-center gap-1 shrink-0">
-                          {isSyncingDb || dataSyncStatus === "checking" ? (
-                            <>
-                              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping shrink-0" />
-                              <span className="text-cyan-400 uppercase tracking-widest animate-pulse">
-                                [SYNCING...]
-                              </span>
-                            </>
-                          ) : (
-                            <>
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
-                              <span className="text-emerald-400 uppercase tracking-widest">
-                                [SECURE_SYNC]
-                              </span>
-                            </>
-                          )}
-                        </span>
-                      </div>
-
-                      {/* Progress Container with active laser scanner when querying */}
-                      <div className="jarvis-progress h-1 border border-slate-900 bg-slate-950/80 rounded-full overflow-hidden relative shadow-[inset_0_1px_3px_rgba(0,0,0,0.6)]">
-                        <div
-                          className={`h-full rounded-full transition-all duration-500 ease-out ${
-                            isSyncingDb || dataSyncStatus === "checking"
-                              ? "bg-gradient-to-r from-cyan-400 to-indigo-500 shadow-[0_0_12px_rgba(0,212,255,0.8)]"
-                              : "bg-cyan-500 shadow-[0_0_6px_rgba(0,212,255,0.4)]"
-                          }`}
-                          style={{
-                            width: `${tasks.length > 0 ? (tasks.filter((x) => x.completed).length / tasks.length) * 100 : 0}%`,
-                          }}
-                        />
-
-                        {/* Visual laser Scan Overlay */}
-                        {(isSyncingDb || dataSyncStatus === "checking") && (
-                          <div className="absolute top-0 bottom-0 left-0 right-0 pointer-events-none overflow-hidden">
-                            <div
-                              className="h-full w-20 bg-gradient-to-r from-transparent via-cyan-300 / 50 to-transparent"
+                  <AnimatePresence mode="popLayout">
+                    {predictiveWidgets
+                      .filter((w) => w.visible)
+                      .map((widget) => {
+                        if (widget.id === "command_center") {
+                          return (
+                            <motion.div
+                              layoutId="command_center"
+                              key="command_center"
+                              className="col-span-1 md:col-span-2 xl:col-span-2 relative rounded-xl overflow-hidden p-4 flex flex-col justify-between"
+                              onClick={() => trackWidgetInteraction("command_center")}
                               style={{
-                                animation:
-                                  "shimmer-scan 1.2s infinite ease-in-out",
+                                background:
+                                  "linear-gradient(135deg, rgba(0,15,40,0.9) 0%, rgba(0,8,22,0.85) 100%)",
+                                border: "1px solid rgba(0,212,255,0.18)",
+                                boxShadow:
+                                  "0 0 0 1px rgba(0,212,255,0.05), 0 8px 32px rgba(0,0,0,0.5), inset 0 0 40px rgba(0,212,255,0.03)",
+                                backdropFilter: "blur(20px)",
+                                minHeight: "140px",
                               }}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Memory metric */}
-                  <div
-                    className="col-span-1 md:col-span-1 xl:col-span-1 relative rounded-xl overflow-hidden p-3 flex flex-col justify-between"
-                    style={{
-                      background:
-                        "linear-gradient(135deg, rgba(10,5,35,0.92), rgba(5,0,20,0.85))",
-                      border: "1px solid rgba(124,58,237,0.2)",
-                      boxShadow: "inset 0 0 20px rgba(124,58,237,0.04)",
-                      backdropFilter: "blur(20px)",
-                      minHeight: "140px",
-                    }}
-                  >
-                    <div
-                      className="absolute top-0 left-0 right-0 h-px"
-                      style={{
-                        background:
-                          "linear-gradient(90deg, transparent, rgba(124,58,237,0.5), transparent)",
-                      }}
-                    />
-                    <div>
-                      <div className="flex justify-between items-center mb-1">
-                        <span
-                          className="jarvis-label"
-                          style={{ color: "rgba(167,139,250,0.7)" }}
-                        >
-                          MEMORY ENGINE
-                        </span>
-                        <span className="text-[9px] font-mono text-purple-400 bg-purple-950/30 px-1.5 py-0.5 rounded border border-purple-500/10 shrink-0">
-                          {memories.length} KEYS
-                        </span>
-                      </div>
-
-                      {/* Sorted Memory entries list preview (Sorted by Importance) */}
-                      <div className="overflow-y-auto max-h-[90px] space-y-1 pr-1 custom-scrollbar mb-2 text-left mt-2">
-                        {[...memories]
-                          .sort(
-                            (a, b) => (b.importance || 0) - (a.importance || 0),
-                          )
-                          .slice(0, 4)
-                          .map((mem) => {
-                            const isHighImportance = (mem.importance || 0) >= 4;
-                            return (
+                              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                            >
+                              {/* Corner accent lines */}
                               <div
-                                key={mem.id}
-                                className="text-[10px] bg-indigo-950/20 border border-indigo-900/30 px-2 py-0.5 rounded flex justify-between items-center gap-1"
-                              >
-                                <div className="truncate flex-1">
-                                  <span className="text-[8px] font-mono uppercase text-indigo-400 font-bold mr-1">
-                                    [{mem.key}]
+                                className="absolute top-0 left-0 w-8 h-px"
+                                style={{ background: "rgba(0,212,255,0.6)" }}
+                              />
+                              <div
+                                className="absolute top-0 left-0 w-px h-8"
+                                style={{ background: "rgba(0,212,255,0.6)" }}
+                              />
+                              <div
+                                className="absolute bottom-0 right-0 w-8 h-px"
+                                style={{ background: "rgba(0,212,255,0.3)" }}
+                              />
+                              <div
+                                className="absolute bottom-0 right-0 w-px h-8"
+                                style={{ background: "rgba(0,212,255,0.3)" }}
+                              />
+                              <div
+                                className="absolute top-0 left-0 right-0 h-px"
+                                style={{
+                                  background:
+                                    "linear-gradient(90deg, transparent, rgba(0,212,255,0.5), transparent)",
+                                }}
+                              />
+
+                              <div>
+                                <div className="flex justify-between items-center mb-1.5">
+                                  <div className="jarvis-label">
+                                    WORKSPACE COMMAND CENTER
+                                  </div>
+                                  <div className="text-[9px] font-mono flex items-center gap-1.5">
+                                    <span
+                                      className={`w-1.5 h-1.5 rounded-full ${
+                                        dataSyncStatus === "consistent"
+                                          ? "bg-emerald-400"
+                                          : dataSyncStatus === "reconciled"
+                                            ? "bg-amber-400"
+                                            : "bg-cyan-400 animate-pulse"
+                                      }`}
+                                    />
+                                    <span className="text-slate-500 uppercase">
+                                      {dataSyncStatus === "checking"
+                                        ? "Verifying..."
+                                        : dataSyncStatus === "consistent"
+                                          ? "DB Consistent"
+                                          : dataSyncStatus === "reconciled"
+                                            ? "DB Balanced"
+                                            : "Standby"}
+                                    </span>
+                                  </div>
+                                </div>
+                                <h2
+                                  className="font-jarvis text-base font-bold mb-1"
+                                  style={{
+                                    color: "#00d4ff",
+                                    textShadow: "0 0 15px rgba(0,212,255,0.4)",
+                                  }}
+                                >
+                                  {lang === "bn"
+                                    ? "এক নজরে Neora workspace"
+                                    : "NEORA AI SYSTEM"}
+                                </h2>
+                                <p className="text-[11px] text-slate-400 leading-normal">
+                                  {lang === "bn"
+                                    ? "চ্যাট, অটোমেশন, মেমরি, এবং OS agent এক স্ক্রিনে।"
+                                    : "Neural interface · Autonomous operations · Memory persistence · OS control"}
+                                </p>
+                              </div>
+
+                              {isDashboardOptimized && (
+                                <div className="mt-2 p-1.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-mono text-[9px] flex items-center justify-between animate-pulse">
+                                  <span className="flex items-center gap-1">
+                                    <Cpu className="w-3.5 h-3.5" />
+                                    <span>COGNITIVE SHIELD ACTIVE</span>
                                   </span>
-                                  <span className="text-slate-300 font-sans font-medium">
-                                    {mem.value}
+                                  <span className="font-bold">EVOLVED v2.4</span>
+                                </div>
+                              )}
+
+                              <div className="flex flex-wrap gap-1.5 mt-3">
+                                {(
+                                  [
+                                    { label: "CHAT", tab: "chat", color: "#00d4ff" },
+                                    {
+                                      label: "OS AGENT",
+                                      tab: "osAgent",
+                                      color: "#00ff88",
+                                    },
+                                    {
+                                      label: "PLANNER",
+                                      tab: "autonomy",
+                                      color: "#1a9fff",
+                                    },
+                                    {
+                                      label: "ROADMAP",
+                                      tab: "roadmap",
+                                      color: "#7c3aed",
+                                    },
+                                  ] as { label: string; tab: any; color: string }[]
+                                ).map(({ label, tab, color }) => (
+                                  <button
+                                    key={tab}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setActiveTab(tab);
+                                    }}
+                                    className="px-2.5 py-1 rounded text-[10px] font-mono font-bold uppercase transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+                                    style={{
+                                      background: `${color}12`,
+                                      border: `1px solid ${color}30`,
+                                      color: color,
+                                      textShadow: `0 0 6px ${color}60`,
+                                    }}
+                                  >
+                                    {label}
+                                  </button>
+                                ))}
+                              </div>
+                            </motion.div>
+                          );
+                        }
+
+                        if (widget.id === "tasks") {
+                          return (
+                            <motion.div
+                              layoutId="tasks"
+                              key="tasks"
+                              className="col-span-1 md:col-span-1 xl:col-span-1 relative rounded-xl overflow-hidden p-3 flex flex-col justify-between transition-all duration-300"
+                              onClick={() => trackWidgetInteraction("tasks")}
+                              style={{
+                                background:
+                                  "linear-gradient(135deg, rgba(0,15,35,0.92), rgba(0,8,20,0.85))",
+                                border: "1px solid rgba(0,212,255,0.15)",
+                                boxShadow: "inset 0 0 20px rgba(0,212,255,0.03)",
+                                backdropFilter: "blur(20px)",
+                                minHeight: "140px",
+                              }}
+                              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                            >
+                              <div
+                                className="absolute top-0 left-0 right-0 h-px"
+                                style={{
+                                  background:
+                                    "linear-gradient(90deg, transparent, rgba(0,212,255,0.4), transparent)",
+                                }}
+                              />
+                              <div>
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className="jarvis-label">TASKS</span>
+                                  <span className="text-[10px] text-cyan-400 font-mono font-bold bg-cyan-950/30 px-1.5 py-0.5 rounded border border-cyan-500/10 shrink-0">
+                                    {tasks.filter((x) => x.completed).length}/
+                                    {tasks.length} DONE
                                   </span>
                                 </div>
-                                {isHighImportance ? (
-                                  <span className="text-[8px] font-mono font-bold px-1 rounded bg-rose-500/20 text-rose-300 border border-rose-500/20 shrink-0 shadow-[0_0_5px_rgba(239,68,68,0.25)]">
-                                    IMP: {mem.importance}
+
+                                <div className="flex flex-wrap gap-1 mt-1.5 mb-1.5">
+                                  {(["critical", "high", "medium", "low"] as const).map(
+                                    (p) => {
+                                      const isSelected =
+                                        selectedDashboardPriorities.includes(p);
+                                      const colors = {
+                                        critical: {
+                                          activeBg: "bg-rose-500/20",
+                                          text: "text-rose-400",
+                                          border: "border-rose-500/30",
+                                        },
+                                        high: {
+                                          activeBg: "bg-amber-500/20",
+                                          text: "text-amber-400",
+                                          border: "border-amber-500/30",
+                                        },
+                                        medium: {
+                                          activeBg: "bg-cyan-500/20",
+                                          text: "text-cyan-400",
+                                          border: "border-cyan-500/30",
+                                        },
+                                        low: {
+                                          activeBg: "bg-slate-500/20",
+                                          text: "text-slate-400",
+                                          border: "border-slate-500/30",
+                                        },
+                                      }[p];
+                                      return (
+                                        <button
+                                          key={p}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            toggleDashboardPriority(p);
+                                          }}
+                                          className={`text-[8px] font-bold font-mono px-1.5 py-0.5 rounded border uppercase transition-all cursor-pointer ${
+                                            isSelected
+                                              ? `${colors.activeBg} ${colors.text} ${colors.border} shadow-[0_0_5px_rgba(0,180,255,0.1)]`
+                                              : "bg-slate-900/40 text-slate-550 border-transparent opacity-50 hover:opacity-100"
+                                          }`}
+                                        >
+                                          {p}
+                                        </button>
+                                      );
+                                    },
+                                  )}
+                                </div>
+
+                                <div className="overflow-y-auto max-h-[80px] space-y-1 pr-1 custom-scrollbar mb-2 text-left">
+                                  {tasks
+                                    .filter(
+                                      (tk) =>
+                                        !tk.completed &&
+                                        selectedDashboardPriorities.includes(tk.priority),
+                                    )
+                                    .map((tk) => {
+                                      const priorityColor = {
+                                        critical: "text-rose-400",
+                                        high: "text-amber-400",
+                                        medium: "text-cyan-400",
+                                        low: "text-slate-400",
+                                      }[tk.priority];
+                                      return (
+                                        <div
+                                          key={tk.id}
+                                          className="text-[10px] bg-slate-950/45 border border-slate-900/40 px-2 py-0.5 rounded flex justify-between items-center gap-1"
+                                        >
+                                          <span className="truncate text-slate-300 flex-1 font-sans font-medium">
+                                            {tk.title}
+                                          </span>
+                                          <span
+                                            className={`text-[7px] font-mono font-bold uppercase shrink-0 ${priorityColor}`}
+                                          >
+                                            {tk.priority}
+                                          </span>
+                                        </div>
+                                      );
+                                    })}
+                                  {tasks.filter(
+                                    (tk) =>
+                                      !tk.completed &&
+                                      selectedDashboardPriorities.includes(tk.priority),
+                                  ).length === 0 && (
+                                    <div className="text-[8px] font-mono text-slate-550 text-center py-1.5 italic">
+                                      No active tasks in selected priorities
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div>
+                                <div className="flex justify-between items-center text-[10px] mb-1">
+                                  <span className="text-slate-400">
+                                    {tasks.filter((x) => !x.completed).length} active
                                   </span>
-                                ) : (
-                                  <span className="text-[8px] font-mono text-slate-500 font-medium shrink-0">
-                                    v{mem.importance || 2}
+                                  <span className="text-[8px] font-mono font-bold flex items-center gap-1 shrink-0">
+                                    {isSyncingDb || dataSyncStatus === "checking" ? (
+                                      <>
+                                        <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping shrink-0" />
+                                        <span className="text-cyan-400 uppercase tracking-widest animate-pulse">
+                                          [SYNCING...]
+                                        </span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                                        <span className="text-emerald-400 uppercase tracking-widest">
+                                          [SECURE_SYNC]
+                                        </span>
+                                      </>
+                                    )}
+                                  </span>
+                                </div>
+
+                                <div className="jarvis-progress h-1 border border-slate-900 bg-slate-950/80 rounded-full overflow-hidden relative shadow-[inset_0_1px_3px_rgba(0,0,0,0.6)]">
+                                  <div
+                                    className={`h-full rounded-full transition-all duration-500 ease-out ${
+                                      isSyncingDb || dataSyncStatus === "checking"
+                                        ? "bg-gradient-to-r from-cyan-400 to-indigo-500 shadow-[0_0_12px_rgba(0,212,255,0.8)]"
+                                        : "bg-cyan-500 shadow-[0_0_6px_rgba(0,212,255,0.4)]"
+                                    }`}
+                                    style={{
+                                      width: `${tasks.length > 0 ? (tasks.filter((x) => x.completed).length / tasks.length) * 100 : 0}%`,
+                                    }}
+                                  />
+
+                                  {(isSyncingDb || dataSyncStatus === "checking") && (
+                                    <div className="absolute top-0 bottom-0 left-0 right-0 pointer-events-none overflow-hidden">
+                                      <div
+                                        className="h-full w-20 bg-gradient-to-r from-transparent via-cyan-300 / 50 to-transparent"
+                                        style={{
+                                          animation:
+                                            "shimmer-scan 1.2s infinite ease-in-out",
+                                        }}
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </motion.div>
+                          );
+                        }
+
+                        if (widget.id === "memory") {
+                          return (
+                            <motion.div
+                              layoutId="memory"
+                              key="memory"
+                              className="col-span-1 md:col-span-1 xl:col-span-1 relative rounded-xl overflow-hidden p-3 flex flex-col justify-between"
+                              onClick={() => trackWidgetInteraction("memory")}
+                              style={{
+                                background:
+                                  "linear-gradient(135deg, rgba(10,5,35,0.92), rgba(5,0,20,0.85))",
+                                border: "1px solid rgba(124,58,237,0.2)",
+                                boxShadow: "inset 0 0 20px rgba(124,58,237,0.04)",
+                                backdropFilter: "blur(20px)",
+                                minHeight: "140px",
+                              }}
+                              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                            >
+                              <div
+                                className="absolute top-0 left-0 right-0 h-px"
+                                style={{
+                                  background:
+                                    "linear-gradient(90deg, transparent, rgba(124,58,237,0.5), transparent)",
+                                }}
+                              />
+                              <div>
+                                <div className="flex justify-between items-center mb-1">
+                                  <span
+                                    className="jarvis-label"
+                                    style={{ color: "rgba(167,139,250,0.7)" }}
+                                  >
+                                    MEMORY ENGINE
+                                  </span>
+                                  <span className="text-[9px] font-mono text-purple-400 bg-purple-950/30 px-1.5 py-0.5 rounded border border-purple-500/10 shrink-0">
+                                    {memories.length} KEYS
+                                  </span>
+                                </div>
+
+                                <div className="overflow-y-auto max-h-[90px] space-y-1 pr-1 custom-scrollbar mb-2 text-left mt-2">
+                                  {[...memories]
+                                    .sort(
+                                      (a, b) => (b.importance || 0) - (a.importance || 0),
+                                    )
+                                    .slice(0, 4)
+                                    .map((mem) => {
+                                      const isHighImportance = (mem.importance || 0) >= 4;
+                                      return (
+                                        <div
+                                          key={mem.id}
+                                          className="text-[10px] bg-indigo-950/20 border border-indigo-900/30 px-2 py-0.5 rounded flex justify-between items-center gap-1"
+                                        >
+                                          <div className="truncate flex-1">
+                                            <span className="text-[8px] font-mono uppercase text-indigo-400 font-bold mr-1">
+                                              [{mem.key}]
+                                            </span>
+                                            <span className="text-slate-300 font-sans font-medium">
+                                              {mem.value}
+                                            </span>
+                                          </div>
+                                          {isHighImportance ? (
+                                            <span className="text-[8px] font-mono font-bold px-1 rounded bg-rose-500/20 text-rose-300 border border-rose-500/20 shrink-0 shadow-[0_0_5px_rgba(239,68,68,0.25)]">
+                                              IMP: {mem.importance}
+                                            </span>
+                                          ) : (
+                                            <span className="text-[8px] font-mono text-slate-550 font-medium shrink-0">
+                                              v{mem.importance || 2}
+                                            </span>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  {memories.length === 0 && (
+                                    <div className="text-[8px] font-mono text-slate-550 text-center py-2 italic">
+                                      Memory database is standard cache
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="mt-1">
+                                <div className="text-[10px] text-slate-400 mb-1">
+                                  Importance-ranked records
+                                </div>
+                                <div className="h-0.5 rounded bg-purple-950/40 relative overflow-hidden">
+                                  <div
+                                    className="h-full rounded"
+                                    style={{
+                                      width: `${Math.min(memories.length * 15, 100)}%`,
+                                      background:
+                                        "linear-gradient(90deg, rgba(124,58,237,0.6), rgba(167,139,250,0.9))",
+                                      boxShadow: "0 0 6px rgba(124,58,237,0.5)",
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                            </motion.div>
+                          );
+                        }
+
+                        if (widget.id === "agent") {
+                          const hasCriticalEvent = latency > 50 || apiHealth < 95;
+                          return (
+                            <motion.div
+                              layoutId="agent"
+                              key="agent"
+                              className="col-span-1 md:col-span-1 xl:col-span-1 relative rounded-xl overflow-hidden p-3 flex flex-col justify-between transition-all duration-300"
+                              onClick={() => trackWidgetInteraction("agent")}
+                              style={{
+                                background: hasCriticalEvent
+                                  ? "linear-gradient(135deg, rgba(30,5,5,0.95), rgba(15,2,2,0.9))"
+                                  : "linear-gradient(135deg, rgba(0,20,10,0.92), rgba(0,10,5,0.85))",
+                                border: hasCriticalEvent
+                                  ? "1px solid rgba(239,68,68,0.4)"
+                                  : "1px solid rgba(0,255,136,0.18)",
+                                boxShadow: hasCriticalEvent
+                                  ? "inset 0 0 20px rgba(239,68,68,0.15), 0 0 15px rgba(239,68,68,0.15)"
+                                  : "inset 0 0 20px rgba(0,255,136,0.03)",
+                                backdropFilter: "blur(20px)",
+                                minHeight: "140px",
+                              }}
+                              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                            >
+                              {hasCriticalEvent ? (
+                                <div
+                                  className="absolute top-0 left-0 right-0 h-px animate-pulse"
+                                  style={{
+                                    background:
+                                      "linear-gradient(90deg, transparent, rgba(239,68,68,0.8), transparent)",
+                                  }}
+                                />
+                              ) : (
+                                <div
+                                  className="absolute top-0 left-0 right-0 h-px"
+                                  style={{
+                                    background:
+                                      "linear-gradient(90deg, transparent, rgba(0,255,136,0.4), transparent)",
+                                  }}
+                                />
+                              )}
+
+                              <div>
+                                <div className="flex justify-between items-center mb-1">
+                                  <span
+                                    className="jarvis-label"
+                                    style={{
+                                      color: hasCriticalEvent
+                                        ? "rgba(239,68,68,0.9)"
+                                        : "rgba(0,255,136,0.7)",
+                                    }}
+                                  >
+                                    AGENT CONTROLLER
+                                  </span>
+                                  {hasCriticalEvent ? (
+                                    <span className="text-[8px] font-mono text-red-400 bg-red-950/60 px-1.5 py-0.5 rounded border border-red-500/30 animate-pulse font-bold">
+                                      ⚠️ SYSTEM ANOMALY
+                                    </span>
+                                  ) : (
+                                    <span className="text-[9px] font-mono text-emerald-400 bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-500/10">
+                                      LIVE PING
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-baseline justify-between">
+                                  <span
+                                    className="text-xl font-jarvis font-bold"
+                                    style={{
+                                      color: hasCriticalEvent ? "#ef4444" : "#00ff88",
+                                      textShadow: hasCriticalEvent
+                                        ? "0 0 10px rgba(239,68,68,0.5)"
+                                        : "0 0 10px rgba(0,255,136,0.4)",
+                                    }}
+                                  >
+                                    {latency}ms
+                                  </span>
+                                  <span
+                                    className={`text-[10px] font-mono ${hasCriticalEvent ? "text-rose-400 font-bold" : "text-slate-400"}`}
+                                  >
+                                    {apiHealth}% health
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="h-14 w-full mt-2 select-none relative rounded overflow-hidden">
+                                {hasCriticalEvent && (
+                                  <div className="absolute inset-0 bg-red-950/15 pointer-events-none border border-red-500/10 hover:border-red-500/20 shadow-[inset_0_0_15px_rgba(239,68,68,0.2)] animate-pulse flex items-center justify-center z-10 rounded">
+                                    <span className="text-[7px] font-mono text-red-400 font-bold tracking-widest uppercase bg-red-950/80 border border-red-500/20 px-1 rounded shadow">
+                                      SCAN_ANOMALY
+                                    </span>
+                                  </div>
+                                )}
+
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <LineChart
+                                    data={latencyHistory}
+                                    margin={{
+                                      top: 2,
+                                      right: 2,
+                                      left: -32,
+                                      bottom: 2,
+                                    }}
+                                  >
+                                    <XAxis dataKey="time" hide />
+                                    <YAxis domain={["auto", "auto"]} hide />
+                                    <Tooltip
+                                      contentStyle={{
+                                        background: hasCriticalEvent
+                                          ? "rgba(30, 5, 5, 0.95)"
+                                          : "rgba(0, 10, 5, 0.95)",
+                                        border: hasCriticalEvent
+                                          ? "1px solid rgba(239, 68, 68, 0.5)"
+                                          : "1px solid rgba(0, 255, 136, 0.3)",
+                                        borderRadius: "6px",
+                                        fontSize: "9px",
+                                        color: hasCriticalEvent
+                                          ? "#fecdd3"
+                                          : "#a7f3d0",
+                                      }}
+                                      labelStyle={{ display: "none" }}
+                                    />
+                                    <Line
+                                      type="monotone"
+                                      dataKey="latency"
+                                      name="Ping"
+                                      stroke={
+                                        hasCriticalEvent ? "#ef4444" : "#00ff88"
+                                      }
+                                      strokeWidth={1.5}
+                                      dot={false}
+                                      activeDot={{ r: 3 }}
+                                    />
+                                    <Line
+                                      type="monotone"
+                                      dataKey="health"
+                                      name="Health"
+                                      stroke={
+                                        hasCriticalEvent ? "#fda4af" : "#a78bfa"
+                                      }
+                                      strokeWidth={1.0}
+                                      dot={false}
+                                      activeDot={{ r: 3 }}
+                                    />
+                                  </LineChart>
+                                </ResponsiveContainer>
+                              </div>
+                            </motion.div>
+                          );
+                        }
+
+                        if (widget.id === "scratchpad") {
+                          return (
+                            <motion.div
+                              layoutId="scratchpad"
+                              key="scratchpad"
+                              className="col-span-1 md:col-span-1 xl:col-span-1 relative rounded-xl overflow-hidden p-3 flex flex-col justify-between"
+                              onClick={() => trackWidgetInteraction("scratchpad")}
+                              style={{
+                                background:
+                                  "linear-gradient(135deg, rgba(30,10,25,0.92), rgba(15,5,15,0.85))",
+                                border: "1px solid rgba(236,72,153,0.18)",
+                                boxShadow: "inset 0 0 20px rgba(236,72,153,0.03)",
+                                backdropFilter: "blur(20px)",
+                                minHeight: "140px",
+                              }}
+                              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                            >
+                              <div
+                                className="absolute top-0 left-0 right-0 h-px"
+                                style={{
+                                  background:
+                                    "linear-gradient(90deg, transparent, rgba(236,72,153,0.4), transparent)",
+                                }}
+                              />
+
+                              <div className="flex items-center justify-between mb-1.5">
+                                <span
+                                  className="jarvis-label"
+                                  style={{ color: "rgba(236,72,153,0.7)" }}
+                                >
+                                  SYSTEM SCRATCHPAD
+                                </span>
+                                {showNotesSaved && (
+                                  <span className="text-[9px] font-mono text-pink-400 animate-pulse flex items-center gap-1">
+                                    <span>●</span>{" "}
+                                    {lang === "bn" ? "সংরক্ষিত" : "Draft saved"}
                                   </span>
                                 )}
                               </div>
-                            );
-                          })}
-                        {memories.length === 0 && (
-                          <div className="text-[8px] font-mono text-slate-550 text-center py-2 italic">
-                            Memory database is standard cache
-                          </div>
-                        )}
-                      </div>
-                    </div>
 
-                    <div className="mt-1">
-                      <div className="text-[10px] text-slate-400 mb-1">
-                        Importance-ranked records
-                      </div>
-                      <div className="h-0.5 rounded bg-purple-950/40 relative overflow-hidden">
-                        <div
-                          className="h-full rounded"
-                          style={{
-                            width: `${Math.min(memories.length * 15, 100)}%`,
-                            background:
-                              "linear-gradient(90deg, rgba(124,58,237,0.6), rgba(167,139,250,0.9))",
-                            boxShadow: "0 0 6px rgba(124,58,237,0.5)",
-                          }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Agent metric (Recharts latency graph with Critical Event overlay) */}
-                  {(() => {
-                    const hasCriticalEvent = latency > 50 || apiHealth < 95;
-                    return (
-                      <div
-                        className="col-span-1 md:col-span-1 xl:col-span-1 relative rounded-xl overflow-hidden p-3 flex flex-col justify-between transition-all duration-300"
-                        style={{
-                          background: hasCriticalEvent
-                            ? "linear-gradient(135deg, rgba(30,5,5,0.95), rgba(15,2,2,0.9))"
-                            : "linear-gradient(135deg, rgba(0,20,10,0.92), rgba(0,10,5,0.85))",
-                          border: hasCriticalEvent
-                            ? "1px solid rgba(239,68,68,0.4)"
-                            : "1px solid rgba(0,255,136,0.18)",
-                          boxShadow: hasCriticalEvent
-                            ? "inset 0 0 20px rgba(239,68,68,0.15), 0 0 15px rgba(239,68,68,0.15)"
-                            : "inset 0 0 20px rgba(0,255,136,0.03)",
-                          backdropFilter: "blur(20px)",
-                          minHeight: "140px",
-                        }}
-                      >
-                        {hasCriticalEvent ? (
-                          <div
-                            className="absolute top-0 left-0 right-0 h-px animate-pulse"
-                            style={{
-                              background:
-                                "linear-gradient(90deg, transparent, rgba(239,68,68,0.8), transparent)",
-                            }}
-                          />
-                        ) : (
-                          <div
-                            className="absolute top-0 left-0 right-0 h-px"
-                            style={{
-                              background:
-                                "linear-gradient(90deg, transparent, rgba(0,255,136,0.4), transparent)",
-                            }}
-                          />
-                        )}
-
-                        <div>
-                          <div className="flex justify-between items-center mb-1">
-                            <span
-                              className="jarvis-label"
-                              style={{
-                                color: hasCriticalEvent
-                                  ? "rgba(239,68,68,0.9)"
-                                  : "rgba(0,255,136,0.7)",
-                              }}
-                            >
-                              AGENT CONTROLLER
-                            </span>
-                            {hasCriticalEvent ? (
-                              <span className="text-[8px] font-mono text-red-400 bg-red-950/60 px-1.5 py-0.5 rounded border border-red-500/30 animate-pulse font-bold">
-                                ⚠️ SYSTEM ANOMALY
-                              </span>
-                            ) : (
-                              <span className="text-[9px] font-mono text-emerald-400 bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-500/10">
-                                LIVE PING
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-baseline justify-between">
-                            <span
-                              className="text-xl font-jarvis font-bold"
-                              style={{
-                                color: hasCriticalEvent ? "#ef4444" : "#00ff88",
-                                textShadow: hasCriticalEvent
-                                  ? "0 0 10px rgba(239,68,68,0.5)"
-                                  : "0 0 10px rgba(0,255,136,0.4)",
-                              }}
-                            >
-                              {latency}ms
-                            </span>
-                            <span
-                              className={`text-[10px] font-mono ${hasCriticalEvent ? "text-rose-400 font-bold" : "text-slate-400"}`}
-                            >
-                              {apiHealth}% health
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Recharts compact, futuristic line graph */}
-                        <div className="h-14 w-full mt-2 select-none relative rounded overflow-hidden">
-                          {/* Subtle pulsing scanner and glow overlay on graph if anomaly detected */}
-                          {hasCriticalEvent && (
-                            <div className="absolute inset-0 bg-red-950/15 pointer-events-none border border-red-500/10 hover:border-red-500/20 shadow-[inset_0_0_15px_rgba(239,68,68,0.2)] animate-pulse flex items-center justify-center z-10 rounded">
-                              <span className="text-[7px] font-mono text-red-400 font-bold tracking-widest uppercase bg-red-950/80 border border-red-500/20 px-1 rounded shadow">
-                                SCAN_ANOMALY
-                              </span>
-                            </div>
-                          )}
-
-                          <ResponsiveContainer width="100%" height="100%">
-                            <LineChart
-                              data={latencyHistory}
-                              margin={{
-                                top: 2,
-                                right: 2,
-                                left: -32,
-                                bottom: 2,
-                              }}
-                            >
-                              <XAxis dataKey="time" hide />
-                              <YAxis domain={["auto", "auto"]} hide />
-                              <Tooltip
-                                contentStyle={{
-                                  background: hasCriticalEvent
-                                    ? "rgba(30, 5, 5, 0.95)"
-                                    : "rgba(0, 10, 5, 0.95)",
-                                  border: hasCriticalEvent
-                                    ? "1px solid rgba(239, 68, 68, 0.5)"
-                                    : "1px solid rgba(0, 255, 136, 0.3)",
-                                  borderRadius: "6px",
-                                  fontSize: "9px",
-                                  color: hasCriticalEvent
-                                    ? "#fecdd3"
-                                    : "#a7f3d0",
+                              <textarea
+                                value={scratchpadDraft}
+                                onChange={(e) => {
+                                  setScratchpadDraft(e.target.value);
+                                  setNotesUnsaved(true);
                                 }}
-                                labelStyle={{ display: "none" }}
-                              />
-                              <Line
-                                type="monotone"
-                                dataKey="latency"
-                                name="Ping"
-                                stroke={
-                                  hasCriticalEvent ? "#ef4444" : "#00ff88"
+                                onClick={(e) => e.stopPropagation()}
+                                placeholder={
+                                  lang === "bn"
+                                    ? "এখানে ড্রাফট লিখুন..."
+                                    : "Scribble quick draft memo..."
                                 }
-                                strokeWidth={1.5}
-                                dot={false}
-                                activeDot={{ r: 3 }}
+                                className="w-full text-xs font-sans text-pink-100 placeholder-pink-300/20 bg-pink-950/10 border border-pink-500/10 focus:border-pink-500/30 rounded p-1.5 resize-none grow focus:outline-none"
+                                style={{ minHeight: "65px" }}
                               />
-                              <Line
-                                type="monotone"
-                                dataKey="health"
-                                name="Health"
-                                stroke={
-                                  hasCriticalEvent ? "#fda4af" : "#a78bfa"
-                                }
-                                strokeWidth={1.0}
-                                dot={false}
-                                activeDot={{ r: 3 }}
+                            </motion.div>
+                          );
+                        }
+
+                        if (widget.id === "os_quick") {
+                          return (
+                            <motion.div
+                              layoutId="os_quick"
+                              key="os_quick"
+                              className="col-span-1 md:col-span-2 lg:col-span-3 xl:col-span-5 relative rounded-xl overflow-hidden"
+                              onClick={() => trackWidgetInteraction("os_quick")}
+                              style={{
+                                background:
+                                  "linear-gradient(135deg, rgba(0,20,10,0.92) 0%, rgba(0,10,5,0.88) 100%)",
+                                border: "1px solid rgba(0,255,136,0.2)",
+                                boxShadow:
+                                  "0 0 0 1px rgba(0,255,136,0.04), inset 0 0 20px rgba(0,255,136,0.03)",
+                                backdropFilter: "blur(20px)",
+                              }}
+                              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                            >
+                              <div
+                                className="absolute top-0 left-0 right-0 h-px"
+                                style={{
+                                  background:
+                                    "linear-gradient(90deg, transparent, rgba(0,255,136,0.5), transparent)",
+                                }}
                               />
-                            </LineChart>
-                          </ResponsiveContainer>
-                        </div>
-                      </div>
-                    );
-                  })()}
+                              <div className="p-3">
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="flex items-center gap-2">
+                                    <div
+                                      className="w-1.5 h-1.5 rounded-full"
+                                      style={{
+                                        background: "#00ff88",
+                                        boxShadow: "0 0 4px #00ff88",
+                                      }}
+                                    />
+                                    <span
+                                      className="jarvis-label"
+                                      style={{ color: "rgba(0,255,136,0.7)" }}
+                                    >
+                                      OS QUICK COMMAND
+                                    </span>
+                                  </div>
+                                  {showCommandSaved && (
+                                    <span className="text-[9px] font-mono text-emerald-400 animate-pulse flex items-center gap-1">
+                                      <span>●</span>{" "}
+                                      {lang === "bn" ? "খসড়া সংরক্ষিত!" : "Draft saved"}
+                                    </span>
+                                  )}
+                                </div>
+                                <form
+                                  onSubmit={async (e) => {
+                                    e.preventDefault();
+                                    const val = qcmdDraft.trim();
+                                    if (!val) return;
+                                    setQcmdDraft("");
+                                    localStorage.removeItem("neora_qcmd_draft");
+                                    try {
+                                      await neoraPost("/api/os/command", { prompt: val });
+                                      setActiveTab("osAgent");
+                                    } catch {
+                                      /* ignore */
+                                    }
+                                  }}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="flex gap-2 font-mono"
+                                >
+                                  <input
+                                    name="qcmd"
+                                    type="text"
+                                    value={qcmdDraft}
+                                    onChange={(e) => {
+                                      setQcmdDraft(e.target.value);
+                                      setCommandUnsaved(true);
+                                    }}
+                                    placeholder={
+                                      lang === "bn"
+                                        ? "যেমন: নোটপ্যাড খোলো, ফাইল লিখো..."
+                                        : "e.g. open notepad, write file hello.txt: Hi"
+                                    }
+                                    className="flex-1 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none"
+                                    style={{
+                                      background: "rgba(0,255,136,0.05)",
+                                      border: "1px solid rgba(0,255,136,0.2)",
+                                      color: "rgba(186,240,210,0.85)",
+                                    }}
+                                    onFocus={(e) =>
+                                      (e.currentTarget.style.borderColor =
+                                        "rgba(0,255,136,0.5)")
+                                    }
+                                    onBlur={(e) =>
+                                      (e.currentTarget.style.borderColor =
+                                        "rgba(0,255,136,0.2)")
+                                    }
+                                  />
+                                  <button
+                                    type="submit"
+                                    className="px-3 py-2 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer hover:bg-emerald-500/20"
+                                    style={{
+                                      background: "rgba(0,255,136,0.12)",
+                                      border: "1px solid rgba(0,255,136,0.3)",
+                                      color: "#00ff88",
+                                    }}
+                                  >
+                                    RUN
+                                  </button>
+                                </form>
+                              </div>
+                            </motion.div>
+                          );
+                        }
 
-                  {/* System Scratchpad Card (Task 8) */}
-                  <div
-                    className="col-span-1 md:col-span-1 xl:col-span-1 relative rounded-xl overflow-hidden p-3 flex flex-col justify-between"
-                    style={{
-                      background:
-                        "linear-gradient(135deg, rgba(30,10,25,0.92), rgba(15,5,15,0.85))",
-                      border: "1px solid rgba(236,72,153,0.18)",
-                      boxShadow: "inset 0 0 20px rgba(236,72,153,0.03)",
-                      backdropFilter: "blur(20px)",
-                      minHeight: "140px",
-                    }}
-                  >
-                    <div
-                      className="absolute top-0 left-0 right-0 h-px"
-                      style={{
-                        background:
-                          "linear-gradient(90deg, transparent, rgba(236,72,153,0.4), transparent)",
-                      }}
-                    />
+                        if (widget.id === "live_journal") {
+                          return (
+                            <motion.div
+                              layoutId="live_journal"
+                              key="live_journal"
+                              className="col-span-1 md:col-span-2 lg:col-span-3 xl:col-span-5"
+                              onClick={() => trackWidgetInteraction("live_journal")}
+                              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                            >
+                              <LiveJournalWidget className="mt-2" />
+                            </motion.div>
+                          );
+                        }
 
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span
-                        className="jarvis-label"
-                        style={{ color: "rgba(236,72,153,0.7)" }}
-                      >
-                        SYSTEM SCRATCHPAD
-                      </span>
-                      {showNotesSaved && (
-                        <span className="text-[9px] font-mono text-pink-400 animate-pulse flex items-center gap-1">
-                          <span>●</span>{" "}
-                          {lang === "bn" ? "সংরক্ষিত" : "Draft saved"}
-                        </span>
-                      )}
-                    </div>
+                        if (widget.id === "system_log") {
+                          return (
+                            <motion.div
+                              layoutId="system_log"
+                              key="system_log"
+                              className="col-span-1 md:col-span-2 lg:col-span-3 xl:col-span-5"
+                              onClick={() => trackWidgetInteraction("system_log")}
+                              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                            >
+                              <SystemEventLog lang={lang} />
+                            </motion.div>
+                          );
+                        }
 
-                    <textarea
-                      value={scratchpadDraft}
-                      onChange={(e) => {
-                        setScratchpadDraft(e.target.value);
-                        setNotesUnsaved(true);
-                      }}
-                      placeholder={
-                        lang === "bn"
-                          ? "এখানে ড্রাফট লিখুন..."
-                          : "Scribble quick draft memo..."
-                      }
-                      className="w-full text-xs font-sans text-pink-100 placeholder-pink-300/20 bg-pink-950/10 border border-pink-500/10 focus:border-pink-500/30 rounded p-1.5 resize-none grow focus:outline-none"
-                      style={{ minHeight: "65px" }}
-                    />
-                  </div>
+                        return null;
+                      })}
+                  </AnimatePresence>
                 </div>
-
-                {/* ===== OS QUICK LAUNCHER ===== */}
-                <div
-                  className="mt-3 relative rounded-xl overflow-hidden"
-                  style={{
-                    background:
-                      "linear-gradient(135deg, rgba(0,20,10,0.92) 0%, rgba(0,10,5,0.88) 100%)",
-                    border: "1px solid rgba(0,255,136,0.2)",
-                    boxShadow:
-                      "0 0 0 1px rgba(0,255,136,0.04), inset 0 0 20px rgba(0,255,136,0.03)",
-                    backdropFilter: "blur(20px)",
-                  }}
-                >
-                  <div
-                    className="absolute top-0 left-0 right-0 h-px"
-                    style={{
-                      background:
-                        "linear-gradient(90deg, transparent, rgba(0,255,136,0.5), transparent)",
-                    }}
-                  />
-                  <div className="p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="w-1.5 h-1.5 rounded-full"
-                          style={{
-                            background: "#00ff88",
-                            boxShadow: "0 0 4px #00ff88",
-                          }}
-                        />
-                        <span
-                          className="jarvis-label"
-                          style={{ color: "rgba(0,255,136,0.7)" }}
-                        >
-                          OS QUICK COMMAND
-                        </span>
-                      </div>
-                      {showCommandSaved && (
-                        <span className="text-[9px] font-mono text-emerald-400 animate-pulse flex items-center gap-1">
-                          <span>●</span>{" "}
-                          {lang === "bn" ? "খসড়া সংরক্ষিত!" : "Draft saved"}
-                        </span>
-                      )}
-                    </div>
-                    <form
-                      onSubmit={async (e) => {
-                        e.preventDefault();
-                        const val = qcmdDraft.trim();
-                        if (!val) return;
-                        setQcmdDraft("");
-                        localStorage.removeItem("neora_qcmd_draft");
-                        try {
-                          await neoraPost("/api/os/command", { prompt: val });
-                          setActiveTab("osAgent");
-                        } catch {
-                          /* ignore */
-                        }
-                      }}
-                      className="flex gap-2 font-mono"
-                    >
-                      <input
-                        name="qcmd"
-                        type="text"
-                        value={qcmdDraft}
-                        onChange={(e) => {
-                          setQcmdDraft(e.target.value);
-                          setCommandUnsaved(true);
-                        }}
-                        placeholder={
-                          lang === "bn"
-                            ? "যেমন: নোটপ্যাড খোলো, ফাইল লিখো..."
-                            : "e.g. open notepad, write file hello.txt: Hi"
-                        }
-                        className="flex-1 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none"
-                        style={{
-                          background: "rgba(0,255,136,0.05)",
-                          border: "1px solid rgba(0,255,136,0.2)",
-                          color: "rgba(186,240,210,0.85)",
-                        }}
-                        onFocus={(e) =>
-                          (e.currentTarget.style.borderColor =
-                            "rgba(0,255,136,0.5)")
-                        }
-                        onBlur={(e) =>
-                          (e.currentTarget.style.borderColor =
-                            "rgba(0,255,136,0.2)")
-                        }
-                      />
-                      <button
-                        type="submit"
-                        className="px-3 py-2 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer hover:bg-emerald-500/20"
-                        style={{
-                          background: "rgba(0,255,136,0.12)",
-                          border: "1px solid rgba(0,255,136,0.3)",
-                          color: "#00ff88",
-                        }}
-                      >
-                        RUN
-                      </button>
-                    </form>
-                  </div>
-                </div>
-
-                {/* ===== REAL-TIME SYSTEM JOURNAL ===== */}
-                <LiveJournalWidget className="mt-2" />
-
-                {/* ===== SYSTEM EVENT LOG ===== */}
-                <SystemEventLog lang={lang} />
               </section>
             )}
 
@@ -2779,6 +2992,8 @@ export default function App() {
                         geminiKey={geminiKey}
                         setGeminiKey={setGeminiKey}
                         onSelfEvolution={handleSelfEvolution}
+                        groqStatus={groqStatus}
+                        ollamaDiagnosticStatus={ollamaStatus}
                       />
                     )}
 
@@ -2884,7 +3099,48 @@ export default function App() {
                     )}
 
                     {activeTab === "evolution" && (
-                      <SelfEvolutionView lang={lang} />
+                      <div className="flex flex-col h-full w-full">
+                        {/* High-tech JARVIS sub-tab bar */}
+                        <div className="flex flex-wrap gap-2.5 p-3 bg-slate-950/70 border-b border-cyan-500/15 shrink-0 select-none">
+                          <button
+                            onClick={() => setEvolutionSubTab("protocol")}
+                            className={`px-4 py-2 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-2 relative ${
+                              evolutionSubTab === "protocol"
+                                ? "bg-cyan-500/15 text-cyan-300 border border-cyan-500/35 shadow-[0_0_15px_rgba(0,212,255,0.12)]"
+                                : "text-slate-400 hover:text-slate-200 border border-slate-800 hover:border-slate-700 bg-slate-900/30"
+                            }`}
+                          >
+                            <Cpu className={`w-3.5 h-3.5 ${evolutionSubTab === "protocol" ? "text-cyan-400 animate-pulse" : ""}`} />
+                            <span>{lang === "bn" ? "অটোনমাস সেলফ-আপডেট প্রোটোকল" : "Autonomous Self-Update Protocol"}</span>
+                          </button>
+                          <button
+                            onClick={() => setEvolutionSubTab("status")}
+                            className={`px-4 py-2 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-2 relative ${
+                              evolutionSubTab === "status"
+                                ? "bg-cyan-500/15 text-cyan-300 border border-cyan-500/35 shadow-[0_0_15px_rgba(0,212,255,0.12)]"
+                                : "text-slate-400 hover:text-slate-200 border border-slate-800 hover:border-slate-700 bg-slate-900/30"
+                            }`}
+                          >
+                            <Sparkles className={`w-3.5 h-3.5 ${evolutionSubTab === "status" ? "text-cyan-400 animate-bounce" : ""}`} />
+                            <span>{lang === "bn" ? "ইভোলিউশনারি মেমরি ও স্ট্যাটাস" : "Evolutionary Status & Memories"}</span>
+                          </button>
+                        </div>
+                        <div className="flex-1 overflow-auto min-h-0">
+                          {evolutionSubTab === "protocol" ? (
+                            <SelfEvolutionView lang={lang} />
+                          ) : (
+                            <EvolutionaryStatusView
+                              lang={lang}
+                              tasks={tasks}
+                              memories={memories}
+                              onAddMemory={handleAddMemory}
+                              unlockedFeatures={unlockedFeatures}
+                              onUnlockFeature={handleUnlockFeature}
+                              latencyHistory={latencyHistory}
+                            />
+                          )}
+                        </div>
+                      </div>
                     )}
 
                     {activeTab === "vscode" && <VSCodeView />}

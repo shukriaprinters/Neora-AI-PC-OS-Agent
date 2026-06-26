@@ -56,6 +56,8 @@ interface ChatViewProps {
   geminiKey: string;
   setGeminiKey: (val: string) => void;
   onSelfEvolution?: (action: string) => void;
+  groqStatus?: "available" | "offline" | "checking" | "missing_key" | "not_responding";
+  ollamaDiagnosticStatus?: "available" | "partial" | "not_installed" | "checking" | "error_backoff" | "not_responding";
 }
 
 function getOfflineReply(userText: string, lang: 'en' | 'bn'): string {
@@ -158,7 +160,9 @@ export function ChatView({
   setGroqModel,
   geminiKey,
   setGeminiKey,
-  onSelfEvolution
+  onSelfEvolution,
+  groqStatus,
+  ollamaDiagnosticStatus
 }: ChatViewProps) {
   const t = TRANSLATIONS[lang];
   const [threads, setThreads] = useState<Array<{ id: string; title: string; messages: Message[]; timestamp: string }>>(() => {
@@ -746,6 +750,11 @@ const handleUpdateMessage = async (id: string, newText: string) => {
       setIsSpeaking(false);
       if (onSpeechFinished) onSpeechFinished();
       return;
+    }
+
+    const hasBengali = /[\u0980-\u09FF]/.test(text);
+    if (hasBengali) {
+      window.dispatchEvent(new CustomEvent("neora-force-lang-bn"));
     }
 
     if (typeof (window as any).neoraSpeak === "function") {
@@ -1893,6 +1902,33 @@ const handleUpdateMessage = async (id: string, newText: string) => {
                   value={activeBrain}
                   onChange={(e) => {
                     const selected = e.target.value as 'gemini' | 'groq' | 'ollama';
+                    if (selected === 'groq' && groqStatus === 'not_responding') {
+                      window.dispatchEvent(new CustomEvent("neora-system-event", {
+                        detail: {
+                          id: "prevent-inactive-" + Math.floor(Math.random() * 100000),
+                          timestamp: new Date().toTimeString().split(" ")[0],
+                          category: "system_heal",
+                          level: "WARNING",
+                          message: lang === 'bn' ? "গ্রক (Groq) এআই সাড়া দিচ্ছে না। নির্বাচন বাতিল করা হলো।" : "Groq is not responding. Selection aborted to prevent errors.",
+                          details: "Diagnostics reported Groq status: not_responding. Active LLM remains unchanged."
+                        }
+                      }));
+                      return;
+                    }
+                    if (selected === 'ollama' && ollamaDiagnosticStatus === 'not_responding') {
+                      window.dispatchEvent(new CustomEvent("neora-system-event", {
+                        detail: {
+                          id: "prevent-inactive-" + Math.floor(Math.random() * 100000),
+                          timestamp: new Date().toTimeString().split(" ")[0],
+                          category: "system_heal",
+                          level: "WARNING",
+                          message: lang === 'bn' ? "ওল্লামা (Ollama) লোকাল ব্রেন সাড়া দিচ্ছে না। নির্বাচন বাতিল করা হলো।" : "Ollama is not responding. Selection aborted to prevent errors.",
+                          details: "Diagnostics reported Ollama status: not_responding. Active LLM remains unchanged."
+                        }
+                      }));
+                      return;
+                    }
+
                     setActiveBrain(selected);
                     if (selected === 'groq') {
                       setUseGroq(true);
@@ -1996,7 +2032,36 @@ const handleUpdateMessage = async (id: string, newText: string) => {
               <select
                 id="neora-model-select-dropdown"
                 value={activeBrain}
-                onChange={(e) => setActiveBrain(e.target.value as 'gemini' | 'groq' | 'ollama')}
+                onChange={(e) => {
+                  const selected = e.target.value as 'gemini' | 'groq' | 'ollama';
+                  if (selected === 'groq' && groqStatus === 'not_responding') {
+                    window.dispatchEvent(new CustomEvent("neora-system-event", {
+                      detail: {
+                        id: "prevent-inactive-" + Math.floor(Math.random() * 100000),
+                        timestamp: new Date().toTimeString().split(" ")[0],
+                        category: "system_heal",
+                        level: "WARNING",
+                        message: lang === 'bn' ? "গ্রক (Groq) এআই সাড়া দিচ্ছে না। নির্বাচন বাতিল করা হলো।" : "Groq is not responding. Selection aborted to prevent errors.",
+                        details: "Diagnostics reported Groq status: not_responding. Active LLM remains unchanged."
+                      }
+                    }));
+                    return;
+                  }
+                  if (selected === 'ollama' && ollamaDiagnosticStatus === 'not_responding') {
+                    window.dispatchEvent(new CustomEvent("neora-system-event", {
+                      detail: {
+                        id: "prevent-inactive-" + Math.floor(Math.random() * 100000),
+                        timestamp: new Date().toTimeString().split(" ")[0],
+                        category: "system_heal",
+                        level: "WARNING",
+                        message: lang === 'bn' ? "ওল্লামা (Ollama) লোকাল ব্রেন সাড়া দিচ্ছে না। নির্বাচন বাতিল করা হলো।" : "Ollama is not responding. Selection aborted to prevent errors.",
+                        details: "Diagnostics reported Ollama status: not_responding. Active LLM remains unchanged."
+                      }
+                    }));
+                    return;
+                  }
+                  setActiveBrain(selected);
+                }}
                 className="w-full bg-slate-900 border border-slate-800 rounded-lg py-1.5 px-2.5 text-white focus:outline-none focus:ring-1 focus:ring-indigo-500/50 cursor-pointer font-mono text-[11px]"
               >
                 <option value="gemini">Gemini 2.5 Flash Core (Recommended)</option>
@@ -2022,7 +2087,22 @@ const handleUpdateMessage = async (id: string, newText: string) => {
 
               <button
                 type="button"
-                onClick={() => setActiveBrain('groq')}
+                onClick={() => {
+                  if (groqStatus === 'not_responding') {
+                    window.dispatchEvent(new CustomEvent("neora-system-event", {
+                      detail: {
+                        id: "prevent-inactive-" + Math.floor(Math.random() * 100000),
+                        timestamp: new Date().toTimeString().split(" ")[0],
+                        category: "system_heal",
+                        level: "WARNING",
+                        message: lang === 'bn' ? "গ্রক (Groq) এআই সাড়া দিচ্ছে না। নির্বাচন বাতিল করা হলো।" : "Groq is not responding. Selection aborted to prevent errors.",
+                        details: "Diagnostics reported Groq status: not_responding. Active LLM remains unchanged."
+                      }
+                    }));
+                    return;
+                  }
+                  setActiveBrain('groq');
+                }}
                 className={`py-2 px-1.5 rounded-lg border text-center font-bold tracking-wider transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
                   activeBrain === 'groq'
                     ? 'bg-indigo-950/20 text-indigo-400 border-indigo-500/50 shadow-[0_0_12px_rgba(99,102,241,0.15)]'
@@ -2035,7 +2115,22 @@ const handleUpdateMessage = async (id: string, newText: string) => {
 
               <button
                 type="button"
-                onClick={() => setActiveBrain('ollama')}
+                onClick={() => {
+                  if (ollamaDiagnosticStatus === 'not_responding') {
+                    window.dispatchEvent(new CustomEvent("neora-system-event", {
+                      detail: {
+                        id: "prevent-inactive-" + Math.floor(Math.random() * 100000),
+                        timestamp: new Date().toTimeString().split(" ")[0],
+                        category: "system_heal",
+                        level: "WARNING",
+                        message: lang === 'bn' ? "ওল্লামা (Ollama) লোকাল ব্রেন সাড়া দিচ্ছে না। নির্বাচন বাতিল করা হলো।" : "Ollama is not responding. Selection aborted to prevent errors.",
+                        details: "Diagnostics reported Ollama status: not_responding. Active LLM remains unchanged."
+                      }
+                    }));
+                    return;
+                  }
+                  setActiveBrain('ollama');
+                }}
                 className={`py-2 px-1.5 rounded-lg border text-center font-bold tracking-wider transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
                   activeBrain === 'ollama'
                     ? 'bg-cyan-950/20 text-cyan-400 border-cyan-500/50 shadow-[0_0_12px_rgba(6,182,212,0.15)]'

@@ -52,6 +52,47 @@ async function fetchWithRetry(path: string, init: RequestInit, options?: NeoraFe
       }
     } catch (error) {
       lastError = error;
+      
+      const errMsg = error instanceof Error ? error.message : String(error);
+      const isFailedToFetch = errMsg.includes("Failed to fetch") || errMsg.includes("fetch") || errMsg.includes("NetworkError");
+      const isLocalService = path.includes("ollama") || path.includes("11434") || path.includes("local") || path.includes("/api/chat-ollama");
+      
+      if (isFailedToFetch && isLocalService) {
+        if (typeof window !== "undefined") {
+          // Dispatch SystemEvent to AutoHealRegistry
+          const customEvt = new CustomEvent("neora-system-event", {
+            detail: {
+              id: "heal-failed-fetch-" + Math.floor(Math.random() * 100000),
+              timestamp: new Date().toTimeString().split(" ")[0],
+              category: "system_heal",
+              level: "WARNING",
+              message: `Local Service Failure: Failed to fetch on '${path}'`,
+              details: JSON.stringify({
+                path,
+                error: errMsg,
+                attempt: attempt + 1,
+                action: "Initiated a graceful background retry cycle and notified UI.",
+                timestamp: new Date().toISOString()
+              }, null, 2),
+              latency: "1.5ms"
+            }
+          });
+          window.dispatchEvent(customEvt);
+
+          // Notify UI of status
+          const statusEvt = new CustomEvent("neora-autoheal-retry", {
+            detail: {
+              path,
+              attempt: attempt + 1,
+              service: "ollama",
+              status: "retrying",
+              message: `Re-attempting connection to local Ollama (Attempt ${attempt + 1}/${retries})...`
+            }
+          });
+          window.dispatchEvent(statusEvt);
+        }
+      }
+
       if (attempt === retries) {
         throw new NeoraApiError(path, error instanceof Error ? error.message : "Request failed");
       }
@@ -214,24 +255,156 @@ export function sanitizeTextForVoice(text: string): string {
   return clean.trim();
 }
 
+export interface LLMProviderResponse {
+  text: string;
+  provider: 'gemini' | 'groq' | 'ollama';
+  modelUsed: string;
+  audioMetadata?: {
+    speakText: string;
+    shouldSpeak: boolean;
+    voiceRate?: number;
+    voicePitch?: number;
+    lang?: 'en' | 'bn';
+  };
+  success: boolean;
+  error?: string;
+}
+
+export interface LLMProviderAdapter {
+  chat(provider: 'gemini' | 'groq' | 'ollama', options: UnifiedLlmOptions): Promise<LLMProviderResponse>;
+}
+
+export const LLMRequestAdapter: LLMProviderAdapter = {
+  async chat(provider: 'gemini' | 'groq' | 'ollama', options: UnifiedLlmOptions): Promise<LLMProviderResponse> {
+    const maxRetries = 3;
+    const initialDelay = 500;
+    let lastError: any = null;
+
+    const modelsToTry: Array<'gemini' | 'groq' | 'ollama'> = [provider];
+    if (provider === 'gemini') {
+      modelsToTry.push('groq', 'ollama');
+    } else if (provider === 'groq') {
+      modelsToTry.push('gemini', 'ollama');
+    } else {
+      modelsToTry.push('gemini', 'groq');
+    }
+
+    for (const activeProvider of modelsToTry) {
+      let endpoint = '/api/chat-gemini';
+      if (activeProvider === 'groq') endpoint = '/api/chat-groq';
+      if (activeProvider === 'ollama') endpoint = '/api/chat-ollama';
+
+      const requestPayload: any = {
+        messages: options.messages,
+        lang: options.lang || 'en',
+      };
+
+      if (activeProvider === 'gemini') {
+        requestPayload.geminiKey = options.geminiKey;
+      } else if (activeProvider === 'groq') {
+        requestPayload.key = options.groqKey;
+        if (options.model && options.model !== 'llama3') {
+          requestPayload.model = options.model;
+        }
+      } else if (activeProvider === 'ollama') {
+        requestPayload.ollamaBaseUrl = options.ollamaBaseUrl;
+        requestPayload.model = options.model === 'llama-3.3-70b-versatile' ? 'llama3' : options.model;
+      }
+
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          console.log(`[LLMRequestAdapter] Attempting ${activeProvider} on ${endpoint}, attempt ${attempt + 1}...`);
+          
+          const res = await neoraPost<any>(endpoint, requestPayload, { retries: 0 });
+
+          // Detect if response is 503/504 or other overloaded statuses
+          const errorCode = res?.error?.code || res?.status_code || res?.statusCode;
+          const errorMessage = res?.error?.message || res?.message || res?.error || "";
+          
+          const isUnavailable = errorCode === 503 || errorCode === 504 || 
+                                errorMessage.includes("503") || errorMessage.includes("504") || 
+                                errorMessage.includes("Service Unavailable") || errorMessage.includes("Gateway Timeout") || 
+                                errorMessage.includes("overloaded") || errorMessage.includes("temporary");
+
+          if (isUnavailable) {
+            throw new Error(`Service Unavailable (503/504): ${errorMessage}`);
+          }
+
+          if (res && (res.status === 'api_key_missing' || res.error || res.status === 'error')) {
+            throw new Error(res.message || res.error || `${activeProvider} returned error status.`);
+          }
+
+          const rawText = res?.text || res?.content || res?.choices?.[0]?.message?.content || "";
+          const containsBangla = /[\u0980-\u09FF]/.test(rawText);
+
+          return {
+            text: rawText,
+            provider: activeProvider,
+            modelUsed: options.model || (activeProvider === 'gemini' ? 'gemini-3.5-flash' : activeProvider === 'groq' ? 'llama3' : 'ollama-default'),
+            audioMetadata: {
+              speakText: sanitizeTextForVoice(rawText),
+              shouldSpeak: true,
+              lang: containsBangla ? 'bn' : (options.lang as 'en' | 'bn' || 'en')
+            },
+            success: true
+          };
+
+        } catch (err: any) {
+          console.warn(`[LLMRequestAdapter] Attempt ${attempt + 1} failed for ${activeProvider}. Error:`, err);
+          lastError = err;
+
+          const errString = err.message || String(err);
+          const is503_504 = errString.includes("503") || errString.includes("504") || 
+                            errString.includes("Service Unavailable") || errString.includes("Gateway Timeout") || 
+                            errString.includes("overloaded") || errString.includes("temporary");
+          
+          if (is503_504 && attempt < maxRetries) {
+            const delay = initialDelay * Math.pow(2, attempt);
+            console.log(`[LLMRequestAdapter] Detected 503/504 error. Retrying in ${delay}ms...`);
+            
+            if (typeof window !== "undefined") {
+              const customEvt = new CustomEvent("neora-system-event", {
+                detail: {
+                  id: "heal-503-" + Math.floor(Math.random() * 100000),
+                  timestamp: new Date().toTimeString().split(" ")[0],
+                  category: "system_heal",
+                  level: "WARNING",
+                  message: `503/504 Transient Error on ${activeProvider} - Retrying`,
+                  details: JSON.stringify({
+                    provider: activeProvider,
+                    endpoint,
+                    attempt: attempt + 1,
+                    delay_ms: delay,
+                    error: errString
+                  }, null, 2),
+                  latency: `${delay}ms`
+                }
+              });
+              window.dispatchEvent(customEvt);
+            }
+
+            await sleep(delay);
+            continue;
+          }
+          
+          // Try next fallback provider if it's a non-retriable error or we exhausted attempts
+          break;
+        }
+      }
+    }
+
+    throw new Error(`LLMRequestAdapter failed after trying fallbacks. Last error: ${lastError?.message || lastError}`);
+  }
+};
+
 export const UnifiedLlmService = {
   async chat(provider: 'gemini' | 'groq' | 'ollama', options: UnifiedLlmOptions): Promise<UnifiedLlmResponse> {
-    const result = await neoraChatWithFallback(provider, {
-      messages: options.messages,
-      lang: options.lang,
-      geminiKey: options.geminiKey,
-      groqKey: options.groqKey,
-      model: options.model,
-      ollamaBaseUrl: options.ollamaBaseUrl
-    });
-
-    const rawText = result.response?.text || result.response?.content || result.response?.choices?.[0]?.message?.content || "";
-    
+    const res = await LLMRequestAdapter.chat(provider, options);
     return {
-      text: rawText,
-      provider: result.modelUsed,
-      modelUsed: options.model || (result.modelUsed === 'gemini' ? 'gemini-3.5-flash' : result.modelUsed === 'groq' ? 'llama3' : 'ollama-default'),
-      voiceText: sanitizeTextForVoice(rawText)
+      text: res.text,
+      provider: res.provider,
+      modelUsed: res.modelUsed,
+      voiceText: res.audioMetadata?.speakText || sanitizeTextForVoice(res.text)
     };
   }
 };
