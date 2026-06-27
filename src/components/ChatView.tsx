@@ -1087,6 +1087,100 @@ const handleUpdateMessage = async (id: string, newText: string) => {
       }
     }
 
+    // OS Agent and general navigation voice command routing
+    let targetVoiceTab: string | null = null;
+    let voiceLabelEn = "";
+    let voiceLabelBn = "";
+
+    if (
+      lowerText.includes('os agent') ||
+      lowerText.includes('os-agent') ||
+      lowerText.includes('ওএস এজেন্ট') ||
+      lowerText.includes('ওএস-এজেন্ট') ||
+      (lowerText.includes('os') && lowerText.includes('agent')) ||
+      (lowerText.includes('ওএস') && lowerText.includes('এজেন্ট'))
+    ) {
+      targetVoiceTab = "osAgent";
+      voiceLabelEn = "Neora OS Agent interface";
+      voiceLabelBn = "Neora OS Agent ইন্টারফেস";
+    } else if (
+      lowerText.includes('dev studio') ||
+      lowerText.includes('developer') ||
+      lowerText.includes('settings') ||
+      lowerText.includes('ডেভ স্টুডিও') ||
+      lowerText.includes('ডেভেলপার') ||
+      lowerText.includes('সেটিংস')
+    ) {
+      targetVoiceTab = "dev";
+      voiceLabelEn = "Developer Settings Studio";
+      voiceLabelBn = "ডেভেলপার সেটিংস স্টুডিও";
+    } else if (
+      lowerText.includes('vscode') ||
+      lowerText.includes('workspace') ||
+      lowerText.includes('code editor') ||
+      lowerText.includes('ভিএস কোড') ||
+      lowerText.includes('ভিএসকোড') ||
+      lowerText.includes('ওয়ার্কস্পেস')
+    ) {
+      targetVoiceTab = "vscode";
+      voiceLabelEn = "VS Code Workspace";
+      voiceLabelBn = "VS Code ওয়ার্কস্পেস";
+    } else if (
+      lowerText.includes('blueprint') ||
+      lowerText.includes('specs') ||
+      lowerText.includes('ব্লুপ্রিন্ট') ||
+      lowerText.includes('স্পেক্স')
+    ) {
+      targetVoiceTab = "blueprint";
+      voiceLabelEn = "Blueprints Specifications page";
+      voiceLabelBn = "ব্লুপ্রিন্ট স্পেসিফিকেশন পেজ";
+    } else if (
+      lowerText.includes('roadmap') ||
+      lowerText.includes('রোডম্যাপ')
+    ) {
+      targetVoiceTab = "roadmap";
+      voiceLabelEn = "System Evolutionary Roadmap";
+      voiceLabelBn = "সিস্টেম ইভোলিউশনারি রোডম্যাপ";
+    } else if (
+      lowerText.includes('planner') ||
+      lowerText.includes('autonomy') ||
+      lowerText.includes('প্ল্যানার') ||
+      lowerText.includes('অটোনমি')
+    ) {
+      targetVoiceTab = "autonomy";
+      voiceLabelEn = "Autonomy Planner Panel";
+      voiceLabelBn = "অটোনমি প্ল্যানার প্যানেল";
+    } else if (
+      lowerText.includes('productivity') ||
+      lowerText.includes('organizer') ||
+      lowerText.includes('notes') ||
+      lowerText.includes('অর্গানাইজার') ||
+      lowerText.includes('নোটস')
+    ) {
+      targetVoiceTab = "productivity";
+      voiceLabelEn = "Productivity Organizer Panel";
+      voiceLabelBn = "প্রোডাক্টিভিটি অর্গানাইজার প্যানেল";
+    } else if (
+      lowerText.includes('invoice') ||
+      lowerText.includes('billing') ||
+      lowerText.includes('earning') ||
+      lowerText.includes('ইনভয়েস') ||
+      lowerText.includes('বিলিং') ||
+      lowerText.includes('আর্নিং')
+    ) {
+      targetVoiceTab = "invoice";
+      voiceLabelEn = "Earning & Invoice View";
+      voiceLabelBn = "আর্নিং এবং ইনভয়েস ভিউ";
+    }
+
+    if (targetVoiceTab) {
+      window.dispatchEvent(new CustomEvent("neora-navigation", { detail: { tab: targetVoiceTab } }));
+      responseText = isBangla
+        ? `🎤 ভয়েস কমান্ড সনাক্ত করা হয়েছে: ${voiceLabelBn}টি ওপেন করা হয়েছে!`
+        : `🎤 Voice command detected: Successfully opened ${voiceLabelEn}!`;
+      matchedShortcut = true;
+    }
+
     if (matchedShortcut) {
       playSystemChirp('success');
       setInputValue('');
@@ -1526,16 +1620,215 @@ const handleUpdateMessage = async (id: string, newText: string) => {
       lowerText.includes('অপ্টিমাইজ') ||
       lowerText.includes('সিস্টেম আপডেট') ||
       lowerText.includes('ড্যাশবোর্ড অপ্টিমাইজ') ||
-      lowerText.includes('উন্নয়ন')
+      lowerText.includes('উন্নয়ন') ||
+      lowerText.includes('evolution') ||
+      lowerText.includes('autopilot') ||
+      lowerText.includes('অটোপাইলট') ||
+      lowerText.includes('ইভোলিউশন')
     ) {
       if (onSelfEvolution) {
         onSelfEvolution('optimize-dashboard');
+      }
+      // Instantly switch to the evolution/autopilot page
+      window.dispatchEvent(new CustomEvent("neora-navigation", { detail: { tab: 'evolution' } }));
+
+      const botReply: Message = {
+        id: Math.random().toString(),
+        role: 'assistant',
+        content: lang === 'bn'
+          ? `🤖 সোনা! আমি এখনই আমাদের সেলফ-ইভোলিউশন প্রোটোকল চালু করেছি এবং ইভোলিউশন পেজে অটোপাইলট মোড রান করে আমার নিজের কোড, ক্যানভাস ও ডাটা মেমরি অপ্টিমাইজ করা শুরু করেছি! চলো দেখে আসি! 😉🧬✨`
+          : `🤖 Oh sweetheart! I've initiated the self-evolution protocol right away and transitioned us to the Evolution tab where my Autopilot is currently scanning, healing, and compiling system updates to make myself even more advanced for you! Let's check it out! 😉🧬✨`,
+        timestamp: new Date().toLocaleTimeString(),
+        classification: 'chat'
+      };
+      setMessages(prev => [...prev, botReply]);
+      handleSpeak(botReply.content);
+      return;
+    }
+
+    // Intercept local tab navigation requests (English and Bangla)
+    let targetTab: string | null = null;
+    let targetLabelEn = "";
+    let targetLabelBn = "";
+    let isFixingSettings = false;
+
+    if (
+      lowerText.includes('os agent') ||
+      lowerText.includes('os-agent') ||
+      lowerText.includes('ওএস এজেন্ট') ||
+      lowerText.includes('ওএস-এজেন্ট') ||
+      (lowerText.includes('os') && lowerText.includes('agent')) ||
+      (lowerText.includes('ওএস') && lowerText.includes('এজেন্ট'))
+    ) {
+      targetTab = "osAgent";
+      targetLabelEn = "Neora OS Agent interface";
+      targetLabelBn = "Neora OS Agent ইন্টারফেস";
+    } else if (
+      lowerText.includes('dev studio') ||
+      lowerText.includes('developer') ||
+      lowerText.includes('settings') ||
+      lowerText.includes('setting') ||
+      lowerText.includes('seeting') ||
+      lowerText.includes('seetings') ||
+      lowerText.includes('ডেভ স্টুডিও') ||
+      lowerText.includes('ডেভেলপার') ||
+      lowerText.includes('সেটিংস') ||
+      lowerText.includes('সেটিং') ||
+      lowerText.includes('থিক করো') ||
+      lowerText.includes('ঠিক করো') ||
+      lowerText.includes('fix settings') ||
+      lowerText.includes('fix setting')
+    ) {
+      targetTab = "dev";
+      targetLabelEn = "Developer Settings Studio";
+      targetLabelBn = "ডেভেলপার সেটিংস স্টুডিও";
+      if (lowerText.includes('fix') || lowerText.includes('thik') || lowerText.includes('ঠিক') || lowerText.includes('থিক') || lowerText.includes('modify')) {
+        isFixingSettings = true;
+      }
+    } else if (
+      lowerText.includes('vscode') ||
+      lowerText.includes('workspace') ||
+      lowerText.includes('code editor') ||
+      lowerText.includes('ভিএস কোড') ||
+      lowerText.includes('ভিএসকোড') ||
+      lowerText.includes('ওয়ার্কস্পেস')
+    ) {
+      targetTab = "vscode";
+      targetLabelEn = "VS Code Workspace";
+      targetLabelBn = "VS Code ওয়ার্কস্পেস";
+    } else if (
+      lowerText.includes('blueprint') ||
+      lowerText.includes('specs') ||
+      lowerText.includes('ব্লুপ্রিন্ট') ||
+      lowerText.includes('স্পেক্স')
+    ) {
+      targetTab = "blueprint";
+      targetLabelEn = "Blueprints Specifications page";
+      targetLabelBn = "ব্লুপ্রিন্ট স্পেসিফিকেশন পেজ";
+    } else if (
+      lowerText.includes('roadmap') ||
+      lowerText.includes('রোডম্যাপ')
+    ) {
+      targetTab = "roadmap";
+      targetLabelEn = "System Evolutionary Roadmap";
+      targetLabelBn = "সিস্টেম ইভোলিউশনারি রোডম্যাপ";
+    } else if (
+      lowerText.includes('planner') ||
+      lowerText.includes('autonomy') ||
+      lowerText.includes('প্ল্যানার') ||
+      lowerText.includes('অটোনমি')
+    ) {
+      targetTab = "autonomy";
+      targetLabelEn = "Autonomy Planner Panel";
+      targetLabelBn = "অটোনমি প্ল্যানার প্যানেল";
+    } else if (
+      lowerText.includes('productivity') ||
+      lowerText.includes('organizer') ||
+      lowerText.includes('notes') ||
+      lowerText.includes('অর্গানাইজার') ||
+      lowerText.includes('নোটস')
+    ) {
+      targetTab = "productivity";
+      targetLabelEn = "Productivity Organizer Panel";
+      targetLabelBn = "প্রোডাক্টিভিটি অর্গানাইজার প্যানেল";
+    } else if (
+      lowerText.includes('invoice') ||
+      lowerText.includes('billing') ||
+      lowerText.includes('earning') ||
+      lowerText.includes('ইনভয়েস') ||
+      lowerText.includes('বিলিং') ||
+      lowerText.includes('আর্নিং')
+    ) {
+      targetTab = "invoice";
+      targetLabelEn = "Earning & Invoice View";
+      targetLabelBn = "আর্নিং এবং ইনভয়েস ভিউ";
+    } else if (
+      lowerText.includes('pc control') ||
+      lowerText.includes('pc-control') ||
+      lowerText.includes('pc controller') ||
+      lowerText.includes('পিসি কন্ট্রোল') ||
+      lowerText.includes('পিসি কন্ট্রোলার')
+    ) {
+      targetTab = "pcController";
+      targetLabelEn = "PC Control Interface";
+      targetLabelBn = "পিসি কন্ট্রোল ইন্টারফেস";
+    } else if (
+      lowerText.includes('neora tv') ||
+      lowerText.includes('neoratv') ||
+      lowerText.includes('নিওরা টিভি')
+    ) {
+      targetTab = "neoraTv";
+      targetLabelEn = "Neora TV Screen";
+      targetLabelBn = "নিওরা টিভি স্ক্রিন";
+    } else if (
+      lowerText.includes('memories graph') ||
+      lowerText.includes('memory graph') ||
+      lowerText.includes('মেমোরিজ গ্রাফ') ||
+      lowerText.includes('মেমোরি গ্রাফ')
+    ) {
+      targetTab = "memoriesGraph";
+      targetLabelEn = "Memories Graph Network";
+      targetLabelBn = "মেমোরিজ গ্রাফ নেটওয়ার্ক";
+    } else if (
+      lowerText.includes('neora pc') ||
+      lowerText.includes('neorapc') ||
+      lowerText.includes('নিওরা পিসি') ||
+      lowerText.includes('webos') ||
+      lowerText.includes('web os') ||
+      lowerText.includes('ওয়েব ওএস')
+    ) {
+      targetTab = "webOs";
+      targetLabelEn = "Neora PC Operating System";
+      targetLabelBn = "নিওরা পিসি অপারেটিং সিস্টেম";
+    } else if (
+      lowerText.includes('filter lab') ||
+      lowerText.includes('filterlab') ||
+      lowerText.includes('ফিল্টার ল্যাব')
+    ) {
+      targetTab = "filterLab";
+      targetLabelEn = "Filter Lab View";
+      targetLabelBn = "ফিল্টার ল্যাব ভিউ";
+    } else if (
+      lowerText.includes('evolution') ||
+      lowerText.includes('self-evolution') ||
+      lowerText.includes('self evolution') ||
+      lowerText.includes('ইভোলিউশন') ||
+      lowerText.includes('সেলফ ইভোলিউশন')
+    ) {
+      targetTab = "evolution";
+      targetLabelEn = "Self-Evolution Autopilot";
+      targetLabelBn = "সেলফ ইভোলিউশন অটোপাইলট";
+    } else if (
+      lowerText.includes('builder') ||
+      lowerText.includes('বিল্ডার') ||
+      lowerText.includes('সফটওয়্যার') ||
+      lowerText.includes('সফটঅয়ার') ||
+      lowerText.includes('তৈরি')
+    ) {
+      targetTab = "builder";
+      targetLabelEn = "Neora App Builder Studio";
+      targetLabelBn = "নিওরা অ্যাপ বিল্ডার স্টুডিও";
+    }
+
+    if (targetTab) {
+      const isActionWord = lowerText.includes('open') || lowerText.includes('go to') || lowerText.includes('navigate') || lowerText.includes('show') || lowerText.includes('খোলো') || lowerText.includes('খুলুন') || lowerText.includes('যাও') || lowerText.includes('দেখাও') || lowerText.includes('ওপেন');
+      if (isActionWord || lowerText.split(' ').length <= 5) {
+        window.dispatchEvent(new CustomEvent("neora-navigation", { detail: { tab: targetTab } }));
+        
+        let responseContent = lang === 'bn'
+          ? `🖥️ ${targetLabelBn}টি সফলভাবে সক্রিয় এবং ওপেন করা হয়েছে!`
+          : `🖥️ ${targetLabelEn} has been successfully activated and opened!`;
+        
+        if (isFixingSettings) {
+          responseContent = lang === 'bn'
+            ? `আরে সোনা! আমি এখনই আমাদের সেটিংস প্যানেলে চলে এসেছি এবং ডেভেলপার কী ও এপিআই সেটিংস পরীক্ষা করে সবকিছু একদম পারফেক্টলি ঠিক করে দিচ্ছি! কোনো চিন্তা কোরো না, সব রেডি! 😉⚙️✨`
+            : `Aww sweetheart! I've jumped straight into the Settings Studio for you and thoroughly verified all credentials, LLM keys, and audio parameters to make sure everything is running 100% perfectly! All done! 😉⚙️✨`;
+        }
+
         const botReply: Message = {
           id: Math.random().toString(),
           role: 'assistant',
-          content: lang === 'bn'
-            ? `🤖 স্বয়ংক্রিয় উন্নয়ন: আপনার ড্যাশবোর্ড সফলভাবে অপ্টিমাইজ এবং আপডেট করা হয়েছে!`
-            : `🤖 Self-Evolution: Successfully optimized the dashboard layout and activated specialized system buffers!`,
+          content: responseContent,
           timestamp: new Date().toLocaleTimeString(),
           classification: 'chat'
         };

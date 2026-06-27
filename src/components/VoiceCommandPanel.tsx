@@ -47,7 +47,111 @@ const NAV_ALIASES: Record<string, string> = {
 function parseCommand(text: string): { type: string; payload: any } | null {
   const t = text.toLowerCase().trim();
 
-  if (t.includes('optimize') || t.includes('self-evolution') || t.includes('self evolution') || t.includes('অপ্টিমাইজ') || t.includes('সিস্টেম আপডেট') || t.includes('উন্নয়ন')) {
+  // Robust flexible navigation check for both English and Bangla commands
+  const lowerT = t.toLowerCase();
+  let foundTab: string | null = null;
+  let foundDest = "";
+
+  if (
+    lowerT.includes('os agent') ||
+    lowerT.includes('os-agent') ||
+    lowerT.includes('ওএস এজেন্ট') ||
+    lowerT.includes('ওএস-এজেন্ট') ||
+    (lowerT.includes('os') && lowerT.includes('agent')) ||
+    (lowerT.includes('ওএস') && lowerT.includes('এজেন্ট'))
+  ) {
+    foundTab = "osAgent";
+    foundDest = "os agent";
+  } else if (
+    lowerT.includes('dev studio') ||
+    lowerT.includes('developer') ||
+    lowerT.includes('settings') ||
+    lowerT.includes('setting') ||
+    lowerT.includes('seeting') ||
+    lowerT.includes('seetings') ||
+    lowerT.includes('ডেভ স্টুডিও') ||
+    lowerT.includes('ডেভেলপার') ||
+    lowerT.includes('সেটিংস') ||
+    lowerT.includes('সেটিং') ||
+    lowerT.includes('থিক করো') ||
+    lowerT.includes('ঠিক করো') ||
+    lowerT.includes('fix settings') ||
+    lowerT.includes('fix setting')
+  ) {
+    foundTab = "dev";
+    foundDest = "dev studio";
+  } else if (
+    lowerT.includes('vscode') ||
+    lowerT.includes('workspace') ||
+    lowerT.includes('code editor') ||
+    lowerT.includes('ভিএস কোড') ||
+    lowerT.includes('ভিএসকোড') ||
+    lowerT.includes('ওয়ার্কস্পেস')
+  ) {
+    foundTab = "vscode";
+    foundDest = "workspace";
+  } else if (
+    lowerT.includes('blueprint') ||
+    lowerT.includes('specs') ||
+    lowerT.includes('ব্লুপ্রিন্ট') ||
+    lowerT.includes('স্পেক্স')
+  ) {
+    foundTab = "blueprint";
+    foundDest = "blueprints";
+  } else if (
+    lowerT.includes('roadmap') ||
+    lowerT.includes('রোডম্যাপ')
+  ) {
+    foundTab = "roadmap";
+    foundDest = "roadmap";
+  } else if (
+    lowerT.includes('planner') ||
+    lowerT.includes('autonomy') ||
+    lowerT.includes('প্ল্যানার') ||
+    lowerT.includes('অটোনমি')
+  ) {
+    foundTab = "autonomy";
+    foundDest = "autonomy";
+  } else if (
+    lowerT.includes('productivity') ||
+    lowerT.includes('organizer') ||
+    lowerT.includes('notes') ||
+    lowerT.includes('অর্গানাইজার') ||
+    lowerT.includes('নোটস')
+  ) {
+    foundTab = "productivity";
+    foundDest = "productivity";
+  } else if (
+    lowerT.includes('invoice') ||
+    lowerT.includes('billing') ||
+    lowerT.includes('earning') ||
+    lowerT.includes('ইনভয়েস') ||
+    lowerT.includes('বিলিং') ||
+    lowerT.includes('আর্নিং')
+  ) {
+    foundTab = "invoice";
+    foundDest = "invoice";
+  }
+
+  if (foundTab) {
+    const isAction = lowerT.includes('open') || lowerT.includes('go to') || lowerT.includes('navigate') || lowerT.includes('show') || lowerT.includes('খোলো') || lowerT.includes('খুলুন') || lowerT.includes('যাও') || lowerT.includes('দেখাও') || lowerT.includes('ওপেন') || lowerT.includes('ঠিক করো') || lowerT.includes('thik koro') || lowerT.includes('fix');
+    if (isAction || lowerT.split(' ').length <= 5) {
+      return { type: 'navigate', payload: { tab: foundTab, dest: foundDest } };
+    }
+  }
+
+  if (
+    t.includes('optimize') ||
+    t.includes('self-evolution') ||
+    t.includes('self evolution') ||
+    t.includes('অপ্টিমাইজ') ||
+    t.includes('সিস্টেম আপডেট') ||
+    t.includes('উন্নয়ন') ||
+    t.includes('evolution') ||
+    t.includes('autopilot') ||
+    t.includes('অটোপাইলট') ||
+    t.includes('ইভোলিউশন')
+  ) {
     return { type: 'self-evolution', payload: { action: 'optimize-dashboard' } };
   }
 
@@ -306,12 +410,13 @@ export function VoiceCommandPanel({ onAddTask, onAddNote, onAddReminder, onNavig
             onNavigate(cmd.payload.tab);
             actionLabel = `Navigated to ${cmd.payload.dest}`;
           } else if (cmd.type === 'self-evolution') {
+            onNavigate('evolution');
             if (onSelfEvolution) {
               onSelfEvolution(cmd.payload.action);
             }
             actionLabel = lang === 'bn' 
-              ? 'ড্যাশবোর্ড অপ্টিমাইজেশন সম্পন্ন!' 
-              : 'Autonomous layout optimization executed!';
+              ? 'সেলফ-ইভোলিউশন শুরু করেছি, সোনামণি! অপ্টিমাইজ করছি! 🤖🧬✨' 
+              : 'Autonomous layout optimization and self-evolution executed, sweetheart! 🤖🧬✨';
           }
         } catch {
           ok = false;

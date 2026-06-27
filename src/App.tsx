@@ -127,6 +127,10 @@ const EvolutionaryStatusView = lazyRetry<any>(
   () => import("./components/EvolutionaryStatusView"),
   "EvolutionaryStatusView",
 );
+const BuilderView = lazyRetry<any>(
+  () => import("./components/BuilderView"),
+  "BuilderView",
+);
 import { usePredictiveLayout } from "./components/DashboardManager";
 import { MetaAgent } from "./components/MetaAgent";
 import { SECTIONS, RAW_MASTER_PROMPT } from "./masterPromptText";
@@ -838,6 +842,7 @@ export default function App() {
     | "vscode"
     | "webOs"
     | "evolution"
+    | "builder"
   >(() => {
     return (localStorage.getItem("neora_active_tab") || "home") as any;
   });
@@ -845,6 +850,17 @@ export default function App() {
   React.useEffect(() => {
     localStorage.setItem("neora_active_tab", activeTab);
   }, [activeTab]);
+
+  React.useEffect(() => {
+    const handleNav = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail && customEvent.detail.tab) {
+        setActiveTab(customEvent.detail.tab);
+      }
+    };
+    window.addEventListener("neora-navigation", handleNav);
+    return () => window.removeEventListener("neora-navigation", handleNav);
+  }, []);
 
   const [evolutionSubTab, setEvolutionSubTab] = useState<"protocol" | "status">("protocol");
 
@@ -3144,6 +3160,8 @@ export default function App() {
                     )}
 
                     {activeTab === "vscode" && <VSCodeView />}
+
+                    {activeTab === "builder" && <BuilderView lang={lang} />}
                   </motion.div>
                 </AnimatePresence>
               </main>

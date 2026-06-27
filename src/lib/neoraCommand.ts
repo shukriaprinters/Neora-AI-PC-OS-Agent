@@ -259,11 +259,76 @@ export function classifyNeoraPrompt(prompt: string): NeoraCommandClassification 
     return "rejected";
   }
 
+  const normalized = prompt.toLowerCase();
+
+  // Explicitly check for Navigation commands first so they are classified as 'chat' instead of 'os-command'
+  if (
+    normalized.includes('os agent') ||
+    normalized.includes('os-agent') ||
+    normalized.includes('ওএস এজেন্ট') ||
+    normalized.includes('ওএস-এজেন্ট') ||
+    (normalized.includes('os') && normalized.includes('agent')) ||
+    (normalized.includes('ওএস') && normalized.includes('এজেন্ট')) ||
+    normalized.includes('chat') ||
+    normalized.includes('চ্যাট') ||
+    normalized.includes('dev studio') ||
+    normalized.includes('ডেভ স্টুডিও') ||
+    normalized.includes('roadmap') ||
+    normalized.includes('রোডম্যাপ') ||
+    normalized.includes('vscode') ||
+    normalized.includes('ভিএসকোড') ||
+    normalized.includes('settings') ||
+    normalized.includes('setting') ||
+    normalized.includes('seeting') ||
+    normalized.includes('seetings') ||
+    normalized.includes('সেটিংস') ||
+    normalized.includes('সেটিং') ||
+    normalized.includes('evolution') ||
+    normalized.includes('self-evolution') ||
+    normalized.includes('self evolution') ||
+    normalized.includes('autopilot') ||
+    normalized.includes('উন্নয়ন') ||
+    normalized.includes('অপ্টিমাইজ') ||
+    normalized.includes('অটোপাইলট') ||
+    normalized.includes('pc control') ||
+    normalized.includes('pc-control') ||
+    normalized.includes('pc controller') ||
+    normalized.includes('পিসি কন্ট্রোল') ||
+    normalized.includes('automation') ||
+    normalized.includes('অটোমেশন') ||
+    normalized.includes('অটমেশন') ||
+    normalized.includes('memory') ||
+    normalized.includes('মেমরি') ||
+    normalized.includes('মেমোরি') ||
+    normalized.includes('memories graph') ||
+    normalized.includes('মেমোরিজ গ্রাফ') ||
+    normalized.includes('invoice') ||
+    normalized.includes('ইনভয়েস') ||
+    normalized.includes('earning') ||
+    normalized.includes('আর্নিং') ||
+    normalized.includes('neora pc') ||
+    normalized.includes('নিওরা পিসি') ||
+    normalized.includes('webos') ||
+    normalized.includes('ওয়েব ওএস') ||
+    normalized.includes('filter lab') ||
+    normalized.includes('ফিল্টার ল্যাব') ||
+    normalized.includes('builder') ||
+    normalized.includes('বিল্ডার') ||
+    normalized.includes('neora tv') ||
+    normalized.includes('নিওরা টিভি')
+  ) {
+    const hasRemoteApp = [
+      "notepad", "calc", "calculator", "paint", "mspaint", "chrome", "photoshop", "illustrator", "winword", "excel", "powerpnt"
+    ].some(app => normalized.includes(app));
+    if (!hasRemoteApp) {
+      return "chat";
+    }
+  }
+
   if (isLikelyOsCommand(prompt)) {
     return "os-command";
   }
 
-  const normalized = prompt.toLowerCase();
   if (
     normalized.includes("task") ||
     normalized.includes("remind") ||

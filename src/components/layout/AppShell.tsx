@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import {
   Brain, LayoutDashboard, MessageSquare, Monitor,
   Settings, Workflow, Activity, Zap, Shield, ChevronRight, LayoutGrid,
-  DollarSign, Filter, Milestone, BookOpen, Laptop, Tv, Sliders, Share2
+  DollarSign, Filter, Milestone, BookOpen, Laptop, Tv, Sliders, Share2, Hammer
 } from "lucide-react";
 import { NebulaBackground } from "../NebulaBackground";
 import { VoiceOrb } from "../VoiceOrb";
@@ -11,6 +11,7 @@ import { motion } from "motion/react";
 const navItems = [
   { id: "home",         label: "Dashboard",   icon: LayoutGrid,      color: "#00d4ff" },
   { id: "chat",         label: "Neural Chat", icon: MessageSquare,   color: "#00d4ff" },
+  { id: "builder",      label: "Builder",     icon: Hammer,          color: "#c084fc" },
   { id: "neoraTv",      label: "Neora TV",    icon: Tv,              color: "#ff007c" },
   { id: "pcController", label: "PC Control",  icon: Sliders,         color: "#38bdf8" },
   { id: "autonomy",     label: "Automation",  icon: Workflow,        color: "#1a9fff" },

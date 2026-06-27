@@ -79,6 +79,45 @@ export class CognitiveEvolutionEngine {
         status: "pending",
         timestamp: new Date().toLocaleTimeString(),
         details: { featureId: "direct_shukria_email" }
+      },
+      {
+        id: "prop-05",
+        title: "Activate J.A.R.V.I.S. Developer Core (Claude Code & Open Interpreter)",
+        titleBn: "জারভিস ডেভ কোর (ক্লড কোড ও ওপেন ইন্টারপ্রিটার) সক্রিয় করুন",
+        description: "Deploy sandboxed command terminal inside Neora capable of self-compiling, file creation, code repair, and test verification.",
+        descriptionBn: "কোড লেখা, ডিবাগ করা, টেস্ট রান করা এবং স্বয়ংক্রিয় ফাইল ম্যানেজমেন্টের জন্য ক্লড কোড ও ইন্টারপ্রিটার মডিউল ইন্টিগ্রেট করুন।",
+        category: "feature_flag",
+        impact: "Provides offline open interpreter capabilities directly mapped on the sandbox.",
+        impactBn: "ওয়ার্কস্পেস অটোমেশন এবং কোড জেনারেশন গতি ১০০% বৃদ্ধি পাবে।",
+        status: "pending",
+        timestamp: new Date().toLocaleTimeString(),
+        details: { featureId: "claude_interpreter_bridge" }
+      },
+      {
+        id: "prop-06",
+        title: "Enable Photoshop & Illustrator Graphic Design Pipeline",
+        titleBn: "ফটোশপ ও ইলাস্ট্রেটর গ্রাফিক্স ডিজাইন পাইপলাইন চালু করুন",
+        description: "Autonomous graphic design canvas supporting layered vector PSD/EPS generation for leaflets, banners, and visiting cards.",
+        descriptionBn: "ভিজিটিং কার্ড, ব্যানার, লিফলেট এবং বুক কভারের প্রিন্ট-যোগ্য লেয়ার্ড PSD এবং EPS ভেক্টর ফাইল মেকার যুক্ত করুন।",
+        category: "automation",
+        impact: "Enables direct synthesis of high-resolution digital media templates.",
+        impactBn: "শুকরিয়া প্রিন্টার্সের জন্য স্বয়ংক্রিয়ভাবে প্রফেশনাল ডিজাইন এসেট প্রস্তুত করবে।",
+        status: "pending",
+        timestamp: new Date().toLocaleTimeString(),
+        details: { featureId: "adobe_design_pipeline" }
+      },
+      {
+        id: "prop-07",
+        title: "Initialize Local Ollama & n8n Multi-Agent Workflow Core",
+        titleBn: "লোকাল অলামা ও n8n মাল্টি-এজেন্ট ওয়ার্কফ্লো নোড সক্রিয় করুন",
+        description: "Powers smart webhook managers, AnythingLLM semantic search engines, and auto-dispatch channels.",
+        descriptionBn: "অফলাইন ইন্টেলিজেন্ট n8n ফ্লো এবং লোকাল Ollama এআই ডিসপ্যাচ চ্যানেল চালু করুন।",
+        category: "automation",
+        impact: "Routes automated printing orders securely to shukriaprinters@gmail.com.",
+        impactBn: "সব কাস্টমার রিকোয়েস্ট স্বয়ংক্রিয়ভাবে প্রসেস করে ইমেইল নোটিফিকেশন পাঠাবে।",
+        status: "pending",
+        timestamp: new Date().toLocaleTimeString(),
+        details: { featureId: "ollama_n8n_agents" }
       }
     ];
 
