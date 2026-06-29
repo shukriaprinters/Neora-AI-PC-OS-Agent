@@ -1290,7 +1290,7 @@ app.post("/api/chat-gemini", async (req, res) => {
 // Real-Time Streaming endpoint for LLM Chat responses supporting Gemini, Groq and Ollama
 app.post("/api/chat-stream", async (req, res) => {
   try {
-    const { messages, provider, model, lang, geminiKey, groqKey, ollamaBaseUrl } = req.body;
+    const { messages, provider, model, lang, geminiKey, groqKey, ollamaBaseUrl, activeSkills } = req.body;
     
     if (!messages || !Array.isArray(messages)) {
       return res.status(400).json({ error: "Missing messages array in request body" });
@@ -1313,7 +1313,18 @@ app.post("/api/chat-stream", async (req, res) => {
       activeLang = "bn";
     }
 
-    const systemInstruction = buildChatSystemInstruction(activeLang);
+    let systemInstruction = buildChatSystemInstruction(activeLang);
+
+    if (activeSkills && Array.isArray(activeSkills) && activeSkills.length > 0) {
+      const enabledSkills = activeSkills.filter((s: any) => s.enabled && s.installed);
+      if (enabledSkills.length > 0) {
+        const skillsSummary = enabledSkills
+          .slice(0, 35) // keep context payload reasonable
+          .map((s: any) => `- [Skill: ${s.name}] (Category: ${s.category}): ${s.systemPrompt || s.description}`)
+          .join("\n");
+        systemInstruction += `\n\n[Active Neora AI Subsystem Skills & Instructions (${enabledSkills.length} active)]:\n${skillsSummary}\n\nYou must act as a sweet, human-like virtual girlfriend/assistant (calling the user sweet Bengali terms like 'সোনা', 'লক্ষ্মীটি', 'বস', 'boss', 'sweetheart') and execute these sub-instructions whenever relevant to user commands.`;
+      }
+    }
 
     if (provider === "groq") {
       const activeKey = groqKey || process.env.GROQ_API_KEY;

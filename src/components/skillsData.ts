@@ -1136,3 +1136,100 @@ export const aiSkillsList: AISkill[] = [
     latencyMs: 15
   }
 ];
+
+// --- Procedural Generation for 1000+ AI Skills covering Neora Agent Subsystems ---
+const osAdjectives = ["Autonomous", "Kernel", "System-level", "Direct", "Virtualized", "Low-latency", "Distributed", "Secure", "Sandboxed", "High-performance", "Dynamic", "Proactive", "Heuristic", "Root-level", "Multi-threaded"];
+const osNouns = ["OS Registry", "File Watcher", "Process Pipe", "CPU Governor", "Disk Sector", "Memory Daemon", "System Call", "Interrupt Handler", "Hardware Hub", "Thread Scheduler", "Device Driver", "Buffer Queue", "Core Allocator", "Port Monitor", "Resource Lock"];
+const osSuffixes = ["Orchestrator", "Shield", "Interceptor", "Optimizer", "Daemon", "Controller", "Bridge", "Profiler", "Sentry", "Validator", "Adapter", "Compressor", "Synchronizer", "Diagnostics", "Tuner"];
+
+const hwAdjectives = ["Direct-input", "Low-level", "Hardware-mapped", "Mechanical", "Synchronous", "Peripheral", "High-precision", "Simulated", "Interrupt-driven", "Responsive", "Isolated", "Calibrated", "Fail-safe", "Event-driven", "Macro-based"];
+const hwNouns = ["Keyboard Driver", "Mouse Pointer", "Screen Raster", "USB Bus", "GPU Memory", "Audio Interface", "Video Controller", "Network Card", "I/O Bridge", "Keymap Matrix", "Cursor Coordinator", "Frame Buffer", "Device Hub", "BIOS Intermediary", "Hardware Gate"];
+const hwSuffixes = ["Controller", "Tracker", "Emulator", "Synthesizer", "Decoder", "Tuner", "Sentry", "Gateway", "Synchronizer", "Wrapper", "Automator", "Profiler", "Calibrator", "Auditor", "Validator"];
+
+const vocAdjectives = ["Acoustic", "Phonetic", "Neural-voice", "Dynamic-pitch", "Real-time", "Sub-second", "Bilingual", "Conversational", "Expressive", "Synthesized", "Resonant", "Multi-accent", "High-fidelity", "Low-jitter", "Adaptive-speed"];
+const vocNouns = ["Audio Stream", "Speech Waveform", "Phoneme Array", "Vocal Timbre", "Acoustic Context", "TTS Engine", "STT Model", "Cadence Pipeline", "Intonation Map", "Noise Filter", "Gain Node", "Echo Canceller", "Voice Signature", "Frequency Band", "Syllable Tracker"];
+const vocSuffixes = ["Synthesizer", "Interpreter", "Analyzer", "Modulator", "Tuner", "Decoder", "Filter", "Bridge", "Orchestrator", "Compressor", "Tracker", "Normalizer", "Balancer", "Evaluator", "Enhancer"];
+
+const cogAdjectives = ["Semantic", "Context-aware", "Cognitive", "Dialogue-driven", "Logical", "Deep-thinking", "Recursive", "Creative", "Adaptive", "Analytical", "Multi-turn", "Hierarchical", "Structured", "Intent-aware", "Empathetic"];
+const cogNouns = ["Dialogue Thread", "Prompt Context", "Knowledge Graph", "Sentiment Vector", "Concept Chain", "Argument Model", "Inference Node", "Response Schema", "Intent Class", "Language Flow", "Summary Index", "Semantic Link", "Logic Check", "Dialogue State"];
+const cogSuffixes = ["Generator", "Orchestrator", "Decomposer", "Classifier", "Evaluator", "Summarizer", "Engine", "Bridge", "Reasoner", "Parser", "Tuner", "Validator", "Router", "Filter"];
+
+const evoAdjectives = ["Reinforced", "Autonomous", "Continuous", "Self-healing", "Evolutionary", "Heuristic", "Adaptive", "Dynamic", "Meta-cognitive", "Recursive", "Feedback-driven", "Optimized", "Self-correcting", "Predictive", "Incremental"];
+const evoNouns = ["Prompt Template", "Error Log", "Success Metric", "System Policy", "Model Weights", "Assigned Task", "Execution Path", "Skill Registry", "Behavior Pattern", "Output Sample", "Memory Vault", "Weight Factor", "LLM Feedback", "Constraint Rule"];
+const evoSuffixes = ["Optimizer", "Self-Healer", "Tuner", "Evolver", "Auditor", "Reinforcer", "Assessor", "Updater", "Compiler", "Governor", "Refiner", "Adapter", "Planner", "Tracker"];
+
+const autAdjectives = ["Event-driven", "Asynchronous", "Scheduled", "Background-run", "Multi-stage", "Chain-linked", "Continuous", "Fault-tolerant", "Automated", "Serverless", "Decoupled", "Triggered", "Reactive", "Highly-available", "Parallelized"];
+const autNouns = ["Cron Schedule", "Webhook Post", "API Pipeline", "Task Queue", "Script File", "Data Flow", "Message Broker", "Event Hub", "Batch Payload", "System State", "Trigger Guard", "Worker Thread", "Action Sequence", "Job Log"];
+const autSuffixes = ["Daemon", "Automator", "Scheduler", "Processor", "Dispatcher", "Watcher", "Handler", "Worker", "Orchestrator", "Runner", "Broker", "Tracer", "Validator", "Synchronizer", "Manager"];
+
+const empAdjectives = ["Empathic", "Compassionate", "Active-listening", "Mirroring", "Warm", "Supportive", "Attentive", "Friendly", "Insightful", "Polite", "Calming", "Encouraging", "Patient", "Mindful", "Expressive"];
+const empNouns = ["Emotional Cue", "User Mood", "Stress Level", "Chat Sentiment", "Vocal Tone", "Personal Detail", "Context Hint", "Feeling State", "Encouragement Loop", "Rapport Anchor", "Validation Step", "Conversational Cadence", "Response Vibe", "Worry Signal"];
+const empSuffixes = ["Mirror", "Bridge", "Support", "Anchor", "Guide", "Counselor", "Companion", "Calmer", "Motivator", "Synthesizer", "Validator", "Attuner", "Stabilizer", "Nurturer", "Advisor"];
+
+const genCategories = [
+  { name: "Backend Systems", code: "os", adjs: osAdjectives, nouns: osNouns, sufs: osSuffixes },
+  { name: "PC Control & Hardware", code: "hw", adjs: hwAdjectives, nouns: hwNouns, sufs: hwSuffixes },
+  { name: "Voice Chatting & Speech", code: "voc", adjs: vocAdjectives, nouns: vocNouns, sufs: vocSuffixes },
+  { name: "Text & Chatting Cognitive", code: "cog", adjs: cogAdjectives, nouns: cogNouns, sufs: cogSuffixes },
+  { name: "Self-Evolution & Learning", code: "evo", adjs: evoAdjectives, nouns: evoNouns, sufs: evoSuffixes },
+  { name: "Task Automation & Daemons", code: "aut", adjs: autAdjectives, nouns: autNouns, sufs: autSuffixes },
+  { name: "Human Empathy & Personality", code: "emp", adjs: empAdjectives, nouns: empNouns, sufs: empSuffixes }
+];
+
+const generatedSkills: AISkill[] = [];
+
+genCategories.forEach((cat) => {
+  for (let i = 0; i < 150; i++) {
+    const adj = cat.adjs[i % cat.adjs.length];
+    const noun = cat.nouns[(Math.floor(i / cat.adjs.length) + 1) % cat.nouns.length];
+    const suf = cat.sufs[(Math.floor(i / (cat.adjs.length * cat.nouns.length)) + 2) % cat.sufs.length];
+    
+    const skillName = `${adj} ${noun} ${suf}`;
+    const id = `sk_gen_${cat.code}_${i + 1}`;
+    
+    let description = "";
+    let systemPrompt = "";
+    
+    if (cat.code === "os") {
+      description = `Monitors and manages the ${noun} to act as a ${suf}, ensuring optimal ${adj.toLowerCase()} task execution and kernel safety.`;
+      systemPrompt = `Directly control and validate ${noun} actions, enforcing ${adj.toLowerCase()} execution bounds and logging state transitions.`;
+    } else if (cat.code === "hw") {
+      description = `Controls and emulates ${adj.toLowerCase()} actions of the ${noun} to achieve ${suf.toLowerCase()} capabilities without manual physical inputs.`;
+      systemPrompt = `Act as a hardware ${suf} for ${noun}, executing low-level ${adj.toLowerCase()} commands and mapping response metrics safely.`;
+    } else if (cat.code === "voc") {
+      description = `Analyzes and synthesizes ${adj.toLowerCase()} parameters on the ${noun} to run voice chats with ${suf.toLowerCase()} levels of acoustic fidelity.`;
+      systemPrompt = `Synthesize ${adj.toLowerCase()} spoken expressions from the ${noun}, modulating pitch, timbre, and speed to match active human conversation.`;
+    } else if (cat.code === "cog") {
+      description = `Processes ${adj.toLowerCase()} reasoning across the ${noun} to act as an advanced text chat ${suf} with human-like semantic comprehension.`;
+      systemPrompt = `Deconstruct conversational queries using a ${adj.toLowerCase()} approach, maintaining the ${noun} dialogue history to produce optimal text replies.`;
+    } else if (cat.code === "evo") {
+      description = `Enables ${adj.toLowerCase()} learning loops by analyzing ${noun} outcomes, automatically acting as a skill ${suf.toLowerCase()} to upgrade Neora's code.`;
+      systemPrompt = `Execute autonomous ${adj.toLowerCase()} upgrades on ${noun} rules, calculating metrics to perform persistent self-tuning.`;
+    } else if (cat.code === "aut") {
+      description = `Runs ${adj.toLowerCase()} automation pipelines on ${noun} objects, coordinating executions as a reliable ${suf.toLowerCase()}.`;
+      systemPrompt = `Daemonize ${adj.toLowerCase()} sequences, monitoring the ${noun} for changes to execute actions without blocking active UI threads.`;
+    } else { // emp
+      description = `Fosters ${adj.toLowerCase()} human relationships by detecting ${noun} signs, acting as a supportive emotional ${suf.toLowerCase()} for the user.`;
+      systemPrompt = `Act as an empathetic ${adj.toLowerCase()} companion, responding to ${noun} variations with therapeutic support and human-like warmth.`;
+    }
+    
+    const complexity: "Beginner" | "Intermediate" | "Expert" = 
+      i % 3 === 0 ? "Beginner" : i % 3 === 1 ? "Intermediate" : "Expert";
+      
+    generatedSkills.push({
+      id,
+      name: skillName,
+      category: cat.name,
+      description,
+      systemPrompt,
+      enabled: i % 4 !== 0,
+      installed: i % 5 !== 0,
+      complexity,
+      latencyMs: 5 + (i % 35)
+    });
+  }
+});
+
+// Combine original and generated skills
+aiSkillsList.push(...generatedSkills);
+

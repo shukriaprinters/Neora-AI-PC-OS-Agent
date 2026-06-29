@@ -216,7 +216,10 @@ export function BuilderView({
     const saved = localStorage.getItem("neora_ai_skills");
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length >= 1000) {
+          return parsed;
+        }
       } catch (e) {
         // fallback
       }
@@ -231,8 +234,74 @@ export function BuilderView({
   }, [skills]);
 
   useEffect(() => {
+    const handleSkillsUpdated = () => {
+      const saved = localStorage.getItem("neora_ai_skills");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            setSkills(parsed);
+          }
+        } catch (e) {}
+      }
+    };
+    window.addEventListener("neora-skills-updated", handleSkillsUpdated);
+    return () => window.removeEventListener("neora-skills-updated", handleSkillsUpdated);
+  }, []);
+
+  useEffect(() => {
     setActiveLang(lang);
   }, [lang]);
+
+  const [dynamicBuilderSuggestions, setDynamicBuilderSuggestions] = useState<Array<{label: string, prompt: string}>>([]);
+
+  useEffect(() => {
+    const generateBuilderSuggestions = () => {
+      const text = (studioPromptInput || "").toLowerCase().trim();
+      let list: Array<{label: string, prompt: string}> = [];
+
+      if (text.length > 1) {
+        if (text.includes("app") || text.includes("web") || text.includes("বানাও") || text.includes("তৈরি")) {
+          list = [
+            { label: lang === "bn" ? "✦ ড্যাশবোর্ড UI" : "✦ Dashboard UI", prompt: `${studioPromptInput} with a gorgeous dark sidebar navigation and metric cards` },
+            { label: lang === "bn" ? "✦ চার্ট ও গ্রাফ" : "✦ Charts & Graphs", prompt: `${studioPromptInput} incorporating beautiful animated recharts and data export features` },
+            { label: lang === "bn" ? "✦ অফলাইন স্টোরেজ" : "✦ Local Storage", prompt: `${studioPromptInput} with robust offline persistence using localStorage and cache synchronization` },
+            { label: lang === "bn" ? "✦ এআই অ্যাসিস্ট্যান্ট" : "✦ AI Assistant", prompt: `${studioPromptInput} embedded with a sweet Bengali-speaking conversational AI agent` }
+          ];
+        } else if (text.includes("game") || text.includes("খেলা") || text.includes("ক্যানভাস") || text.includes("canvas")) {
+          list = [
+            { label: lang === "bn" ? "✦ ফিজিক্স ক্যানভাস" : "✦ Physics Game", prompt: `${studioPromptInput} using custom 2D canvas physics, particle systems, and sound effects` },
+            { label: lang === "bn" ? "✦ লিডারবোর্ড ও স্কোর" : "✦ Scoreboard", prompt: `${studioPromptInput} with local storage high-scores, customizable settings, and sound controllers` },
+            { label: lang === "bn" ? "✦ ফুল স্ক্রিন মোড" : "✦ Fullscreen UI", prompt: `${studioPromptInput} optimized for high-refresh rates with responsive canvas controls` }
+          ];
+        } else if (text.includes("skill") || text.includes("স্কিল") || text.includes("agent") || text.includes("এজেন্ট")) {
+          list = [
+            { label: lang === "bn" ? "✦ গিটহাব ক্লোনার" : "✦ GitHub Clone", prompt: `${studioPromptInput} that automatically clones repos from GitHub and compiles them in the background` },
+            { label: lang === "bn" ? "✦ ওএস স্ক্রিপ্ট" : "✦ OS Automation", prompt: `${studioPromptInput} configured as a high-availability background cron daemon script to monitor the host PC` },
+            { label: lang === "bn" ? "✦ এরর হিলিং" : "✦ Code Healing", prompt: `${studioPromptInput} designed with heuristic self-repair and real-time code execution hooks` }
+          ];
+        } else {
+          list = [
+            { label: lang === "bn" ? "✦ এআই ডিজাইন" : "✦ AI Design Style", prompt: `${studioPromptInput} using premium space dark themes, high-contrast borders, and motion animations` },
+            { label: lang === "bn" ? "✦ ফুল-স্ট্যাক এক্সপ্রেস" : "✦ Express Backend", prompt: `${studioPromptInput} with a custom Express.js server, secure proxy routers, and API endpoints` },
+            { label: lang === "bn" ? "✦ ইন্টারেক্টিভ ভিউ" : "✦ Responsive Layout", prompt: `${studioPromptInput} styled with beautiful responsive bento grids, custom tabs, and smooth state transitions` }
+          ];
+        }
+      } else {
+        list = [
+          { label: lang === "bn" ? "✦ Dynamic Skill Clone" : "✦ Dynamic Skill Clone", prompt: lang === "bn" ? "গিটহাব থেকে নতুন ভয়েস ক্লোনিং ও এআই এজেন্ট স্কিল অ্যাড করো" : "Cloning a custom Voice Cloning and AI Agent skill dynamically from GitHub" },
+          { label: lang === "bn" ? "✦ Android Compiler" : "✦ Android Compiler", prompt: lang === "bn" ? "অ্যান্ড্রয়েড বিল্ড সিস্টেম এবং ওএস কোড কম্পাইলার কনফিগার করে চালু করো" : "Configure and spin up Android OS compiler build engines" },
+          { label: lang === "bn" ? "✦ Code Self-Healing" : "✦ Code Self-Healing", prompt: lang === "bn" ? "নিওরা সোর্স কোডে যেকোনো জটিল এরর বা বাগ খুঁজে বের করে রিয়েল-টাইমে ফিক্স করো" : "Locate source code compilation bugs and apply dynamic self-healing patches" },
+          { label: lang === "bn" ? "✦ Daemon Automator" : "✦ Daemon Automator", prompt: lang === "bn" ? "পিসির বিভিন্ন ফাইল ব্যাকআপ ও সিঙ্ক করার জন্য ব্যাকগ্রাউন্ড ডেমন সার্ভিস টাস্ক তৈরি করো" : "Write a high-availability background cron-job daemon skill to backup local assets" },
+          { label: lang === "bn" ? "✦ UI Sandbox Optimizer" : "✦ UI Sandbox Optimizer", prompt: lang === "bn" ? "সবগুলো ভিউ এবং ট্যাব স্লাইডার অত্যন্ত ফাস্ট ও রেসপন্সিভ করতে কোড অপ্টিমাইজ করো" : "Perform extensive layout optimizations to make sandbox tabs instantly responsive" }
+        ];
+      }
+
+      setDynamicBuilderSuggestions(list);
+    };
+
+    generateBuilderSuggestions();
+  }, [studioPromptInput, lang]);
 
   // Advanced Integrations & File Hub States (Google Drive, GitHub, PC Location)
   const [isHubOpen, setIsHubOpen] = useState<boolean>(false);
@@ -1337,7 +1406,7 @@ export function BuilderView({
               >
                 <Award className="w-4 h-4 text-amber-400 animate-pulse" />
                 <span>{lang === "bn" ? "এআই স্কিলস হাব" : "AI Skills Hub"}</span>
-                <span className="ml-auto text-[9px] font-mono px-1.5 py-0.2 bg-amber-550/10 text-amber-300 rounded-full border border-amber-500/20 font-bold">101</span>
+                <span className="ml-auto text-[9px] font-mono px-1.5 py-0.2 bg-amber-550/10 text-amber-300 rounded-full border border-amber-500/20 font-bold">{skills.length}</span>
               </button>
             </div>
           </div>
@@ -1657,6 +1726,38 @@ export function BuilderView({
                       ? "প্রম্পটে বলুন আপনি কী অ্যাপ বানাতে চান, এবং জেমিনি এআই কোড সহকারী আপনার জন্য একটি ফুল-স্ট্যাক কোডবেস রিয়েল-টাইমে প্রস্তুত করবে।"
                       : "Describe an application, web tool, game, or customized service below. Our Gemini assistant builds pristine responsive code instantly."}
                   </p>
+                </div>
+
+                {/* Dynamic Idea & Prompt suggestions for Neora AI Builder */}
+                <div className="w-full space-y-2 text-left">
+                  <div className="flex items-center justify-between px-1">
+                    <span className="text-[10px] font-mono font-bold text-indigo-400 tracking-wider uppercase flex items-center gap-1">
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-400 animate-pulse" />
+                      {lang === "bn" ? "নিওরা বিল্ডার আইডিয়া ও স্কিল জেনারেটর" : "NEORA BUILDER IDEA & PROMPT GENERATOR"}
+                    </span>
+                    <span className="text-[9px] font-mono text-slate-500">
+                      {lang === "bn" ? "ক্লিক করে আইডিয়া কপি করুন" : "Click to load prompt template"}
+                    </span>
+                  </div>
+                  <div 
+                    className="flex items-center gap-2 overflow-x-auto pb-1.5 scrollbar-none"
+                    style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                  >
+                    {dynamicBuilderSuggestions.map((pill, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => {
+                          setStudioPromptInput(pill.prompt);
+                        }}
+                        className="shrink-0 px-3 py-1.5 text-[10px] font-mono border border-slate-800 bg-slate-900/30 hover:bg-slate-800 hover:border-indigo-500/30 text-slate-300 hover:text-indigo-300 rounded-lg transition-all cursor-pointer shadow-sm flex items-center gap-1.5 active:scale-95"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                        <span className="font-bold text-slate-400">{pill.label}:</span>
+                        <span className="truncate max-w-[200px]">{pill.prompt}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 {/* Main Sparkle-Bordered Prompt Box */}
@@ -2094,7 +2195,7 @@ export function BuilderView({
                   <div className="text-left">
                     <div className="flex items-center gap-2 mb-1.5">
                       <span className="px-2 py-0.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] font-mono rounded font-bold uppercase tracking-wider animate-pulse">
-                        ⭐ {lang === "bn" ? "১০১+ এআই স্কিলস রেজিস্ট্রি" : "101+ AI Skills Registry"}
+                        ⭐ {lang === "bn" ? `${skills.length}+ এআই স্কিলস রেজিস্ট্রি` : `${skills.length}+ AI Skills Registry`}
                       </span>
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                       <span className="text-[10px] font-mono text-slate-500 uppercase">SYSTEM ACTIVE</span>
@@ -2105,8 +2206,8 @@ export function BuilderView({
                     </h2>
                     <p className="text-xs text-slate-400 mt-1 max-w-2xl leading-relaxed">
                       {lang === "bn" 
-                        ? "নিওরা-র ১০১টি বিশেষায়িত এআই স্কিল পরিচালনা ও কাস্টমাইজ করুন। এই সিস্টেম প্রম্পট ইঞ্জেকশন, ডেটাবেস আর্কিটেকচার, সিকিউরিটি শিল্ড এবং কম্পাইলার অপ্টিমাইজেশনকে ত্বরান্বিত করে।"
-                        : "Browse, toggle, and install Neora's 101 specialized AI capability modules. These inject expert context into compilation pipelines, database management, security shields, and runtime engines."}
+                        ? `নিওরা-র ${skills.length}টি বিশেষায়িত এআই স্কিল পরিচালনা ও কাস্টমাইজ করুন। এই সিস্টেম প্রম্পট ইঞ্জেকশন, ডেটাবেস আর্কিটেকচার, সিকিউরিটি শিল্ড এবং কম্পাইলার অপ্টিমাইজেশনকে ত্বরান্বিত করে।`
+                        : `Browse, toggle, and install Neora's ${skills.length} specialized AI capability modules. These inject expert context into compilation pipelines, database management, security shields, and runtime engines.`}
                     </p>
                   </div>
 
@@ -2114,11 +2215,11 @@ export function BuilderView({
                     <button
                       onClick={() => {
                         setSkills(prev => prev.map(s => ({ ...s, enabled: true, installed: true })));
-                        addLog("⚡ Installed & Enabled all 101+ AI Skills in active backplane.");
+                        addLog(`⚡ Installed & Enabled all ${skills.length}+ AI Skills in active backplane.`);
                       }}
                       className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 border border-indigo-400/20 text-white transition-all shadow-[0_4px_12px_rgba(99,102,241,0.2)]"
                     >
-                      {lang === "bn" ? "সব অ্যাক্টিভেট করুন" : "Enable All 101"}
+                      {lang === "bn" ? "সব অ্যাক্টিভেট করুন" : `Enable All ${skills.length}`}
                     </button>
                     <button
                       onClick={() => {
@@ -2143,10 +2244,10 @@ export function BuilderView({
                     <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">{lang === "bn" ? "সর্বমোট স্কিল লোডেড" : "Total Skills Registry"}</span>
                     <div className="mt-2 flex items-baseline gap-1.5">
                       <span className="text-2xl font-bold text-white font-mono">{skills.length}</span>
-                      <span className="text-xs text-indigo-400">/ 101 Modules</span>
+                      <span className="text-xs text-indigo-400">/ {skills.length} Modules</span>
                     </div>
                     <div className="w-full bg-slate-950 h-1 rounded-full overflow-hidden mt-3">
-                      <div className="bg-indigo-500 h-full transition-all duration-500" style={{ width: `${(skills.length / 101) * 100}%` }} />
+                      <div className="bg-indigo-500 h-full transition-all duration-500" style={{ width: "100%" }} />
                     </div>
                   </div>
 
@@ -2200,7 +2301,7 @@ export function BuilderView({
                     <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-500" />
                     <input
                       type="text"
-                      placeholder={lang === "bn" ? "স্কিল বা ক্যাটাগরি খুঁজুন..." : "Search 101 AI Skills by name or system prompts..."}
+                      placeholder={lang === "bn" ? `স্কিল বা ক্যাটাগরি খুঁজুন...` : `Search ${skills.length} AI Skills by name or system prompts...`}
                       value={skillsSearch}
                       onChange={(e) => setSkillsSearch(e.target.value)}
                       className="w-full pl-9 pr-4 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500 font-sans"
