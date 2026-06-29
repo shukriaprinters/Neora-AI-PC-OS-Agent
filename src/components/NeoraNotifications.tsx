@@ -18,6 +18,7 @@ interface Props {
   reminders: Reminder[];
   apiHealth: number;
   tasks?: { length: number };
+  lang?: 'en' | 'bn';
 }
 
 const TYPE_STYLES: Record<NotiType, { border: string; bg: string; glow: string; color: string; barColor: string }> = {
@@ -112,7 +113,7 @@ function ToastItem({ n, onDismiss }: { n: Notification; onDismiss: (id: string) 
   );
 }
 
-export function NeoraNotifications({ reminders, apiHealth }: Props) {
+export function NeoraNotifications({ reminders, apiHealth, lang = 'en' }: Props) {
   const [notes, setNotes] = useState<Notification[]>([]);
   const prevHistoryLen = useRef<number>(-1);
   const prevHealth = useRef<number>(apiHealth);
@@ -129,6 +130,33 @@ export function NeoraNotifications({ reminders, apiHealth }: Props) {
   const dismiss = useCallback((id: string) => {
     setNotes(prev => prev.filter(n => n.id !== id));
   }, []);
+
+  // Listen for Neora Skill update events (both manual and auto-updates)
+  useEffect(() => {
+    const handleSkillUpdated = (e: Event) => {
+      const customEvent = e as CustomEvent<{ skill: any; isAuto?: boolean }>;
+      if (!customEvent.detail || !customEvent.detail.skill) return;
+      const { skill, isAuto } = customEvent.detail;
+      
+      const isBn = lang === 'bn';
+      const title = isAuto 
+        ? (isBn ? 'স্বয়ংক্রিয় স্কিল আপডেট' : 'AUTO SKILL INTEGRATION')
+        : (isBn ? 'ম্যানুয়াল স্কিল আপডেট' : 'CUSTOM SKILL COMPILED');
+      
+      const body = isBn 
+        ? `নিওরা কোর ইঞ্জিনে নতুন স্কিল "${skill.name}" সফলভাবে যুক্ত ও সক্রিয় করা হয়েছে!`
+        : `Dynamic skill "${skill.name}" has been successfully compiled and activated on Neora's core.`;
+
+      push({
+        type: 'success',
+        title,
+        body,
+      });
+    };
+
+    window.addEventListener("neora-skills-updated", handleSkillUpdated);
+    return () => window.removeEventListener("neora-skills-updated", handleSkillUpdated);
+  }, [lang, push]);
 
   // Poll OS status for completed tasks
   useEffect(() => {

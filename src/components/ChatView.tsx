@@ -40,6 +40,7 @@ import {
 } from 'lucide-react';
 import { classifyNeoraInput, isLikelyOsCommand } from '../lib/neoraCommand';
 import { NeoraApiError, neoraGet, neoraPost, neoraUpload, neoraChatWithFallback } from '../lib/neoraApi';
+import { aiSkillsList, AISkill } from './skillsData';
 
 interface ChatViewProps {
   lang: 'en' | 'bn';
@@ -213,7 +214,40 @@ export function ChatView({
 
   const [messages, setMessages] = useState<Message[]>([]);
 
-  // 1. When activeThreadId changes, load its messages
+  const [skills, setSkills] = useState<AISkill[]>(() => {
+    const saved = localStorage.getItem("neora_ai_skills");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed;
+        }
+      } catch (e) {}
+    }
+    return aiSkillsList;
+  });
+
+  useEffect(() => {
+    localStorage.setItem("neora_ai_skills", JSON.stringify(skills));
+  }, [skills]);
+
+  useEffect(() => {
+    const handleSkillsUpdated = () => {
+      const saved = localStorage.getItem("neora_ai_skills");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            setSkills(parsed);
+          }
+        } catch (e) {}
+      }
+    };
+    window.addEventListener("neora-skills-updated", handleSkillsUpdated);
+    return () => window.removeEventListener("neora-skills-updated", handleSkillsUpdated);
+  }, []);
+
+  // When activeThreadId changes, load its messages
   useEffect(() => {
     const activeThread = threads.find(t => t.id === activeThreadId);
     if (activeThread) {
@@ -221,7 +255,7 @@ export function ChatView({
     }
   }, [activeThreadId]);
 
-  // 2. When messages change, map them back into the active thread inside threads array
+  // When messages change, map them back into the active thread inside threads array
   useEffect(() => {
     setThreads(prevThreads => {
       const activeThread = prevThreads.find(t => t.id === activeThreadId);
@@ -252,7 +286,7 @@ export function ChatView({
     });
   }, [messages, activeThreadId]);
 
-  // 3. Save threads array to localStorage
+  // Save threads array to localStorage
   useEffect(() => {
     localStorage.setItem('neora_chat_threads', JSON.stringify(threads));
     localStorage.setItem('neora_active_thread_id', activeThreadId);
@@ -323,39 +357,70 @@ export function ChatView({
       const lastMsg = messages && messages.length > 0 ? messages[messages.length - 1] : null;
       const lastText = lastMsg ? lastMsg.content.toLowerCase() : "";
       const isBanglaText = /[\u0980-\u09FF]/.test(text) || /[\u0980-\u09FF]/.test(lastText);
+      const contextString = `${text} ${lastText} ${messages.slice(-4).map(m => m.content.toLowerCase()).join(" ")}`;
 
       let list: Array<{label: string, prompt: string}> = [];
 
       if (text.length > 1) {
-        // Dynamic completion based on user's current typing context
-        if (text.includes("skil") || text.includes("স্কিল") || text.includes("kaj") || text.includes("কাজ")) {
-          list = [
-            { label: isBanglaText ? "✦ স্কিল লিস্ট" : "✦ Skill Registry", prompt: isBanglaText ? "আমার সবগুলো সক্রিয় ১১৫০+ স্কিল ড্যাশবোর্ড দেখাও" : "Show and review all my active 1150+ skills" },
-            { label: isBanglaText ? "✦ স্কিল ডাউনলোড" : "✦ GitHub Skill", prompt: isBanglaText ? `${inputValue} এর জন্য গিটহাব থেকে নতুন ওএস স্কিল ডাউনলোড করো` : `Download dynamic OS skill from GitHub for: ${inputValue}` },
-            { label: isBanglaText ? "✦ কাস্টমাইজেশন" : "✦ Customize Skill", prompt: isBanglaText ? "আমার কাস্টম ডাবল-ক্লিক অটোমেশন স্কিল সচল করো" : "Configure a customized double-click simulation skill" }
-          ];
-        } else if (text.includes("voice") || text.includes("ভয়েস") || text.includes("kotha") || text.includes("কথা")) {
-          list = [
-            { label: isBanglaText ? "✦ ভয়েস চ্যাট" : "✦ Voice Chat Mode", prompt: isBanglaText ? "ভয়েস ইন্টারঅ্যাকশন মোড চালু করো ও আমার ভয়েস রেকর্ড করো" : "Activate voice conversation mode and record my sound" },
-            { label: isBanglaText ? "✦ ক্লোনিং এনালাইজার" : "✦ Voice Timbre", prompt: isBanglaText ? "গিটহাব থেকে ভয়েস ক্লোনিং স্কিল সচল করে ভয়েস টোন চেঞ্জ করো" : "Load voice cloning and adjust text-to-speech sound" }
-          ];
-        } else if (text.includes("pc") || text.includes("পিসি") || text.includes("screen") || text.includes("স্ক্রিন") || text.includes("কন্ট্রোল")) {
-          list = [
-            { label: isBanglaText ? "✦ স্ক্রিনশট এনালাইসিস" : "✦ PC Screen Capture", prompt: isBanglaText ? "আমার পিসির লাইভ স্ক্রিনশট নিয়ে স্ক্রিন এনালাইজ করো" : "Take a high-resolution screenshot of my PC and analyze it" },
-            { label: isBanglaText ? "✦ মাউস প্রোটোকল" : "✦ Mouse Simulation", prompt: isBanglaText ? "পিসির মাউস এবং কিবোর্ড এমুলেশন অ্যাসিস্ট্যান্ট চালু করো" : "Enable mouse and keyboard hardware emulation tools" }
-          ];
-        } else if (text.includes("error") || text.includes("এরর") || text.includes("ভুল") || text.includes("failed") || text.includes("বাগ")) {
-          list = [
-            { label: isBanglaText ? "✦ বাগ ফিক্স প্যাচ" : "✦ Auto-Heal Patches", prompt: isBanglaText ? "নিওরা, সোর্স কোডে এই ভুল বা বাগটি অটোমেটিক ফিক্স করো" : "Neora, look up compile errors and apply auto-healing fixes" },
-            { label: isBanglaText ? "✦ ডায়াগনস্টিক রিপোর্ট" : "✦ Run Diagnostics", prompt: isBanglaText ? "পুরো নিওরা সিস্টেম ডায়াগনস্টিক রান করে এরর ট্র্যাকিং রিপোর্ট দাও" : "Run complete code compile diagnostics to locate broken imports" }
-          ];
-        } else {
-          list = [
-            { label: isBanglaText ? "✦ সম্পূর্ণ আইডিয়া" : "✦ Complete Thought", prompt: isBanglaText ? `${inputValue} এর কাজ এবং পরবর্তী ধাপগুলো সচল করো` : `Complete execution flows and next steps for: ${inputValue}` },
-            { label: isBanglaText ? "✦ গভীর এনালাইসিস" : "✦ Deep AI Search", prompt: isBanglaText ? `এই বিষয়ে ইন্টারনেট রিসার্চ করে রিপোর্ট দাও: ${inputValue}` : `Perform comprehensive research and explain: ${inputValue}` },
-            { label: isBanglaText ? "✦ অটোমেট" : "✦ Automate Topic", prompt: isBanglaText ? `${inputValue} এর জন্য একটি চমৎকার এআই স্কিল তৈরি করে দাও` : `Synthesize a brand new autonomous AI skill to manage: ${inputValue}` }
-          ];
-        }
+        // Base candidates with labels, prompts, and matching keywords
+        const candidates = [
+          {
+            label: isBanglaText ? "✦ বাগ ফিক্স প্যাচ" : "✦ Auto-Heal Patches",
+            prompt: isBanglaText ? "নিওরা, সোর্স কোডে এই ভুল বা বাগটি অটোমেটিক ফিক্স করো" : "Neora, look up compile errors and apply auto-healing fixes",
+            keywords: ["error", "এরর", "failed", "bug", "compile", "broken", "trace", "healing", "patch", "ভুল", "বাগ"],
+            highImpact: true,
+          },
+          {
+            label: isBanglaText ? "✦ ডায়াগনস্টিক রিপোর্ট" : "✦ Run Diagnostics",
+            prompt: isBanglaText ? "পুরো নিওরা সিস্টেম ডায়াগনস্টিক রান করে এরর ট্র্যাকিং রিপোর্ট দাও" : "Run complete code compile diagnostics to locate broken imports",
+            keywords: ["diagnose", "diagnostic", "trace", "logs", "audit", "health", "check", "রিপোর্ট", "ডায়াগনস্টিক"],
+            highImpact: true,
+          },
+          {
+            label: isBanglaText ? "✦ স্কিল ডাউনলোড" : "✦ GitHub Skill Discovery",
+            prompt: isBanglaText ? `${inputValue || "গিটহাব"} এর জন্য নতুন ওএস স্কিল ডাউনলোড করো` : `Download dynamic OS skill from GitHub for specialized actions`,
+            keywords: ["download", "install", "github", "discover", "new skill", "modules", "ডাউনলোড"],
+            highImpact: true,
+          },
+          {
+            label: isBanglaText ? "✦ গভীর এনালাইসিস" : "✦ Deep AI Search",
+            prompt: isBanglaText ? `এই বিষয়ে ইন্টারনেট রিসার্চ করে রিপোর্ট দাও: ${inputValue || "রিসার্চ"}` : `Perform comprehensive research and explain this topic in depth`,
+            keywords: ["research", "search", "explain", "study", "analysis", "deep", "details", "রিসার্চ", "এনালাইসিস"],
+            highImpact: false,
+          },
+          {
+            label: isBanglaText ? "✦ অটোমেট" : "✦ Automate Topic",
+            prompt: isBanglaText ? `${inputValue || "টপিক"} এর জন্য একটি চমৎকার এআই স্কিল তৈরি করে দাও` : `Synthesize a brand new autonomous AI skill to manage this flow`,
+            keywords: ["automate", "synthesize", "generate", "ai", "brain", "evolution", "অটোমেট"],
+            highImpact: true,
+          }
+        ];
+
+        // Relevance Scorer using semantic density of recent messages & typing input
+        const techKeywords = ["error", "compile", "failed", "bug", "git", "github", "diagnostic", "benchmark", "latency", "database", "offline", "backend", "express", "cloning", "physics", "canvas", "performance", "optimization"];
+        const wordsList = contextString.split(/\s+/).filter(Boolean);
+        const techWordCount = wordsList.filter(w => techKeywords.some(tw => w.toLowerCase().includes(tw))).length;
+        const semanticDensity = wordsList.length > 0 ? techWordCount / wordsList.length : 0;
+
+        const scored = candidates.map(c => {
+          let score = c.highImpact ? 1.5 : 1.0;
+          
+          // Match score: increase based on keywords found in typing/chat context
+          const matched = c.keywords.filter(kw => contextString.includes(kw));
+          score += matched.length * 3.5;
+
+          // Semantic density modifier: prioritize high-impact architectural items when tech density is high
+          if (c.highImpact) {
+            score += semanticDensity * 6.0;
+          }
+
+          return { ...c, score };
+        });
+
+        // Sort by score descending and take top 6
+        scored.sort((a, b) => b.score - a.score);
+        list = scored.slice(0, 6).map(s => ({ label: s.label, prompt: s.prompt }));
+
       } else if (lastText) {
         // Dynamic reaction based on previous conversation response
         if (lastText.includes("সফল") || lastText.includes("success") || lastText.includes("complete") || lastText.includes("কম্পাইল")) {

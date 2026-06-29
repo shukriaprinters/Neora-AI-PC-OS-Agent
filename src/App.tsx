@@ -132,6 +132,7 @@ const BuilderView = lazyRetry<any>(
   "BuilderView",
 );
 import { usePredictiveLayout } from "./components/DashboardManager";
+import { useSkillNotification } from "./hooks/useSkillNotification";
 import { MetaAgent } from "./components/MetaAgent";
 import { SECTIONS, RAW_MASTER_PROMPT } from "./masterPromptText";
 import { Task, Reminder, Note, Memory } from "./types";
@@ -166,6 +167,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Sparkles,
+  HelpCircle,
+  Plus,
+  CheckCircle
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -1116,6 +1120,8 @@ export default function App() {
   const [commandQueue, setCommandQueue] = useState<any[]>([]);
   const [overlayBlocked, setOverlayBlocked] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [isDashboardAddTaskOpen, setIsDashboardAddTaskOpen] = useState(false);
+  const [showQuickHelp, setShowQuickHelp] = useState(false);
   const [showDebugBanner, setShowDebugBanner] = useState(false);
   const [voicePanelOpen, setVoicePanelOpen] = useState(false);
   const [clickInspectorMode, setClickInspectorMode] = useState(false);
@@ -1150,6 +1156,37 @@ export default function App() {
     trackWidgetInteraction,
     optimizeLayoutAllInterfaces
   } = usePredictiveLayout();
+
+  // Skill notifications & Drag & Drop layout state (Tasks 4, 7)
+  const { notification: skillNotification, clearNotification: clearSkillNotification } = useSkillNotification();
+  const [draggedWidgetId, setDraggedWidgetId] = useState<string | null>(null);
+
+  const handleDragStart = (e: React.DragEvent, widgetId: string) => {
+    setDraggedWidgetId(widgetId);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (e: React.DragEvent, targetWidgetId: string) => {
+    e.preventDefault();
+    if (!draggedWidgetId || draggedWidgetId === targetWidgetId) return;
+
+    const currentIndex = predictiveWidgets.findIndex(w => w.id === draggedWidgetId);
+    const targetIndex = predictiveWidgets.findIndex(w => w.id === targetWidgetId);
+
+    if (currentIndex >= 0 && targetIndex >= 0) {
+      const updatedWidgets = [...predictiveWidgets];
+      const [draggedItem] = updatedWidgets.splice(currentIndex, 1);
+      updatedWidgets.splice(targetIndex, 0, draggedItem);
+      
+      setPredictiveWidgets(updatedWidgets);
+      playSystemChirp("beep");
+    }
+    setDraggedWidgetId(null);
+  };
 
   React.useEffect(() => {
     const checkAndTriggerBackup = async () => {
@@ -1336,6 +1373,11 @@ export default function App() {
     "pending" | "checking" | "consistent" | "reconciled" | "error"
   >("pending");
 
+  const memoriesRefForSync = React.useRef(memories);
+  React.useEffect(() => {
+    memoriesRefForSync.current = memories;
+  }, [memories]);
+
   React.useEffect(() => {
     const checkStateConsistency = async () => {
       setDataSyncStatus("checking");
@@ -1344,11 +1386,11 @@ export default function App() {
         if (response && Array.isArray(response.memories)) {
           const serverMemories = response.memories;
           let mismatch = false;
-          if (serverMemories.length !== memories.length) {
+          if (serverMemories.length !== memoriesRefForSync.current.length) {
             mismatch = true;
           } else {
             for (const sm of serverMemories) {
-              const lm = memories.find((m) => m.id === sm.id);
+              const lm = memoriesRefForSync.current.find((m) => m.id === sm.id);
               if (
                 !lm ||
                 lm.key !== sm.key ||
@@ -1391,8 +1433,50 @@ export default function App() {
     };
 
     const timer = setTimeout(checkStateConsistency, 1500);
-    return () => clearTimeout(timer);
+    const interval = setInterval(checkStateConsistency, 30000); // Background reconciliation every 30 seconds
+    return () => {
+      clearTimeout(timer);
+      clearInterval(interval);
+    };
   }, []);
+
+  // Monitor failed command attempts and trigger skill discovery (Task 5)
+  React.useEffect(() => {
+    const failedCmd = commandQueue.find((cmd) => cmd.status === "failed");
+    if (failedCmd) {
+      const seenKey = `neora_seen_failed_cmd_${failedCmd.id}`;
+      if (!localStorage.getItem(seenKey)) {
+        localStorage.setItem(seenKey, "true");
+        
+        console.error("[Neora System Error Monitor] Command failed:", failedCmd.prompt, failedCmd.error || "");
+        
+        neoraPost("/api/skill/discover", {
+          commandId: failedCmd.id,
+          prompt: failedCmd.prompt,
+          error: failedCmd.error || "Execution timeout or abnormal return code",
+          context: "terminal_failure"
+        })
+        .then((response: any) => {
+          console.log("[Neora Skill Discover] Successfully searched repository and staged missing dependencies:", response);
+          
+          const event = new CustomEvent("neora-system-event", {
+            detail: {
+              id: "evt-skill-discover-" + Math.floor(Math.random() * 10000),
+              timestamp: new Date().toTimeString().split(' ')[0],
+              category: "learning",
+              level: "SUCCESS",
+              message: `Discovered missing capability for "${failedCmd.prompt}": Staged for user confirmation.`,
+              details: JSON.stringify(response || { status: "staged", dependency: "Required skill" }, null, 2)
+            }
+          });
+          window.dispatchEvent(event);
+        })
+        .catch((err) => {
+          console.warn("Failed to discover skills for command:", err);
+        });
+      }
+    }
+  }, [commandQueue]);
 
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -2217,11 +2301,49 @@ export default function App() {
                       .filter((w) => w.visible)
                       .map((widget) => {
                         if (widget.id === "command_center") {
+                          // Compute dynamic suggestions based on most active tools (Task 2)
+                          const getDynamicSuggestions = () => {
+                            const sortedWidgets = [...predictiveWidgets].sort((a, b) => b.clicks - a.clicks);
+                            const suggestions: Array<{ cmd: string; desc: string }> = [];
+                            
+                            suggestions.push({ cmd: "open [tab]", desc: 'e.g., open "planner" or "chat"' });
+                            
+                            sortedWidgets.forEach(w => {
+                              if (suggestions.length >= 5) return;
+                              
+                              if (w.id === "command_center") {
+                                suggestions.push({ cmd: "diagnose system", desc: "Scan Neora system health" });
+                                suggestions.push({ cmd: "optimize layout", desc: "Max out dashboard density" });
+                              } else if (w.id === "tasks") {
+                                suggestions.push({ cmd: "add task [name]", desc: "Directly schedule a planner item" });
+                              } else if (w.id === "memory") {
+                                suggestions.push({ cmd: "add memory [key]", desc: "Persist key facts in active memory" });
+                              } else if (w.id === "agent") {
+                                suggestions.push({ cmd: "execute [command]", desc: "Run background OS python script" });
+                              } else if (w.id === "scratchpad") {
+                                suggestions.push({ cmd: "write draft [text]", desc: "Direct scratchpad insertion" });
+                              } else if (w.id === "os_quick") {
+                                suggestions.push({ cmd: "rerun last failed", desc: "Re-execute last failed terminal code" });
+                              }
+                            });
+                            
+                            const seenCmds = new Set<string>();
+                            return suggestions.filter(item => {
+                              if (seenCmds.has(item.cmd)) return false;
+                              seenCmds.add(item.cmd);
+                              return true;
+                            }).slice(0, 4);
+                          };
+
                           return (
                             <motion.div
                               layoutId="command_center"
                               key="command_center"
-                              className="col-span-1 md:col-span-2 xl:col-span-2 relative rounded-xl overflow-hidden p-4 flex flex-col justify-between"
+                              draggable
+                              onDragStart={(e) => handleDragStart(e, "command_center")}
+                              onDragOver={handleDragOver}
+                              onDrop={(e) => handleDrop(e, "command_center")}
+                              className="col-span-1 md:col-span-2 xl:col-span-2 relative rounded-xl overflow-hidden p-4 flex flex-col justify-between cursor-grab active:cursor-grabbing"
                               onClick={() => trackWidgetInteraction("command_center")}
                               style={{
                                 background:
@@ -2261,29 +2383,84 @@ export default function App() {
 
                               <div>
                                 <div className="flex justify-between items-center mb-1.5">
-                                  <div className="jarvis-label">
-                                    WORKSPACE COMMAND CENTER
+                                  <div className="flex items-center gap-1.5 relative">
+                                    <div className="jarvis-label">
+                                      WORKSPACE COMMAND CENTER
+                                    </div>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setShowQuickHelp(!showQuickHelp);
+                                      }}
+                                      className="p-0.5 hover:bg-slate-800/60 rounded text-slate-400 hover:text-cyan-400 transition-colors cursor-pointer"
+                                      title="Quick Commands Syntax Help"
+                                    >
+                                      <HelpCircle className="w-3.5 h-3.5" />
+                                    </button>
+                                    <AnimatePresence>
+                                      {showQuickHelp && (
+                                        <motion.div
+                                          initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                                          exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                                          className="absolute left-0 top-6 z-50 w-64 p-3 bg-slate-950 border border-cyan-500/35 rounded-xl shadow-2xl backdrop-blur-md text-[10px] font-mono text-slate-300 space-y-1.5"
+                                          onClick={(e) => e.stopPropagation()}
+                                        >
+                                          <div className="flex justify-between items-center border-b border-slate-900 pb-1 text-cyan-400 font-bold uppercase">
+                                            <span>⚡ QUICK SYNTAX COMMANDS</span>
+                                            <button onClick={() => setShowQuickHelp(false)} className="text-slate-500 hover:text-slate-200">✕</button>
+                                          </div>
+                                          <div className="space-y-1 pt-1">
+                                            {getDynamicSuggestions().map((item, idx) => (
+                                              <div key={idx}>
+                                                <span className="text-cyan-400">{item.cmd}</span> - {item.desc}
+                                              </div>
+                                            ))}
+                                          </div>
+                                          <div className="text-[8px] text-slate-500 border-t border-slate-900 pt-1.5">
+                                            Type these directly in the chat!
+                                          </div>
+                                        </motion.div>
+                                      )}
+                                    </AnimatePresence>
                                   </div>
-                                  <div className="text-[9px] font-mono flex items-center gap-1.5">
-                                    <span
-                                      className={`w-1.5 h-1.5 rounded-full ${
-                                        dataSyncStatus === "consistent"
-                                          ? "bg-emerald-400"
-                                          : dataSyncStatus === "reconciled"
-                                            ? "bg-amber-400"
-                                            : "bg-cyan-400 animate-pulse"
-                                      }`}
-                                    />
-                                    <span className="text-slate-500 uppercase">
-                                      {dataSyncStatus === "checking"
-                                        ? "Verifying..."
-                                        : dataSyncStatus === "consistent"
-                                          ? "DB Consistent"
-                                          : dataSyncStatus === "reconciled"
-                                            ? "DB Balanced"
-                                            : "Standby"}
-                                    </span>
-                                  </div>
+                                  
+                                  <AnimatePresence mode="wait">
+                                    <motion.div
+                                      key={dataSyncStatus}
+                                      initial={{ opacity: 0, scale: 0.9, y: -2 }}
+                                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                                      exit={{ opacity: 0, scale: 0.9, y: 2 }}
+                                      transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                                      className="text-[9px] font-mono flex items-center gap-1.5 bg-slate-950/40 px-2 py-0.5 rounded-md border border-slate-900"
+                                    >
+                                      {dataSyncStatus === "checking" ? (
+                                        <svg className="w-3 h-3 text-cyan-400 animate-spin shrink-0" viewBox="0 0 24 24" fill="none">
+                                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                        </svg>
+                                      ) : (
+                                        <span
+                                          className={`w-1.5 h-1.5 rounded-full ${
+                                            dataSyncStatus === "consistent"
+                                              ? "bg-emerald-400"
+                                              : dataSyncStatus === "reconciled"
+                                                ? "bg-amber-400"
+                                                : "bg-cyan-400 animate-pulse"
+                                          }`}
+                                        />
+                                      )}
+                                      <span className="text-slate-500 uppercase font-bold">
+                                        {dataSyncStatus === "checking"
+                                          ? "Verifying..."
+                                          : dataSyncStatus === "consistent"
+                                            ? "Consistent"
+                                            : dataSyncStatus === "reconciled"
+                                              ? "Balanced"
+                                              : "Standby"}
+                                      </span>
+                                    </motion.div>
+                                  </AnimatePresence>
                                 </div>
                                 <h2
                                   className="font-jarvis text-base font-bold mb-1"
@@ -2314,6 +2491,23 @@ export default function App() {
                               )}
 
                               <div className="flex flex-wrap gap-1.5 mt-3">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setIsDashboardAddTaskOpen(true);
+                                  }}
+                                  className="px-2.5 py-1 rounded text-[10px] font-mono font-bold uppercase transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98] flex items-center gap-1"
+                                  style={{
+                                    background: "rgba(16,185,129,0.1)",
+                                    border: "1px solid rgba(16,185,129,0.3)",
+                                    color: "#10b981",
+                                    textShadow: "0 0 6px rgba(16,185,129,0.4)",
+                                  }}
+                                >
+                                  <Plus className="w-3 h-3 text-[#10b981]" />
+                                  <span>QUICK TASK</span>
+                                </button>
+
                                 {(
                                   [
                                     { label: "CHAT", tab: "chat", color: "#00d4ff" },
@@ -3592,7 +3786,7 @@ export default function App() {
             </AnimatePresence>
 
             {/* ===== HOLOGRAPHIC NOTIFICATION SYSTEM ===== */}
-            <NeoraNotifications reminders={reminders} apiHealth={apiHealth} />
+            <NeoraNotifications reminders={reminders} apiHealth={apiHealth} lang={lang} />
 
             {/* ===== COMMAND STATUS CORNER DOCKED INDICATOR ===== */}
             <CommandStatusIndicator queue={commandQueue} lang={lang} />
@@ -3679,6 +3873,82 @@ export default function App() {
                 onClose={() => setVoicePanelOpen(false)}
                 onSelfEvolution={handleSelfEvolution}
               />
+            )}
+
+            {isDashboardAddTaskOpen && (
+              <div data-neora-modal="open" className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-md">
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: 15 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 15 }}
+                  className="w-full max-w-md bg-slate-950 border border-cyan-500/35 rounded-2xl p-6 shadow-2xl relative overflow-hidden"
+                >
+                  {/* Corner decoration lines */}
+                  <div className="absolute top-0 left-0 w-8 h-px bg-cyan-400" />
+                  <div className="absolute top-0 left-0 w-px h-8 bg-cyan-400" />
+
+                  <h3 className="font-jarvis text-base font-bold text-cyan-400 mb-1 flex items-center gap-2">
+                    <Plus className="w-5 h-5 text-cyan-400 animate-pulse" />
+                    {lang === 'bn' ? 'নতুন কুয়িক টাস্ক যোগ করুন' : 'ADD NEW QUICK TASK'}
+                  </h3>
+                  <p className="text-[11px] text-slate-400 mb-4 font-mono">
+                    {lang === 'bn' ? 'সরাসরি ড্যাশবোর্ড থেকে টাস্ক শিডিউল করুন।' : 'Direct injection into Neora active memory backplane.'}
+                  </p>
+
+                  <form onSubmit={(e) => {
+                    e.preventDefault();
+                    const fd = new FormData(e.currentTarget);
+                    const title = fd.get('title') as string;
+                    const priority = fd.get('priority') as any;
+                    if (title.trim()) {
+                      handleAddTask(title.trim(), priority, ['quick-dashboard']);
+                      setIsDashboardAddTaskOpen(false);
+                    }
+                  }} className="space-y-4">
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-mono text-slate-400 uppercase">{lang === 'bn' ? 'টাস্কের বিবরণ:' : 'Task Objective:'}</label>
+                      <input
+                        autoFocus
+                        required
+                        name="title"
+                        type="text"
+                        placeholder={lang === 'bn' ? 'যেমন: শুকরিয়া প্রিন্টার্স এর ভ্যাট মার্জিন হিসেব করো...' : 'e.g., calculate VAT margin for Shukria printers...'}
+                        className="w-full bg-slate-900 border border-slate-800 focus:border-cyan-500/50 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-600 focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-mono text-slate-400 uppercase">{lang === 'bn' ? 'অগ্রাধিকার (Priority):' : 'Priority Level:'}</label>
+                      <select
+                        name="priority"
+                        defaultValue="medium"
+                        className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none"
+                      >
+                        <option value="low">Low Priority</option>
+                        <option value="medium">Medium Priority</option>
+                        <option value="high">High Priority</option>
+                        <option value="critical">Critical Priority</option>
+                      </select>
+                    </div>
+
+                    <div className="flex gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsDashboardAddTaskOpen(false)}
+                        className="flex-1 py-2 bg-slate-900 hover:bg-slate-850 border border-slate-800 rounded-lg text-xs font-mono font-bold text-slate-400 transition-all animate-none"
+                      >
+                        {lang === 'bn' ? 'বাতিল' : 'CANCEL'}
+                      </button>
+                      <button
+                        type="submit"
+                        className="flex-1 py-2 bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/35 text-cyan-300 rounded-lg text-xs font-mono font-bold transition-all animate-none"
+                      >
+                        {lang === 'bn' ? 'টাস্ক যোগ করুন' : 'INJECT TASK'}
+                      </button>
+                    </div>
+                  </form>
+                </motion.div>
+              </div>
             )}
           </Suspense>
         </div>

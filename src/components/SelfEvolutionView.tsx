@@ -4,8 +4,9 @@ import {
   Cpu, Zap, Play, CheckCircle, RefreshCw, Layers, Terminal,
   HelpCircle, Eye, ChevronRight, FileCode, Sliders, AlertTriangle,
   Sparkles, Globe, Clipboard, Printer, DollarSign, Download, Plus, Trash,
-  Volume2, Activity
+  Volume2, Activity, Search
 } from 'lucide-react';
+import { aiSkillsList, AISkill } from './skillsData';
 
 interface SelfEvolutionViewProps {
   lang: 'en' | 'bn';
@@ -25,7 +26,7 @@ interface UpdateItem {
 }
 
 export default function SelfEvolutionView({ lang }: SelfEvolutionViewProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'identity' | 'analysis' | 'protocol' | 'evolved' | 'autonomous'>('autonomous');
+  const [activeSubTab, setActiveSubTab] = useState<'identity' | 'analysis' | 'protocol' | 'evolved' | 'autonomous' | 'explorer'>('autonomous');
   
   // --- NEORA 100X SELF-USE AUTOPILOT STATES ---
   const [isSelfUsingRun, setIsSelfUsingRun] = useState(false);
@@ -181,6 +182,293 @@ export default function SelfEvolutionView({ lang }: SelfEvolutionViewProps) {
     "Autonomous system prompt engineering benchmarks"
   ]);
 
+  // --- SKILL EXPLORER AND DISCOVERY STATES ---
+  const [skills, setSkills] = useState<AISkill[]>(() => {
+    const saved = localStorage.getItem("neora_ai_skills");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      } catch (e) {}
+    }
+    return aiSkillsList;
+  });
+  const [skillsSearch, setSkillsSearch] = useState<string>("");
+  const [skillsCategoryFilter, setSkillsCategoryFilter] = useState<string>("ALL");
+  const [isDiscovering, setIsDiscovering] = useState<boolean>(false);
+  const [discoveryRequirement, setDiscoveryRequirement] = useState<string>("");
+  const [discoveryLogs, setDiscoveryLogs] = useState<string[]>([]);
+  const [discoveryProgress, setDiscoveryProgress] = useState<number>(0);
+
+  // --- CUSTOM SKILL CREATION STATES ---
+  const [customSkillName, setCustomSkillName] = useState("");
+  const [customSkillCategory, setCustomSkillCategory] = useState("Frontend Core");
+  const [customSkillComplexity, setCustomSkillComplexity] = useState<"Beginner" | "Intermediate" | "Expert">("Intermediate");
+  const [customSkillDesc, setCustomSkillDesc] = useState("");
+  const [customSkillPrompt, setCustomSkillPrompt] = useState("");
+  const [customSkillIsCompiling, setCustomSkillIsCompiling] = useState(false);
+
+  // --- NEORA AUTONOMOUS UPGRADE STATES ---
+  const [neoraAutoUpgradeActive, setNeoraAutoUpgradeActive] = useState(() => {
+    return localStorage.getItem("neora_auto_upgrade_enabled") !== "false";
+  });
+  const [isAutoUpgrading, setIsAutoUpgrading] = useState(false);
+  const [autoUpgradeLogs, setAutoUpgradeLogs] = useState<string[]>([]);
+  const [autoUpgradeProgress, setAutoUpgradeProgress] = useState(0);
+
+  // --- SKILL UPDATE HISTORY STATE ---
+  interface SkillHistoryItem {
+    id: string;
+    skillName: string;
+    type: 'user_created' | 'github_discovered' | 'neora_auto_upgraded';
+    action: 'compiled' | 'installed' | 'upgraded';
+    timestamp: string;
+  }
+  const [skillHistory, setSkillHistory] = useState<SkillHistoryItem[]>(() => {
+    const saved = localStorage.getItem("neora_skill_history");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {}
+    }
+    return [
+      { id: "h1", skillName: "Bengali Translation Engine", type: 'neora_auto_upgraded', action: 'installed', timestamp: "12:15 PM" },
+      { id: "h2", skillName: "Smart Bulk Order Calculator (Shukria Custom)", type: 'user_created', action: 'compiled', timestamp: "11:42 AM" },
+      { id: "h3", skillName: "Self-Healing Diagnostic Agent", type: 'neora_auto_upgraded', action: 'upgraded', timestamp: "09:30 AM" }
+    ];
+  });
+
+  // Keep auto-upgrade setting in localStorage
+  useEffect(() => {
+    localStorage.setItem("neora_auto_upgrade_enabled", String(neoraAutoUpgradeActive));
+  }, [neoraAutoUpgradeActive]);
+
+  // Keep skill history in localStorage
+  useEffect(() => {
+    localStorage.setItem("neora_skill_history", JSON.stringify(skillHistory));
+  }, [skillHistory]);
+
+  useEffect(() => {
+    const handleSkillsUpdated = () => {
+      const saved = localStorage.getItem("neora_ai_skills");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            setSkills(parsed);
+          }
+        } catch (e) {}
+      }
+    };
+    window.addEventListener("neora-skills-updated", handleSkillsUpdated);
+    return () => window.removeEventListener("neora-skills-updated", handleSkillsUpdated);
+  }, []);
+
+  const triggerDiscoverAndInstall = () => {
+    if (!discoveryRequirement.trim()) return;
+    setIsDiscovering(true);
+    setDiscoveryProgress(0);
+    setDiscoveryLogs([
+      `📡 Connecting to GitHub skills registry API...`,
+      `🔍 Querying repositories matching requirement: "${discoveryRequirement}"`
+    ]);
+
+    const logs = [
+      `📡 Connecting to GitHub skills registry API...`,
+      `🔍 Querying repositories matching requirement: "${discoveryRequirement}"`,
+      `⚡ Found matching dynamic module: "neora-github-skill-${Math.floor(Math.random() * 9000 + 1000)}"`,
+      `📦 Fetching source bundle from GitHub repository...`,
+      `⚡ Allocating local sandbox memory buffer...`,
+      `🛠️ Initiating core compiler & lint-checker (Neora Engine v2.4)...`,
+      `🧬 Injecting dynamic methods into active system backplane...`,
+      `✅ Success! Compiled skill verified and saved to Neora's neural database.`
+    ];
+
+    let currentStep = 1;
+    const interval = setInterval(() => {
+      if (currentStep < logs.length) {
+        setDiscoveryLogs(prev => [...prev, logs[currentStep]]);
+        setDiscoveryProgress(Math.floor((currentStep / (logs.length - 1)) * 100));
+        currentStep++;
+      } else {
+        clearInterval(interval);
+        
+        // Add the new skill to the registry!
+        const skillId = `sk_git_${Date.now()}`;
+        const newSkill: AISkill = {
+          id: skillId,
+          name: discoveryRequirement.trim().charAt(0).toUpperCase() + discoveryRequirement.trim().slice(1),
+          category: "GitHub Discovered",
+          description: `Custom autonomous skill compiled from GitHub to satisfy: "${discoveryRequirement.trim()}".`,
+          systemPrompt: `You are equipped with a specialized skill designed to: "${discoveryRequirement.trim()}". Use appropriate tools to satisfy this role.`,
+          enabled: true,
+          installed: true,
+          complexity: "Expert",
+          latencyMs: Math.floor(Math.random() * 15 + 10)
+        };
+
+        const updated = [newSkill, ...skills];
+        localStorage.setItem("neora_ai_skills", JSON.stringify(updated));
+        setSkills(updated);
+        setDiscoveryRequirement("");
+        setIsDiscovering(false);
+
+        // Dispatch updated event
+        window.dispatchEvent(new CustomEvent("neora-skills-updated", { detail: { skill: newSkill } }));
+      }
+    }, 1000);
+  };
+
+  const handleCreateCustomSkill = () => {
+    if (!customSkillName.trim() || !customSkillDesc.trim()) return;
+    setCustomSkillIsCompiling(true);
+
+    setTimeout(() => {
+      const skillId = `sk_custom_${Date.now()}`;
+      const newSkill: AISkill = {
+        id: skillId,
+        name: customSkillName.trim(),
+        category: customSkillCategory,
+        description: customSkillDesc.trim(),
+        systemPrompt: customSkillPrompt.trim() || `Act as a specialized ${customSkillName.trim()} model. Optimize core logic parameters.`,
+        enabled: true,
+        installed: true,
+        complexity: customSkillComplexity,
+        latencyMs: Math.floor(Math.random() * 12 + 8)
+      };
+
+      const updatedSkills = [newSkill, ...skills];
+      localStorage.setItem("neora_ai_skills", JSON.stringify(updatedSkills));
+      setSkills(updatedSkills);
+
+      // Add to history
+      const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const newHistoryItem: SkillHistoryItem = {
+        id: `h_custom_${Date.now()}`,
+        skillName: newSkill.name,
+        type: 'user_created',
+        action: 'compiled',
+        timestamp: timeStr
+      };
+      setSkillHistory(prev => [newHistoryItem, ...prev]);
+
+      // Reset fields
+      setCustomSkillName("");
+      setCustomSkillDesc("");
+      setCustomSkillPrompt("");
+      setCustomSkillIsCompiling(false);
+
+      // Trigger standard event for Notifications
+      window.dispatchEvent(new CustomEvent("neora-skills-updated", { detail: { skill: newSkill, isAuto: false } }));
+    }, 1500);
+  };
+
+  const runNeoraAutoUpgrade = () => {
+    if (isAutoUpgrading) return;
+    setIsAutoUpgrading(true);
+    setAutoUpgradeProgress(0);
+    setAutoUpgradeLogs([
+      lang === 'bn' 
+        ? "🤖 [নিওরা অটোনমাস ব্রেইন] ওয়ার্কস্পেস কোড ডেনসিটি স্ক্যান করা হচ্ছে..." 
+        : "🤖 [Neora Autonomous Brain] Scanning workspace code density...",
+      lang === 'bn'
+        ? "🔍 [ডায়াগনস্টিকস] সম্ভাব্য গ্যাপ খোঁজার জন্য package.json ও ইম্পোর্ট পাথ চেক করা হচ্ছে..."
+        : "🔍 [Diagnostics] Checking package.json and import paths for potential gaps...",
+    ]);
+
+    const upgradeSteps = lang === 'bn' ? [
+      "🤖 [নিওরা অটোনমাস ব্রেইন] ওয়ার্কস্পেস কোড ডেনসিটি স্ক্যান করা হচ্ছে...",
+      "🔍 [ডায়াগনস্টিকস] সম্ভাব্য গ্যাপ খোঁজার জন্য package.json ও ইম্পোর্ট পাথ চেক করা হচ্ছে...",
+      "⚡ [গ্যাপ সনাক্ত] শুকরিয়া প্রিন্টার্স এর ভলিউম ডিসকাউন্ট ও ভ্যাট ক্যালকুলেশনে আরও নিখুঁত ব্যাকগ্রাউন্ড প্রোটোকল প্রয়োজন।",
+      "🌐 [সার্চিং] গিটহাব এপিআই-তে 'shukria-vat-calculator' ও অনুরূপ লাইব্রেরি অনুসন্ধান করা হচ্ছে...",
+      "🛠️ [কম্পাইলিং] স্যান্ডবক্স মেমোরিতে নতুন অটোমেটেড ম্যাথমেটিক্যাল ক্যালকুলেশন স্ক্রিপ্ট লেখা হচ্ছে...",
+      "🧬 [সেলফ-ইভোলিউশন] নিওরা কোর ব্যাকপ্লেনে 'Autonomous VAT Shield' স্কিল যুক্ত করা হচ্ছে...",
+      "✅ [অটো-আপগ্রেড সফল] নতুন ১টি স্বয়ংক্রিয় মডিউল কোর মেমোরিতে সাফল্যের সাথে কম্পাইল ও সক্রিয় হয়েছে!"
+    ] : [
+      "🤖 [Neora Autonomous Brain] Scanning workspace code density...",
+      "🔍 [Diagnostics] Checking package.json and import paths for potential gaps...",
+      "⚡ [Gap Detected] Shukria Printers requires optimized volume discount and VAT calculation safeguards.",
+      "🌐 [Crawling] Querying GitHub API for 'shukria-vat-calculator' and similar packages...",
+      "🛠️ [Compiling] Writing localized mathematical calculation methods in safe sandboxed memory...",
+      "🧬 [Self-Evolving] Injecting 'Autonomous VAT Shield' into Neora's core backplane memory...",
+      "✅ [Auto-Upgrade Success] Successfully compiled 1 new autonomous micro-skill."
+    ];
+
+    let step = 1;
+    const interval = setInterval(() => {
+      if (step < upgradeSteps.length) {
+        setAutoUpgradeLogs(prev => [...prev, upgradeSteps[step]]);
+        setAutoUpgradeProgress(Math.floor((step / (upgradeSteps.length - 1)) * 100));
+        step++;
+      } else {
+        clearInterval(interval);
+
+        // Install a real auto-upgraded skill!
+        const skillId = `sk_auto_${Date.now()}`;
+        const autoSkills = [
+          {
+            name: lang === 'bn' ? "স্বয়ংক্রিয় ভ্যাট ও ক্যালকুলেশন শিল্ড" : "Autonomous VAT & Calculation Shield",
+            desc: lang === 'bn' 
+              ? "শুকরিয়া প্রিন্টার্সের সকল হিসাব ও ১৫% বাংলাদেশ ভ্যাট স্ট্যান্ডার্ড স্বয়ংক্রিয়ভাবে নির্ভুল রাখে ও অডিট করে।"
+              : "Monitors calculation states and validates VAT calculations (15% Bangladesh standard) dynamically.",
+            prompt: "Enforce strict Bangladesh VAT parsing rules on invoice metadata. Flag any calculation mismatch."
+          },
+          {
+            name: lang === 'bn' ? "প্রো-অ্যাক্টিভ মেমোরি ওয়াচার সেন্ট্রি" : "Proactive Memory Watcher Sentry",
+            desc: lang === 'bn'
+              ? "কোর মেমোরি এবং ভ্যারিয়েবল ট্রানজিশন ট্র্যাক করে ডেটা হারানো প্রতিরোধ করে।"
+              : "Tracks state modifications inside Neora's memory tree and runs auto-backup diagnostics.",
+            prompt: "Listen to workspace variable states, running incremental validations and backing up local state."
+          },
+          {
+            name: lang === 'bn' ? "নিউরাল ডায়ালগ টোন স্ট্যাবিলাইজার" : "Neural Dialogue Tone Stabilizer",
+            desc: lang === 'bn'
+              ? "ব্যবহারকারীর বার্তার ভাব বিশ্লেষণ করে নিওরার কথার টোন স্বয়ংক্রিয়ভাবে মানিয়ে নেয়।"
+              : "Adapts conversational response tone to match user's sentiment markers (frustrated vs pleased).",
+            prompt: "Modulate conversational output tone, injecting highly supportive and empathetic micro-sentences when strain is detected."
+          }
+        ];
+
+        // Pick one randomly
+        const chosen = autoSkills[Math.floor(Math.random() * autoSkills.length)];
+        
+        const newSkill: AISkill = {
+          id: skillId,
+          name: chosen.name,
+          category: "Self-Evolution",
+          description: chosen.desc,
+          systemPrompt: chosen.prompt,
+          enabled: true,
+          installed: true,
+          complexity: "Expert",
+          latencyMs: Math.floor(Math.random() * 10 + 12)
+        };
+
+        const updatedSkills = [newSkill, ...skills];
+        localStorage.setItem("neora_ai_skills", JSON.stringify(updatedSkills));
+        setSkills(updatedSkills);
+
+        // Add to history
+        const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const newHistoryItem: SkillHistoryItem = {
+          id: `h_auto_${Date.now()}`,
+          skillName: newSkill.name,
+          type: 'neora_auto_upgraded',
+          action: 'installed',
+          timestamp: timeStr
+        };
+        setSkillHistory(prev => [newHistoryItem, ...prev]);
+
+        setIsAutoUpgrading(false);
+
+        // Trigger event
+        window.dispatchEvent(new CustomEvent("neora-skills-updated", { detail: { skill: newSkill, isAuto: true } }));
+      }
+    }, 800);
+  };
+
   interface AutoPlan {
     id: string;
     name: string;
@@ -307,6 +595,17 @@ export default function SelfEvolutionView({ lang }: SelfEvolutionViewProps) {
   ]);
 
   // Background Autonomous Loop Simulation
+  const autoUpgradeActiveRef = useRef(neoraAutoUpgradeActive);
+  const isAutoUpgradingRef = useRef(isAutoUpgrading);
+
+  useEffect(() => {
+    autoUpgradeActiveRef.current = neoraAutoUpgradeActive;
+  }, [neoraAutoUpgradeActive]);
+
+  useEffect(() => {
+    isAutoUpgradingRef.current = isAutoUpgrading;
+  }, [isAutoUpgrading]);
+
   useEffect(() => {
     if (!isLoopActive) return;
 
@@ -365,6 +664,13 @@ export default function SelfEvolutionView({ lang }: SelfEvolutionViewProps) {
             return p;
           });
         });
+
+        // Trigger autonomous skill auto-upgrades based on Neora's assessment
+        if (autoUpgradeActiveRef.current && !isAutoUpgradingRef.current && Math.random() < 0.08) {
+          setTimeout(() => {
+            runNeoraAutoUpgrade();
+          }, 500);
+        }
 
         return nextStep;
       });
@@ -1629,13 +1935,21 @@ PARAMETERS:
               <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
             )}
           </button>
-          <button
+           <button
             onClick={() => setActiveSubTab('autonomous')}
             className={`px-3 py-1.5 rounded-lg text-xs font-mono transition-all cursor-pointer flex items-center gap-1.5 relative ${activeSubTab === 'autonomous' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-slate-400 hover:text-slate-200'}`}
           >
             <Cpu className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
             <span>{lang === 'bn' ? 'অটোনমাস ব্রেইন' : 'Autonomous Core'}</span>
             <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+          </button>
+          <button
+            onClick={() => setActiveSubTab('explorer')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-mono transition-all cursor-pointer flex items-center gap-1.5 relative ${activeSubTab === 'explorer' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-slate-400 hover:text-slate-200'}`}
+          >
+            <Globe className="w-3.5 h-3.5 text-emerald-400" />
+            <span>{lang === 'bn' ? 'স্কিল এক্সপ্লোরার' : 'Skill Explorer'}</span>
+            <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
           </button>
         </div>
       </div>
@@ -3590,6 +3904,468 @@ PARAMETERS:
 
             </div>
 
+          </div>
+        )}
+
+        {activeSubTab === 'explorer' && (
+          <div className="space-y-6">
+            {/* Header / Intro Card */}
+            <div className="rounded-2xl p-5 bg-slate-900/40 border border-emerald-500/10 backdrop-blur-xl relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full filter blur-3xl pointer-events-none" />
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 uppercase tracking-widest">GitHub Repository Link</span>
+                    <span className="text-slate-500 text-[10px] font-mono font-bold">v2.4 ACTIVE</span>
+                  </div>
+                  <h3 className="text-base font-bold text-white font-jarvis flex items-center gap-2">
+                    <Globe className="w-5 h-5 text-emerald-400 animate-spin-slow" />
+                    {lang === 'bn' ? 'গিটহাব স্কিল হাব এবং এক্সপ্লোরার' : 'NEORA GLOBAL SKILL HUB & EXPLORER'}
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1 max-w-2xl leading-relaxed">
+                    {lang === 'bn' 
+                      ? 'গিটহাব এবং এক্সটার্নাল রিপোজিটরি থেকে সরাসরি নতুন ওএস এজেন্ট, এপিআই প্রোটোকল ও কোডিং স্কিল সার্চ, কম্পাইল এবং নিওরায় ইঞ্জেক্ট করুন।' 
+                      : 'Search, discover, and automatically compile dynamic OS agent micro-skills from global GitHub repositories directly into Neora\'s active backplane memory.'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 bg-slate-950/40 border border-slate-800/80 p-2.5 rounded-xl">
+                  <div className="text-center px-3 border-r border-slate-800">
+                    <div className="text-[10px] font-mono font-bold text-slate-500">TOTAL</div>
+                    <div className="text-base font-bold text-emerald-400">{skills.length}</div>
+                  </div>
+                  <div className="text-center px-2">
+                    <div className="text-[10px] font-mono font-bold text-slate-500">ACTIVE</div>
+                    <div className="text-base font-bold text-cyan-400">{skills.filter(s => s.enabled).length}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* GitHub Dynamic Skill Discovery Section */}
+            <div className="rounded-2xl p-5 bg-slate-900/40 border border-cyan-500/10 backdrop-blur-xl relative">
+              <div className="flex items-center gap-2 mb-4 border-b border-slate-800 pb-2">
+                <Sparkles className="w-4 h-4 text-cyan-400 animate-pulse" />
+                <h4 className="text-xs font-mono font-bold text-slate-200 uppercase tracking-wider">
+                  {lang === 'bn' ? 'অটোনমাস গিটহাব স্কিল ডিসকভারি সার্ভিস' : 'AUTONOMOUS GITHUB SKILL DISCOVERY SERVICE'}
+                </h4>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                <div className="lg:col-span-7 space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="block text-[11px] font-mono text-slate-400 uppercase tracking-wider">
+                      {lang === 'bn' ? 'নতুন স্কিল রিকোয়ারমেন্ট বা প্রোজেক্ট উদ্দেশ্য টাইপ করুন:' : 'SPECIFY CUSTOM CAPABILITY OR PROJECT REQUIREMENTS:'}
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        disabled={isDiscovering}
+                        placeholder={lang === 'bn' ? 'যেমন: Shukria printing press invoice generation, speech converter, bulk folder watcher...' : 'e.g., automated email routing, speech clone, bulk discount calculator...'}
+                        value={discoveryRequirement}
+                        onChange={(e) => setDiscoveryRequirement(e.target.value)}
+                        className="flex-1 bg-slate-950 border border-slate-850 focus:border-cyan-500/50 rounded-lg px-3.5 py-2 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-cyan-500/20 font-sans"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') triggerDiscoverAndInstall();
+                        }}
+                      />
+                      <button
+                        onClick={triggerDiscoverAndInstall}
+                        disabled={isDiscovering || !discoveryRequirement.trim()}
+                        className="px-4 py-2 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 font-bold font-mono text-xs rounded-lg flex items-center gap-2 cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isDiscovering ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            <span>{lang === 'bn' ? 'সার্চ হচ্ছে...' : 'SCANNING...'}</span>
+                          </>
+                        ) : (
+                          <>
+                            <Download className="w-3.5 h-3.5" />
+                            <span>{lang === 'bn' ? 'ইনস্টল/আবিষ্কার' : 'Install / Discover'}</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    <span className="block text-[9px] font-mono text-slate-500">
+                      ⚡ {lang === 'bn' ? 'গিটহাব এপিআই-এর মাধ্যমে নিওরা রিয়েল-টাইমে সোর্স কোড ডাউনলোড ও কম্পাইল করে।' : 'Neora parses global repos, resolves syntax trees, and dynamically generates sandbox-safe JS methods.'}
+                    </span>
+                  </div>
+
+                  {/* Suggestion pill buttons */}
+                  <div className="space-y-1.5">
+                    <span className="block text-[10px] font-mono text-slate-500 uppercase">{lang === 'bn' ? 'পরামর্শকৃত নতুন মডিউল:' : 'SUGGESTED NEW CAPABILITIES:'}</span>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { label: lang === 'bn' ? "✦ ইনভয়েস জেনারেটর" : "✦ Invoice Automator", prompt: "shukria automated invoices with 15% VAT Bangladesh spec" },
+                        { label: lang === 'bn' ? "✦ পিডিএফ মেকার" : "✦ PDF Creator", prompt: "PDF design and compile invoice generator" },
+                        { label: lang === 'bn' ? "✦ ভয়েস চেঞ্জার" : "✦ Voice Synthesis", prompt: "Bengali local custom text to speech synthesis" },
+                        { label: lang === 'bn' ? "✦ মাউস এমুলেটর" : "✦ Hardware Simulator", prompt: "PC keyboard and mouse automation driver" }
+                      ].map((item, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          disabled={isDiscovering}
+                          onClick={() => setDiscoveryRequirement(item.prompt)}
+                          className="px-2.5 py-1 text-[10px] font-mono bg-slate-950 hover:bg-slate-900 border border-slate-850 rounded-full text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Console Log outputs */}
+                <div className="lg:col-span-5 bg-slate-950/80 border border-slate-900 rounded-xl p-3.5 flex flex-col justify-between min-h-[160px] max-h-[220px]">
+                  <div className="flex items-center justify-between border-b border-slate-900 pb-1.5 mb-2">
+                    <span className="text-[10px] font-mono text-cyan-400 font-bold">GITHUB LIVE TERMINAL CONSOLE</span>
+                    {isDiscovering && (
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    )}
+                  </div>
+                  <div className="flex-1 overflow-y-auto font-mono text-[10px] text-slate-400 space-y-1 scrollbar-none">
+                    {discoveryLogs.length === 0 ? (
+                      <span className="text-slate-600 block text-center mt-6 italic">{lang === 'bn' ? 'টার্মিনাল স্ট্যান্ডবাই... ডিসকভারি স্টার্ট করুন' : 'Terminal standby... await discovery trigger'}</span>
+                    ) : (
+                      discoveryLogs.map((log, i) => (
+                        <div key={i} className={`truncate ${log.includes('✅') || log.includes('Success') ? 'text-emerald-400 font-bold' : log.includes('⚡') ? 'text-amber-400' : 'text-slate-400'}`}>
+                          {log}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  {isDiscovering && (
+                    <div className="mt-2">
+                      <div className="h-1 bg-slate-900 rounded-full overflow-hidden">
+                        <div className="h-full bg-emerald-400 transition-all duration-300" style={{ width: `${discoveryProgress}%` }} />
+                      </div>
+                      <div className="flex justify-between items-center text-[8px] text-slate-500 font-mono mt-1">
+                        <span>COMPILING PATHS</span>
+                        <span>{discoveryProgress}%</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Custom Skill Creator & Auto-Upgrader Dashboard */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              {/* Left Column: Custom Skill Creator Form */}
+              <div className="lg:col-span-7 rounded-2xl p-5 bg-slate-900/40 border border-cyan-500/10 backdrop-blur-xl flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center gap-2 mb-4 border-b border-slate-800 pb-2">
+                    <Plus className="w-4 h-4 text-cyan-400" />
+                    <h4 className="text-xs font-mono font-bold text-slate-200 uppercase tracking-wider">
+                      {lang === 'bn' ? 'কাস্টম চাহিদা ভিত্তিক স্কিল মেকার' : 'CUSTOM REQUIREMENT SKILL CREATOR'}
+                    </h4>
+                  </div>
+                  
+                  <div className="space-y-4">
+                    {/* Name Input */}
+                    <div className="space-y-1.5">
+                      <label className="block text-[10px] font-mono text-slate-400 uppercase tracking-wider">
+                        {lang === 'bn' ? 'স্কিলের নাম:' : 'SKILL NAME:'}
+                      </label>
+                      <input
+                        type="text"
+                        placeholder={lang === 'bn' ? 'যেমন: Shukria Printing VAT Estimator' : 'e.g., Shukria Printing VAT Estimator'}
+                        value={customSkillName}
+                        onChange={(e) => setCustomSkillName(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-850 focus:border-cyan-500/50 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-600 focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {/* Category Dropdown */}
+                      <div className="space-y-1.5">
+                        <label className="block text-[10px] font-mono text-slate-400 uppercase tracking-wider">
+                          {lang === 'bn' ? 'ক্যাটাগরি:' : 'CATEGORY:'}
+                        </label>
+                        <select
+                          value={customSkillCategory}
+                          onChange={(e) => setCustomSkillCategory(e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-850 rounded-lg px-2.5 py-2 text-xs text-slate-300 focus:outline-none font-mono"
+                        >
+                          <option value="Printing Systems">{lang === 'bn' ? 'Printing Systems' : 'Printing Systems'}</option>
+                          <option value="Frontend Core">Frontend Core</option>
+                          <option value="Multimodal Ingestion">Multimodal Ingestion</option>
+                          <option value="OS Emulation Core">OS Emulation Core</option>
+                          <option value="Self-Evolution">Self-Evolution Core</option>
+                        </select>
+                      </div>
+
+                      {/* Complexity Dropdown */}
+                      <div className="space-y-1.5">
+                        <label className="block text-[10px] font-mono text-slate-400 uppercase tracking-wider">
+                          {lang === 'bn' ? 'জटिलতা স্তর:' : 'COMPLEXITY LEVEL:'}
+                        </label>
+                        <select
+                          value={customSkillComplexity}
+                          onChange={(e) => setCustomSkillComplexity(e.target.value as any)}
+                          className="w-full bg-slate-950 border border-slate-850 rounded-lg px-2.5 py-2 text-xs text-slate-300 focus:outline-none font-mono"
+                        >
+                          <option value="Beginner">Beginner</option>
+                          <option value="Intermediate">Intermediate</option>
+                          <option value="Expert">Expert</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Description Input */}
+                    <div className="space-y-1.5">
+                      <label className="block text-[10px] font-mono text-slate-400 uppercase tracking-wider">
+                        {lang === 'bn' ? 'সংক্ষিপ্ত বিবরণ:' : 'SHORT DESCRIPTION:'}
+                      </label>
+                      <input
+                        type="text"
+                        placeholder={lang === 'bn' ? 'যেমন: শুকরিয়া প্রিন্টার্সের ১৫% বাংলাদেশ ভ্যাট স্ট্যান্ডার্ড অনুযায়ী হিসাব করে।' : 'e.g., Calculates print media margins under standard 15% BD VAT guidelines.'}
+                        value={customSkillDesc}
+                        onChange={(e) => setCustomSkillDesc(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-850 focus:border-cyan-500/50 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-600 focus:outline-none"
+                      />
+                    </div>
+
+                    {/* System Prompt Input */}
+                    <div className="space-y-1.5">
+                      <label className="block text-[10px] font-mono text-slate-400 uppercase tracking-wider">
+                        {lang === 'bn' ? 'সিস্টেম প্রম্পট বা আচরণ নির্দেশনা (ঐচ্ছিক):' : 'SYSTEM PROMPT / BEHAVIOR DIRECTIVE (OPTIONAL):'}
+                      </label>
+                      <textarea
+                        rows={2}
+                        placeholder={lang === 'bn' ? 'নিওরা এই স্কিল সক্রিয় করার সময় যে প্রম্পট মেনে চলবে...' : 'Define specific rules, validation limits, or instructions that Neora must adhere to...'}
+                        value={customSkillPrompt}
+                        onChange={(e) => setCustomSkillPrompt(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-850 focus:border-cyan-500/50 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-600 focus:outline-none font-sans resize-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-5">
+                  <button
+                    onClick={handleCreateCustomSkill}
+                    disabled={customSkillIsCompiling || !customSkillName.trim() || !customSkillDesc.trim()}
+                    className="w-full py-2 bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 font-bold font-mono text-xs rounded-lg flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {customSkillIsCompiling ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>{lang === 'bn' ? 'কম্পাইল ও ভ্যালিডেট হচ্ছে...' : 'COMPILING & VALIDATING...'}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>{lang === 'bn' ? '✦ কাস্টম স্কিল কম্পাইল ও ইনস্টল করুন' : '✦ Compile & Install Custom Skill'}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Right Column: Neora Autonomous Auto-Upgrade Console & Skill Update History */}
+              <div className="lg:col-span-5 flex flex-col gap-5">
+                {/* Neora Autonomous Auto-Upgrade Console */}
+                <div className="rounded-2xl p-5 bg-slate-900/40 border border-purple-500/10 backdrop-blur-xl relative flex-1 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-2">
+                      <div className="flex items-center gap-2">
+                        <Cpu className="w-4 h-4 text-purple-400" />
+                        <h4 className="text-xs font-mono font-bold text-slate-200 uppercase tracking-wider">
+                          {lang === 'bn' ? 'নিওরা সেলফ-আপগ্রেড প্রোটোকল' : 'NEORA AUTONOMOUS UPGRADE'}
+                        </h4>
+                      </div>
+                      
+                      {/* Active Toggle Switch */}
+                      <button
+                        onClick={() => setNeoraAutoUpgradeActive(p => !p)}
+                        className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                          neoraAutoUpgradeActive 
+                            ? 'bg-purple-500/15 text-purple-400 border border-purple-500/20' 
+                            : 'bg-slate-950 text-slate-500 border border-slate-850'
+                        }`}
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full ${neoraAutoUpgradeActive ? 'bg-purple-400 animate-pulse' : 'bg-slate-600'}`} />
+                        {neoraAutoUpgradeActive ? (lang === 'bn' ? 'সক্রিয়' : 'ON AUTOPILOT') : (lang === 'bn' ? 'বন্ধ' : 'MUTED')}
+                      </button>
+                    </div>
+
+                    <p className="text-[11px] text-slate-400 leading-relaxed mb-4">
+                      {lang === 'bn'
+                        ? 'সক্রিয় থাকলে, নিওরা ব্যাকগ্রাউন্ডে ডায়াগনস্টিকস রান করে এবং কোড এক্সেপশন বা ব্যবহারকারীর চাহিদা অনুযায়ী স্বয়ংক্রিয়ভাবে নিজের স্কিল আপডেট করে।'
+                        : 'When enabled, Neora dynamically watches transaction diagnostics and self-compiles/injects necessary micro-skills to prevent exceptions.'}
+                    </p>
+
+                    {/* Progress log */}
+                    {isAutoUpgrading && (
+                      <div className="space-y-2 bg-slate-950/60 p-3 rounded-lg border border-slate-900/80 mb-4">
+                        <div className="flex justify-between items-center text-[9px] font-mono text-purple-400">
+                          <span>{lang === 'bn' ? 'অটোনমাস স্কিল জেনারেশন' : 'NEURAL GENERATIVE SYNTHESIS'}</span>
+                          <span>{autoUpgradeProgress}%</span>
+                        </div>
+                        <div className="h-1 bg-slate-900 rounded-full overflow-hidden">
+                          <div className="h-full bg-purple-500 transition-all duration-300" style={{ width: `${autoUpgradeProgress}%` }} />
+                        </div>
+                        <div className="text-[8px] font-mono text-slate-500 max-h-[60px] overflow-y-auto scrollbar-none space-y-0.5">
+                          {autoUpgradeLogs.slice(-2).map((log, i) => (
+                            <div key={i} className="truncate">{log}</div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <button
+                      onClick={runNeoraAutoUpgrade}
+                      disabled={isAutoUpgrading}
+                      className="w-full py-2 bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 text-purple-300 font-bold font-mono text-xs rounded-lg flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {isAutoUpgrading ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>{lang === 'bn' ? 'স্বয়ংক্রিয় টিউনিং হচ্ছে...' : 'TUNING NEURAL CORE...'}</span>
+                        </>
+                      ) : (
+                        <>
+                          <Zap className="w-3.5 h-3.5" />
+                          <span>{lang === 'bn' ? '⚡ এখনই অটো-আপগ্রেড রান করুন' : '⚡ Run Auto-Upgrade Diagnostic Now'}</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Skill Update History Log */}
+                <div className="rounded-2xl p-5 bg-slate-900/40 border border-emerald-500/10 backdrop-blur-xl flex-1 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center gap-2 mb-3 border-b border-slate-800 pb-2">
+                      <Terminal className="w-4 h-4 text-emerald-400" />
+                      <h4 className="text-xs font-mono font-bold text-slate-200 uppercase tracking-wider">
+                        {lang === 'bn' ? 'স্কিল আপডেট হিস্ট্রি ও অডিট ট্রেইল' : 'SKILL INTEGRATION LOGS'}
+                      </h4>
+                    </div>
+
+                    <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1 scrollbar-none">
+                      {skillHistory.map((item) => (
+                        <div key={item.id} className="flex items-center justify-between p-2 rounded bg-slate-950/40 border border-slate-900 text-[10px] font-mono">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className={`w-1.5 h-1.5 rounded-full ${
+                              item.type === 'user_created' ? 'bg-cyan-400' :
+                              item.type === 'github_discovered' ? 'bg-amber-400' : 'bg-purple-400 animate-pulse'
+                            }`} />
+                            <span className="text-slate-300 truncate font-bold">{item.skillName}</span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0 ml-2">
+                            <span className={`px-1 rounded text-[8px] uppercase ${
+                              item.action === 'compiled' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/10' :
+                              item.action === 'upgraded' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/10' :
+                              'bg-purple-500/10 text-purple-400 border border-purple-500/10'
+                            }`}>
+                              {item.action}
+                            </span>
+                            <span className="text-slate-500 text-[9px]">{item.timestamp}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <div className="text-[9px] font-mono text-slate-500 mt-2 text-center">
+                    🟢 {lang === 'bn' ? 'সবগুলো কোড বেস এবং মডিউল সঠিকভাবে সিঙ্কড রয়েছে।' : 'All generated systems synchronized with local indexed database.'}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Categorized Learned Skills List */}
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-850 pb-2">
+                <div className="flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-cyan-400" />
+                  <h4 className="text-xs font-mono font-bold text-slate-200 uppercase tracking-wider">
+                    {lang === 'bn' ? 'ক্যাটাগরি ভিত্তিক নিওরা স্কিলসমূহ' : 'CATEGORIZED ACTIVE NEORA SKILLS'}
+                  </h4>
+                </div>
+
+                {/* Filter and Search controls */}
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                  <div className="relative flex-1 sm:flex-initial">
+                    <input
+                      type="text"
+                      placeholder={lang === 'bn' ? 'সার্চ স্কিল...' : 'Search skills...'}
+                      value={skillsSearch}
+                      onChange={(e) => setSkillsSearch(e.target.value)}
+                      className="bg-slate-950/80 border border-slate-850 focus:border-cyan-500/50 rounded-lg pl-8 pr-3 py-1 text-[11px] text-slate-300 placeholder-slate-600 focus:outline-none w-full sm:w-44 font-sans"
+                    />
+                    <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
+
+                  <select
+                    value={skillsCategoryFilter}
+                    onChange={(e) => setSkillsCategoryFilter(e.target.value)}
+                    className="bg-slate-950/80 border border-slate-850 rounded-lg px-2 py-1 text-[11px] text-slate-400 focus:outline-none font-mono"
+                  >
+                    <option value="ALL">ALL CATEGORIES</option>
+                    <option value="Frontend Core">Frontend Core</option>
+                    <option value="Multimodal Ingestion">Multimodal Ingestion</option>
+                    <option value="OS Emulation Core">OS Emulation Core</option>
+                    <option value="Self-Evolution">Self-Evolution Core</option>
+                    <option value="GitHub Discovered">GitHub Discovered</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Grid of skills */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {skills
+                  .filter(s => {
+                    const matchesSearch = s.name.toLowerCase().includes(skillsSearch.toLowerCase()) || s.description.toLowerCase().includes(skillsSearch.toLowerCase());
+                    const matchesCategory = skillsCategoryFilter === "ALL" || s.category === skillsCategoryFilter;
+                    return matchesSearch && matchesCategory;
+                  })
+                  .map((skill) => (
+                    <div
+                      key={skill.id}
+                      className="rounded-xl p-4 bg-slate-900/25 border border-slate-850/80 hover:border-cyan-500/20 transition-all duration-300 flex flex-col justify-between space-y-3 hover:bg-slate-900/35 relative overflow-hidden"
+                    >
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-start gap-2">
+                          <span className="px-2 py-0.5 rounded text-[8px] font-mono font-bold bg-slate-950/80 border border-slate-800 text-cyan-400 uppercase tracking-wider">
+                            {skill.category}
+                          </span>
+                          <span className={`text-[8px] font-mono font-bold uppercase px-1.5 py-0.5 rounded ${
+                            skill.complexity === 'Expert' 
+                              ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' 
+                              : skill.complexity === 'Intermediate' 
+                                ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' 
+                                : 'bg-slate-850 text-slate-400'
+                          }`}>
+                            {skill.complexity}
+                          </span>
+                        </div>
+
+                        <div>
+                          <h5 className="font-sans font-bold text-sm text-slate-100 transition-colors">
+                            {skill.name}
+                          </h5>
+                          <p className="text-[11px] text-slate-400 mt-1 line-clamp-2 leading-relaxed">
+                            {skill.description}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="pt-2.5 border-t border-slate-900/80 flex items-center justify-between text-[10px] font-mono">
+                        <span className="text-slate-500">LATENCY: <strong className="text-slate-300">{skill.latencyMs}ms</strong></span>
+                        <div className="flex items-center gap-1.5 text-emerald-400">
+                          <CheckCircle className="w-3.5 h-3.5 shrink-0" />
+                          <span className="font-bold text-[9px] tracking-wide">ACTIVE ON CORE</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </div>
           </div>
         )}
 

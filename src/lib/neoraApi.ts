@@ -129,6 +129,11 @@ export async function neoraPost<T>(path: string, body?: JsonObject, options?: Ne
     },
     body: body ? JSON.stringify(body) : undefined,
   }, options);
+  
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("neora-api-post", { detail: { path, body } }));
+  }
+
   return parseResponse<T>(response);
 }
 
