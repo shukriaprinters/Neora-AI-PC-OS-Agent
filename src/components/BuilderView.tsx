@@ -2,12 +2,14 @@ import React, { useState, useEffect, useRef } from "react";
 import {
   Hammer, Code2, Play, Download, Sparkles, RefreshCw, AlertTriangle, CheckCircle,
   FileText, Folder, FolderOpen, ChevronRight, ChevronDown, ChevronUp, Copy, Search, PlayCircle,
-  Cpu, Trash2, Edit2, Plus, Terminal, Zap, Laptop, ArrowRight, Upload, Layers, Gamepad2, CloudLightning,
+  Cpu, Trash2, Edit2, Plus, Terminal, Zap, Laptop, ArrowRight, ArrowLeft, Languages, Menu, Upload, Layers, Gamepad2, CloudLightning,
   FileCode, TerminalSquare, HardDrive, FolderPlus, FilePlus, AlertCircle, Monitor, MessageSquare, Send, Trash, PlusCircle, Globe,
-  ExternalLink, GitPullRequest, Github, Cloud, Lock
+  ExternalLink, GitPullRequest, Github, Cloud, Lock, BookOpen, Sliders, Eye, EyeOff, Wand2, Mic, MicOff,
+  Check, X, Award
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { neoraGet, neoraPost } from "../lib/neoraApi";
+import { aiSkillsList, AISkill } from "./skillsData";
 
 interface FileItem {
   name: string;
@@ -26,7 +28,17 @@ interface ProjectPreset {
   files: FileItem[];
 }
 
-export function BuilderView({ lang }: { lang: "en" | "bn" }) {
+export function BuilderView({
+  lang,
+  ollamaDiagnosticStatus = "checking",
+  onChangeLang
+}: {
+  lang: "en" | "bn";
+  ollamaDiagnosticStatus?: string;
+  onChangeLang?: (l: "en" | "bn") => void;
+}) {
+  const ollamaStatus = ollamaDiagnosticStatus;
+
   // Default Presets
   const presets: ProjectPreset[] = [
     {
@@ -141,6 +153,15 @@ export function BuilderView({ lang }: { lang: "en" | "bn" }) {
   ];
 
   const [activePresetId, setActivePresetId] = useState<string>("weather");
+  const [builderTab, setBuilderTab] = useState<"aistudio" | "workspace">("aistudio");
+  const [sidebarSubTab, setSidebarSubTab] = useState<string>("playground");
+  const [studioPromptInput, setStudioPromptInput] = useState<string>("");
+  const [historyPrompts, setHistoryPrompts] = useState<string[]>([
+    "Personal budget visualizer with animated doughnut charts and CSV exporter",
+    "Realtime markdown notes board with folder grouping and color tags",
+    "Beautiful Pomodoro focus clock with offline sound synthesis",
+    "Side-scrolling arcade flappy space bird canvas game"
+  ]);
   const [prompt, setPrompt] = useState<string>("");
   const [isCompiling, setIsCompiling] = useState<boolean>(false);
   const [compileProgress, setCompileProgress] = useState<number>(0);
@@ -171,6 +192,47 @@ export function BuilderView({ lang }: { lang: "en" | "bn" }) {
   const [fetchedContent, setFetchedContent] = useState<string>("");
   const [isFetching, setIsFetching] = useState<boolean>(false);
   const [isFetcherOpen, setIsFetcherOpen] = useState<boolean>(false);
+  const [isResearching, setIsResearching] = useState<boolean>(false);
+
+  // Layout sizing, translation, and sidebar toggling States
+  const [activeLang, setActiveLang] = useState<"en" | "bn">(lang);
+  const [isSidebarVisible, setIsSidebarVisible] = useState<boolean>(true);
+  const [sidebarWidth, setSidebarWidth] = useState<number>(256);
+  const [chatPanelWidth, setChatPanelWidth] = useState<number>(440);
+  const [explorerWidth, setExplorerWidth] = useState<number>(320);
+  const [editorHeight, setEditorHeight] = useState<number>(240);
+  const [textScale, setTextScale] = useState<number>(100);
+
+  // LLM model, provider, and explorer toggling
+  const [selectedProvider, setSelectedProvider] = useState<"gemini" | "ollama">("gemini");
+  const [selectedModel, setSelectedModel] = useState<string>("gemini-3.5-flash");
+  const [isExplorerVisible, setIsExplorerVisible] = useState<boolean>(true);
+  const [attachedPcFiles, setAttachedPcFiles] = useState<Array<{ name: string; content: string }>>([]);
+  const [isEnhancing, setIsEnhancing] = useState<boolean>(false);
+  const [isRecording, setIsRecording] = useState<boolean>(false);
+
+  // 101+ AI Skills Hub States
+  const [skills, setSkills] = useState<AISkill[]>(() => {
+    const saved = localStorage.getItem("neora_ai_skills");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        // fallback
+      }
+    }
+    return aiSkillsList;
+  });
+  const [skillsSearch, setSkillsSearch] = useState<string>("");
+  const [skillsCategoryFilter, setSkillsCategoryFilter] = useState<string>("ALL");
+
+  useEffect(() => {
+    localStorage.setItem("neora_ai_skills", JSON.stringify(skills));
+  }, [skills]);
+
+  useEffect(() => {
+    setActiveLang(lang);
+  }, [lang]);
 
   // Advanced Integrations & File Hub States (Google Drive, GitHub, PC Location)
   const [isHubOpen, setIsHubOpen] = useState<boolean>(false);
@@ -258,17 +320,26 @@ export function BuilderView({ lang }: { lang: "en" | "bn" }) {
       addLog("🔍 Scanning input parameters and reference workspace files...");
       setCompileProgress(25);
 
+      let compiledPrompt = userPrompt;
+      if (attachedPcFiles.length > 0) {
+        compiledPrompt += "\n\n[USER ATTACHED PC FILES FOR REFERENCE]:\n" + 
+          attachedPcFiles.map(file => `--- START FILE: ${file.name} ---\n${file.content}\n--- END FILE: ${file.name} ---`).join("\n\n");
+      }
+
       const response = await fetch("/api/builder/compile", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          prompt: userPrompt,
+          prompt: compiledPrompt,
           files: projectFiles,
           mockupImage: mockupImage || undefined,
           presetId: activePresetId,
-          geminiKey: geminiKey || undefined
+          geminiKey: geminiKey || undefined,
+          model: selectedModel,
+          provider: selectedProvider,
+          ollamaBaseUrl: localStorage.getItem("neora_ollama_base_url") || "http://127.0.0.1:11434"
         })
       });
 
@@ -403,6 +474,46 @@ export function BuilderView({ lang }: { lang: "en" | "bn" }) {
     setChatInput("");
 
     triggerRealCompile(userMessageText);
+  };
+
+  const handleEnhancePrompt = async () => {
+    if (!chatInput.trim()) {
+      addLog("⚠️ Please type a short concept first so Neora can optimize it!");
+      return;
+    }
+    setIsEnhancing(true);
+    addLog("🔮 Handshaking with Neural Prompt Enhancer context...");
+    try {
+      const gKey = localStorage.getItem("neora_gemini_key") || "";
+      const response = await fetch("/api/prompt/enhance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: chatInput,
+          lang: activeLang,
+          useOllama: selectedProvider === "ollama",
+          selectedOllamaModel: selectedModel,
+          geminiKey: gKey
+        })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.error) {
+          throw new Error(data.error);
+        }
+        if (data.text) {
+          setChatInput(data.text);
+          addLog("✨ Prompt optimized successfully! Ready to compile.");
+        }
+      } else {
+        throw new Error(`HTTP error ${response.status}`);
+      }
+    } catch (err: any) {
+      console.error("Enhance failed:", err);
+      addLog(`❌ Prompt Optimizer failed: ${err.message || String(err)}`);
+    } finally {
+      setIsEnhancing(false);
+    }
   };
 
   // Load live agent logs & status on interval
@@ -563,6 +674,52 @@ export function BuilderView({ lang }: { lang: "en" | "bn" }) {
     const referenceBlock = `\n\n[Reference Resource/Documentation]:\n"""\n${truncated}${fetchedContent.length > 3000 ? "\n...(truncated)..." : ""}\n"""`;
     setChatInput(prev => prev + referenceBlock);
     addLog("📥 Reference content successfully appended to your Chat Input box!");
+  };
+
+  const handleDeepResearchPrompt = async () => {
+    if (!fetchedContent.trim()) return;
+    setIsResearching(true);
+    addLog(activeLang === "bn" 
+      ? "🧠 জেমিনি ডিপ রিসার্স মডিউল চালু হচ্ছে... ডকুমেন্টেশন বিশ্লেষণ করা হচ্ছে..." 
+      : "🧠 Initializing Gemini Deep Research Module... Analyzing documentation references..."
+    );
+
+    const geminiKey = localStorage.getItem("neora_gemini_key") || "";
+
+    try {
+      const res = await fetch("/api/builder/research-prompt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content: fetchedContent,
+          lang: activeLang,
+          geminiKey: geminiKey || undefined
+        })
+      });
+
+      if (!res.ok) {
+        throw new Error(`HTTP error ${res.status}: ${res.statusText}`);
+      }
+
+      const data = await res.json();
+      if (data.status === "success") {
+        setStudioPromptInput(data.prompt || "");
+        setSidebarSubTab("playground"); // Switch to playground where the input is
+        addLog(activeLang === "bn"
+          ? "✅ ডিপ রিসার্স সফল! একটি রিয়েল-ওয়ার্ল্ড হাই-ফিডেলিটি প্রম্পট তৈরি করে প্লে-গ্রাউন্ড বক্সে যুক্ত করা হয়েছে।"
+          : "✅ Deep Research Succeeded! A high-fidelity, real-world builder prompt has been generated & set inside the Playground box."
+        );
+      } else if (data.status === "api_key_missing") {
+        throw new Error(activeLang === "bn" ? "Gemini API Key অনুপস্থিত।" : "Gemini API Key is missing. Configure it in Settings.");
+      } else {
+        throw new Error(data.error || "Failed to generate research prompt");
+      }
+    } catch (err: any) {
+      console.error("Deep Research error:", err);
+      addLog(`❌ DEEP RESEARCH EXCEPTION: ${err.message || String(err)}`);
+    } finally {
+      setIsResearching(false);
+    }
   };
 
   const handleInjectContentToWorkspace = () => {
@@ -870,6 +1027,27 @@ export function BuilderView({ lang }: { lang: "en" | "bn" }) {
   // UI mockup reference image
   const [mockupImage, setMockupImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pcFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePcFileAttach = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (text) {
+        setAttachedPcFiles(prev => {
+          if (prev.some(f => f.name === file.name)) {
+            return prev;
+          }
+          return [...prev, { name: file.name, content: text }];
+        });
+        addLog(`📎 Attached PC file: ${file.name} successfully to your workspace context.`);
+      }
+    };
+    reader.readAsText(file);
+  };
 
   // Real-time custom form controls for generated apps (storing states of compiled previews)
   const [previewStates, setPreviewStates] = useState<any>({
@@ -1053,297 +1231,1537 @@ export function BuilderView({ lang }: { lang: "en" | "bn" }) {
     });
   };
 
+  const handleStudioSubmit = (customText?: string) => {
+    const textToSend = customText || studioPromptInput.trim();
+    if (!textToSend && !mockupImage) return;
+
+    // Transition to the code editor workspace
+    setBuilderTab("workspace");
+    setSidebarSubTab("activeworkspace");
+    setChatInput(textToSend); // Fill the chat input so it matches the current build
+
+    // Trigger compiler
+    triggerRealCompile(textToSend || (lang === "bn" ? "সংযুক্ত রেফারেন্স ইমেজ অনুযায়ী কোড জেনারেট করো।" : "Generate code based on attached reference image."));
+
+    // Save to history
+    if (textToSend && !historyPrompts.includes(textToSend)) {
+      setHistoryPrompts(prev => [textToSend, ...prev]);
+    }
+    setStudioPromptInput("");
+  };
+
+  const handleLuckyPrompt = () => {
+    const luckyPrompts = [
+      "Real-time Weather Dashboard showing current temperatures, forecasting metrics, wind speed dials, humidity curves, and custom atmospheric gradients.",
+      "Neon Arcade Side-scroller Flappy bird game with rich retro audio synthesizers, gravity controls, and score multipliers.",
+      "High-fidelity Task Workflow Planner & Pomodoro focus timer with interactive boards, customizable categories, and session analytics graphs.",
+      "Interactive Audio Synthesizer and drum pad with real-time waveform visualizers, customizable BPM controls, and offline frequency modulation.",
+      "Stunning 3D Solar System explorer canvas displaying orbit paths, rotatable planetary bodies, speed dials, and space telemetry readouts."
+    ];
+    const randomPrompt = luckyPrompts[Math.floor(Math.random() * luckyPrompts.length)];
+    setStudioPromptInput(randomPrompt);
+  };
+
   return (
-    <div className="flex-1 flex flex-col xl:flex-row h-full w-full min-h-0 bg-[#000d1d] overflow-hidden" id="neora-builder-tab">
+    <div 
+      style={{ fontSize: `${textScale}%` }} 
+      className="flex-1 flex h-full w-full min-h-0 bg-[#0c0d10] text-slate-100 overflow-hidden" 
+      id="neora-builder-tab"
+    >
       
-      {/* LEFT COLUMN: Neora AI Builder Chat Workspace */}
-      <div className="w-full xl:w-[460px] border-b xl:border-b-0 xl:border-r border-slate-800/65 flex flex-col shrink-0 bg-[#000814]/95 backdrop-blur-md min-h-0 h-full overflow-hidden">
+      {/* --- GOOGLE AI STUDIO BRANDED LEFT SIDEBAR --- */}
+      <div 
+        style={{ width: isSidebarVisible ? `${sidebarWidth}px` : "0px", display: isSidebarVisible ? "flex" : "none" }}
+        className="border-r border-slate-800/60 bg-[#0c0d0f] flex flex-col shrink-0 h-full min-h-0 overflow-hidden transition-all duration-150"
+      >
         
-        {/* Chat Header Banner */}
-        <div className="p-4 border-b border-indigo-500/15 bg-gradient-to-r from-indigo-950/20 to-transparent flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="p-1.5 rounded-lg bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.25)]">
-              <MessageSquare className="w-4 h-4 animate-pulse" />
+        {/* Header Branding Dropdown Mock */}
+        <div className="p-4 border-b border-slate-800/40 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+              <Sparkles className="w-4 h-4 animate-pulse" />
             </div>
-            <div>
-              <h2 className="text-sm font-bold font-sans tracking-wide text-white">NEORA BUILDER CO-PILOT</h2>
-              <p className="text-[10px] text-slate-400 font-mono tracking-wider uppercase">
-                {lang === "bn" ? "এআই কোড সহকারী" : "AI CODE ASSISTANT"}
-              </p>
+            <div className="font-sans font-bold text-sm tracking-wide text-white flex items-center gap-1">
+              <span>Google AI Studio</span>
+              <span className="text-[9px] bg-slate-800 text-indigo-300 px-1 py-0.2 rounded font-mono">BUILD</span>
             </div>
           </div>
-          <div className="flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[9px] font-mono text-emerald-400">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping shrink-0" />
-            LIVE
-          </div>
+          <ChevronDown className="w-3.5 h-3.5 text-slate-400 cursor-pointer" />
         </div>
 
-        {/* Collapsible Presets & Reference Panel */}
-        <div className="border-b border-slate-800/50 bg-slate-950/40 shrink-0">
-          <button
-            onClick={() => setIsPresetsDrawerOpen(!isPresetsDrawerOpen)}
-            className="w-full px-4 py-2.5 flex items-center justify-between text-left hover:bg-slate-900/35 transition-all text-xs font-mono text-slate-300"
-          >
-            <div className="flex items-center gap-2">
-              <Layers className="w-3.5 h-3.5 text-indigo-400" />
-              <span>
-                {lang === "bn" ? "প্রোজেক্ট টেমপ্লেট ও ড্রয়িং রেফারেন্স" : "PROJECT TEMPLATES & DESIGN REFERENCE"}
-              </span>
-              <span className="text-[10px] text-indigo-400 px-1.5 py-0.2 rounded-full bg-indigo-500/10 border border-indigo-500/20 font-sans font-bold capitalize">
-                {activePresetId}
-              </span>
-              {mockupImage && (
-                <span className="text-[9px] text-emerald-400 px-1.5 py-0.2 rounded-full bg-emerald-500/10 border border-emerald-500/20 font-mono">
-                  +MOCKUP
-                </span>
-              )}
-            </div>
-            {isPresetsDrawerOpen ? (
-              <ChevronUp className="w-4 h-4 text-slate-400" />
-            ) : (
-              <ChevronDown className="w-4 h-4 text-slate-400" />
-            )}
-          </button>
-
-          <AnimatePresence>
-            {isPresetsDrawerOpen && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: "auto", opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="overflow-hidden bg-slate-950/80 border-t border-slate-800/40 p-4 space-y-4"
+        {/* Sidebar Nav Items */}
+        <div className="flex-1 overflow-y-auto p-3 space-y-6" style={{ scrollbarWidth: "thin" }}>
+          
+          {/* Explore Group */}
+          <div>
+            <div className="text-[10px] font-mono font-bold text-slate-500 px-2.5 mb-2 uppercase tracking-wider">Explore</div>
+            <div className="space-y-1">
+              <button
+                onClick={() => {
+                  setBuilderTab("aistudio");
+                  setSidebarSubTab("playground");
+                }}
+                className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium tracking-wide transition-all text-left cursor-pointer ${
+                  builderTab === "aistudio" && sidebarSubTab === "playground"
+                    ? "bg-slate-800/60 text-white font-semibold border-l-2 border-indigo-500"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/30"
+                }`}
               >
-                {/* Presets Selection */}
-                <div>
-                  <label className="block text-[9px] font-mono text-indigo-400 mb-2 tracking-widest uppercase">
-                    {lang === "bn" ? "টার্গেট টেমপ্লেট পরিবর্তন করুন" : "CHANGE TARGET TEMPLATE"}
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {presets.map(p => {
-                      const Icon = p.icon;
-                      return (
+                <Cpu className="w-4 h-4 text-slate-400" />
+                <span>Playground</span>
+              </button>
+              <button
+                onClick={() => {
+                  setBuilderTab("aistudio");
+                  setSidebarSubTab("history");
+                }}
+                className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium tracking-wide transition-all text-left cursor-pointer ${
+                  builderTab === "aistudio" && sidebarSubTab === "history"
+                    ? "bg-slate-800/60 text-white font-semibold border-l-2 border-indigo-500"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/30"
+                }`}
+              >
+                <RefreshCw className="w-4 h-4 text-slate-400" />
+                <span>History</span>
+              </button>
+              <button
+                onClick={() => {
+                  setBuilderTab("aistudio");
+                  setSidebarSubTab("skills");
+                }}
+                className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium tracking-wide transition-all text-left cursor-pointer ${
+                  builderTab === "aistudio" && sidebarSubTab === "skills"
+                    ? "bg-slate-800/60 text-white font-semibold border-l-2 border-indigo-500"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/30"
+                }`}
+              >
+                <Award className="w-4 h-4 text-amber-400 animate-pulse" />
+                <span>{lang === "bn" ? "এআই স্কিলস হাব" : "AI Skills Hub"}</span>
+                <span className="ml-auto text-[9px] font-mono px-1.5 py-0.2 bg-amber-550/10 text-amber-300 rounded-full border border-amber-500/20 font-bold">101</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Build Group */}
+          <div>
+            <div className="text-[10px] font-mono font-bold text-slate-500 px-2.5 mb-2 uppercase tracking-wider">Build</div>
+            <div className="space-y-1">
+              <button
+                onClick={() => {
+                  setBuilderTab("aistudio");
+                  setSidebarSubTab("playground");
+                  setStudioPromptInput("");
+                }}
+                className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-900/30 transition-all text-left cursor-pointer"
+              >
+                <Plus className="w-4 h-4 text-emerald-400" />
+                <span className="text-emerald-300 font-bold">+ New app</span>
+              </button>
+
+              {/* Toggle to active code workspace */}
+              {projectFiles.length > 0 && (
+                <button
+                  onClick={() => {
+                    setBuilderTab("workspace");
+                    setSidebarSubTab("activeworkspace");
+                  }}
+                  className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium tracking-wide transition-all text-left cursor-pointer ${
+                    builderTab === "workspace"
+                      ? "bg-indigo-950/20 text-indigo-300 font-semibold border border-indigo-500/30 shadow-[0_0_10px_rgba(99,102,241,0.05)]"
+                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/30"
+                  }`}
+                >
+                  <Code2 className="w-4 h-4 text-indigo-400 animate-pulse" />
+                  <span>Active Workspace</span>
+                  <span className="ml-auto w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping shrink-0" />
+                </button>
+              )}
+
+              <button
+                onClick={() => {
+                  setBuilderTab("aistudio");
+                  setSidebarSubTab("myapps");
+                }}
+                className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium tracking-wide transition-all text-left cursor-pointer ${
+                  builderTab === "aistudio" && sidebarSubTab === "myapps"
+                    ? "bg-slate-800/60 text-white font-semibold border-l-2 border-indigo-500"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/30"
+                }`}
+              >
+                <Folder className="w-4 h-4 text-slate-400" />
+                <span>My apps</span>
+              </button>
+              <button
+                onClick={() => {
+                  setBuilderTab("aistudio");
+                  setSidebarSubTab("gallery");
+                }}
+                className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium tracking-wide transition-all text-left cursor-pointer ${
+                  builderTab === "aistudio" && sidebarSubTab === "gallery"
+                    ? "bg-slate-800/60 text-white font-semibold border-l-2 border-indigo-500"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/30"
+                }`}
+              >
+                <Layers className="w-4 h-4 text-slate-400" />
+                <span>Gallery</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Manage Group */}
+          <div>
+            <div className="text-[10px] font-mono font-bold text-slate-500 px-2.5 mb-2 uppercase tracking-wider">Manage</div>
+            <div className="space-y-1">
+              <button
+                onClick={() => {
+                  setBuilderTab("aistudio");
+                  setSidebarSubTab("dashboard");
+                }}
+                className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium tracking-wide transition-all text-left cursor-pointer ${
+                  builderTab === "aistudio" && sidebarSubTab === "dashboard"
+                    ? "bg-slate-800/60 text-white font-semibold border-l-2 border-indigo-500"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/30"
+                }`}
+              >
+                <Laptop className="w-4 h-4 text-slate-400" />
+                <span>Dashboard</span>
+              </button>
+              <button
+                onClick={() => {
+                  setBuilderTab("aistudio");
+                  setSidebarSubTab("documentation");
+                }}
+                className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium tracking-wide transition-all text-left cursor-pointer ${
+                  builderTab === "aistudio" && sidebarSubTab === "documentation"
+                    ? "bg-slate-800/60 text-white font-semibold border-l-2 border-indigo-500"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/30"
+                }`}
+              >
+                <BookOpen className="w-4 h-4 text-slate-400" />
+                <span>Documentation</span>
+                <ExternalLink className="w-3 h-3 text-slate-500 ml-auto" />
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Sidebar Bottom Upgrade Box & User Box */}
+        <div className="p-3 border-t border-slate-800/50 space-y-3 shrink-0">
+          
+          {/* Upgrade Mini Box */}
+          <div className="p-3 rounded-xl bg-gradient-to-br from-indigo-950/30 via-slate-900/40 to-[#121316] border border-indigo-500/15">
+            <div className="text-[10px] font-bold text-indigo-400 mb-1">Upgrade to unlock more</div>
+            <div className="text-[9px] text-slate-400 leading-relaxed">
+              Access higher limits, Pro models, offline pipelines, and priority support.
+            </div>
+          </div>
+
+          {/* User Email & Settings */}
+          <div className="flex items-center justify-between px-1 bg-slate-950/20 py-1.5 rounded-lg border border-slate-900">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-indigo-600 to-pink-600 flex items-center justify-center text-[10px] text-white font-bold">
+                SP
+              </div>
+              <div className="truncate text-[10px] text-slate-300 font-mono w-32">
+                shukriaprinters@gmail.com
+              </div>
+            </div>
+            <Sliders className="w-3.5 h-3.5 text-slate-400 cursor-pointer hover:text-slate-200" />
+          </div>
+
+        </div>
+      </div>
+
+      {/* --- RIGHT DETAILED VIEWS CONTAINER --- */}
+      <div className="flex-1 flex flex-col min-h-0 bg-[#08090b] overflow-hidden">
+        
+        {/* UNIVERSAL CORE CONTROL HEADER BAR */}
+        <div className="border-b border-slate-800/80 bg-[#0a0c10]/95 px-4 py-2 flex flex-wrap items-center justify-between gap-3 shrink-0 z-30 shadow-[0_4px_20px_rgba(0,0,0,0.35)]">
+          
+          {/* Left Navigation and Sidebar Controls */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsSidebarVisible(!isSidebarVisible)}
+              className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 hover:text-indigo-400 hover:border-indigo-500/30 transition-all flex items-center justify-center cursor-pointer shadow-inner"
+              title={activeLang === "bn" ? "সাইডবার দেখান বা লুকান" : "Show/Hide Google AI Studio Sidebar"}
+            >
+              <Menu className="w-4 h-4" />
+            </button>
+
+            {(!isSidebarVisible) && (
+              <span className="text-xs font-sans font-bold text-slate-400 tracking-wide border-r border-slate-800 pr-2 mr-1">
+                Google AI Studio
+              </span>
+            )}
+
+            {/* Back Button */}
+            {(builderTab === "workspace" || sidebarSubTab !== "playground") && (
+              <button
+                onClick={() => {
+                  setBuilderTab("aistudio");
+                  setSidebarSubTab("playground");
+                }}
+                className="px-2.5 py-1.5 rounded-lg bg-indigo-950/40 border border-indigo-500/20 text-indigo-300 hover:bg-indigo-900/40 transition-all text-xs font-medium flex items-center gap-1.5 cursor-pointer animate-fade-in"
+                title={activeLang === "bn" ? "প্লেগ্রাউন্ডে ফিরে যান" : "Return to Playground / Prompt box"}
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>{activeLang === "bn" ? "পিছনে যান" : "Back"}</span>
+              </button>
+            )}
+          </div>
+
+          {/* Interactive Layout Dimensions & Zoom Sizer controls */}
+          <div className="flex items-center gap-3 bg-slate-950/40 px-3 py-1 rounded-xl border border-slate-800/50 text-[10px] font-mono text-slate-400">
+            <span className="text-slate-500 uppercase font-bold tracking-wider mr-1 text-[9px] hidden sm:inline">
+              {activeLang === "bn" ? "আকার ও জুম কন্ট্রোল:" : "Layout & Zoom:"}
+            </span>
+
+            {/* Sidebar width */}
+            {isSidebarVisible && (
+              <div className="flex items-center gap-1 border-r border-slate-800/80 pr-2 mr-1">
+                <span>{activeLang === "bn" ? "সাইডবার" : "Sidebar"}:</span>
+                <button 
+                  onClick={() => setSidebarWidth(w => Math.max(160, w - 20))}
+                  className="w-4 h-4 rounded bg-slate-900 border border-slate-800 text-slate-300 hover:text-white flex items-center justify-center font-bold text-xs"
+                >-</button>
+                <span className="text-slate-300 w-8 text-center">{sidebarWidth}px</span>
+                <button 
+                  onClick={() => setSidebarWidth(w => Math.min(380, w + 20))}
+                  className="w-4 h-4 rounded bg-slate-900 border border-slate-800 text-slate-300 hover:text-white flex items-center justify-center font-bold text-xs"
+                >+</button>
+              </div>
+            )}
+
+            {/* Workspace Chat Width (Only in workspace tab) */}
+            {builderTab === "workspace" && (
+              <div className="flex items-center gap-1 border-r border-slate-800/80 pr-2 mr-1">
+                <span>{activeLang === "bn" ? "চ্যাট" : "Chat"}:</span>
+                <button 
+                  onClick={() => setChatPanelWidth(w => Math.max(320, w - 20))}
+                  className="w-4 h-4 rounded bg-slate-900 border border-slate-800 text-slate-300 hover:text-white flex items-center justify-center font-bold text-xs"
+                >-</button>
+                <span className="text-slate-300 w-8 text-center">{chatPanelWidth}px</span>
+                <button 
+                  onClick={() => setChatPanelWidth(w => Math.min(600, w + 20))}
+                  className="w-4 h-4 rounded bg-slate-900 border border-slate-800 text-slate-300 hover:text-white flex items-center justify-center font-bold text-xs"
+                >+</button>
+              </div>
+            )}
+
+            {/* File Explorer width (Only in workspace tab) */}
+            {builderTab === "workspace" && (
+              <div className="flex items-center gap-1 border-r border-slate-800/80 pr-2 mr-1">
+                <span>{activeLang === "bn" ? "এক্সপ্লোরার" : "Explorer"}:</span>
+                <button 
+                  onClick={() => setExplorerWidth(w => Math.max(200, w - 20))}
+                  className="w-4 h-4 rounded bg-slate-900 border border-slate-800 text-slate-300 hover:text-white flex items-center justify-center font-bold text-xs"
+                >-</button>
+                <span className="text-slate-300 w-8 text-center">{explorerWidth}px</span>
+                <button 
+                  onClick={() => setExplorerWidth(w => Math.min(450, w + 20))}
+                  className="w-4 h-4 rounded bg-slate-900 border border-slate-800 text-slate-300 hover:text-white flex items-center justify-center font-bold text-xs"
+                >+</button>
+              </div>
+            )}
+
+            {/* Code editor height (Only in workspace tab) */}
+            {builderTab === "workspace" && (
+              <div className="flex items-center gap-1 border-r border-slate-800/80 pr-2 mr-1">
+                <span>{activeLang === "bn" ? "এডিটর" : "Editor"}:</span>
+                <button 
+                  onClick={() => setEditorHeight(h => Math.max(150, h - 20))}
+                  className="w-4 h-4 rounded bg-slate-900 border border-slate-800 text-slate-300 hover:text-white flex items-center justify-center font-bold text-xs"
+                >-</button>
+                <span className="text-slate-300 w-8 text-center">{editorHeight}px</span>
+                <button 
+                  onClick={() => setEditorHeight(h => Math.min(600, h + 20))}
+                  className="w-4 h-4 rounded bg-slate-900 border border-slate-800 text-slate-300 hover:text-white flex items-center justify-center font-bold text-xs"
+                >+</button>
+              </div>
+            )}
+
+            {/* Global scale/zoom */}
+            <div className="flex items-center gap-1">
+              <span>{activeLang === "bn" ? "জুম" : "Zoom"}:</span>
+              <button 
+                onClick={() => setTextScale(s => Math.max(85, s - 5))}
+                className="w-4 h-4 rounded bg-slate-900 border border-slate-800 text-slate-300 hover:text-white flex items-center justify-center font-bold text-xs"
+              >-</button>
+              <span className="text-slate-300 w-10 text-center">{textScale}%</span>
+              <button 
+                onClick={() => setTextScale(s => Math.min(125, s + 5))}
+                className="w-4 h-4 rounded bg-slate-900 border border-slate-800 text-slate-300 hover:text-white flex items-center justify-center font-bold text-xs"
+              >+</button>
+            </div>
+
+          </div>
+
+          {/* Translation/Language Switcher Controls */}
+          <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 rounded-xl bg-[#030712] border border-slate-800/80 p-0.5 shadow-inner">
+              <div className="px-2 text-slate-500 flex items-center justify-center" title="UI Language / ইন্টারফেস ভাষা">
+                <Languages className="w-3.5 h-3.5 text-slate-400" />
+              </div>
+              <button
+                onClick={() => {
+                  setActiveLang("bn");
+                  if (onChangeLang) onChangeLang("bn");
+                }}
+                className={`px-2 py-1 text-xs font-semibold rounded-lg tracking-wide transition-all duration-150 cursor-pointer ${
+                  activeLang === "bn"
+                    ? "bg-indigo-600 text-white shadow"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                বাংলা
+              </button>
+              <button
+                onClick={() => {
+                  setActiveLang("en");
+                  if (onChangeLang) onChangeLang("en");
+                }}
+                className={`px-2 py-1 text-xs font-semibold rounded-lg tracking-wide transition-all duration-150 cursor-pointer ${
+                  activeLang === "en"
+                    ? "bg-indigo-600 text-white shadow"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                English
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Render Google AI Studio Landing Views */}
+        {builderTab === "aistudio" ? (
+          <div className="flex-1 flex flex-col min-h-0 overflow-y-auto bg-[#08090b]" style={{ scrollbarWidth: "thin" }}>
+            
+            {/* 1. PLAYGROUND TAB */}
+            {sidebarSubTab === "playground" && (
+              <div className="flex-1 flex flex-col justify-center items-center px-4 max-w-3xl mx-auto w-full py-12 space-y-8">
+                
+                {/* Visual Header with Sparkles */}
+                <div className="text-center space-y-2">
+                  <div className="flex items-center justify-center gap-3">
+                    <h1 className="text-3xl md:text-4xl font-sans font-bold tracking-tight text-white leading-tight">
+                      {lang === "bn" ? "জেমিনি দিয়ে আপনার আইডিয়া তৈরি করুন" : "Build your ideas with Gemini"}
+                    </h1>
+                    <div className="p-1.5 rounded-lg bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.25)] flex items-center justify-center">
+                      <Sparkles className="w-5 h-5 animate-pulse text-indigo-400" />
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-400 max-w-lg mx-auto leading-relaxed font-sans">
+                    {lang === "bn"
+                      ? "প্রম্পটে বলুন আপনি কী অ্যাপ বানাতে চান, এবং জেমিনি এআই কোড সহকারী আপনার জন্য একটি ফুল-স্ট্যাক কোডবেস রিয়েল-টাইমে প্রস্তুত করবে।"
+                      : "Describe an application, web tool, game, or customized service below. Our Gemini assistant builds pristine responsive code instantly."}
+                  </p>
+                </div>
+
+                {/* Main Sparkle-Bordered Prompt Box */}
+                <div className="w-full relative">
+                  <div className="absolute -inset-[1.5px] rounded-2xl bg-gradient-to-r from-[#7c3aed] via-[#db2777] to-[#ea580c] opacity-80 blur-[2px]" />
+                  
+                  <div className="relative rounded-2xl bg-[#0c0d0f] border border-slate-800 p-4 space-y-3 shadow-2xl flex flex-col">
+                    
+                    <textarea
+                      value={studioPromptInput}
+                      onChange={(e) => setStudioPromptInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          handleStudioSubmit();
+                        }
+                      }}
+                      placeholder={lang === "bn" ? "আপনার এআই অ্যাপটি এখানে বর্ণনা করুন..." : "Describe an app and let Gemini do the rest"}
+                      className="w-full h-32 bg-transparent text-sm text-slate-100 placeholder-slate-500 focus:outline-none resize-none leading-relaxed font-sans"
+                    />
+
+                    {/* Attachment and Send row inside box */}
+                    <div className="flex items-center justify-between border-t border-slate-800/80 pt-3">
+                      
+                      {/* Attached mockup display */}
+                      <div className="flex items-center gap-2">
                         <button
-                          key={p.id}
-                          onClick={() => handleSelectPreset(p.id)}
-                          className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
-                            activePresetId === p.id
-                              ? "bg-indigo-500/10 border-indigo-500/40 text-white shadow-[0_0_15px_rgba(99,102,241,0.08)]"
-                              : "bg-slate-900/30 border-slate-800/80 text-slate-400 hover:text-slate-200 hover:border-slate-700/60"
+                          type="button"
+                          onClick={() => document.getElementById("studio-mockup-input")?.click()}
+                          className={`p-2 rounded-lg transition-all flex items-center justify-center gap-1.5 text-xs font-mono border cursor-pointer ${
+                            mockupImage
+                              ? "bg-indigo-500/10 border-indigo-500/30 text-indigo-300"
+                              : "bg-slate-900 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700"
                           }`}
+                          title={lang === "bn" ? "ডিজাইন ইমেজ যোগ করুন" : "Upload Layout Sketch"}
                         >
-                          <Icon className={`w-3.5 h-3.5 mb-1 ${activePresetId === p.id ? "text-indigo-400" : "text-slate-500"}`} />
-                          <div className="text-xs font-bold font-sans truncate">{p.name}</div>
+                          <Plus className="w-4 h-4" />
+                          <span>{mockupImage ? "✓ IMAGE" : "ATTACH IMAGE"}</span>
                         </button>
-                      );
-                    })}
+
+                        <input
+                          type="file"
+                          id="studio-mockup-input"
+                          className="hidden"
+                          onChange={handleImageUpload}
+                          accept="image/*"
+                        />
+
+                        {mockupImage && (
+                          <button
+                            onClick={() => setMockupImage(null)}
+                            className="text-[10px] text-rose-400 hover:underline font-mono"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Action buttons on right */}
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={handleLuckyPrompt}
+                          className="px-3.5 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-300 font-sans text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                          <span>I'm feeling lucky</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleStudioSubmit()}
+                          disabled={!studioPromptInput.trim() && !mockupImage}
+                          className="px-5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-sans text-xs font-bold transition-all shadow-md flex items-center gap-1.5 disabled:opacity-45 cursor-pointer"
+                        >
+                          <span>Build app</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                    </div>
+
                   </div>
                 </div>
 
-                {/* Mockup Upload */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-[9px] font-mono text-indigo-400 tracking-widest uppercase flex items-center gap-1">
-                      <Upload className="w-3 h-3 text-indigo-400" />
-                      <span>{lang === "bn" ? "ইউআই স্ক্রিনশট বা স্কেচ যুক্ত করুন" : "UPLOAD UI SCREENSHOT / DESIGN MOCKUP"}</span>
-                    </label>
-                    {mockupImage && (
-                      <button
-                        onClick={() => setMockupImage(null)}
-                        className="text-[9px] font-mono text-rose-400 hover:underline"
-                      >
-                        {lang === "bn" ? "রিমুভ করুন" : "Clear"}
-                      </button>
-                    )}
-                  </div>
-                  <div
-                    onClick={() => fileInputRef.current?.click()}
-                    className={`border border-dashed rounded-xl p-3 flex flex-col items-center justify-center cursor-pointer transition-all ${
-                      mockupImage
-                        ? "border-indigo-500/40 bg-indigo-950/5"
-                        : "border-slate-800 hover:border-indigo-500/30 bg-slate-950/20"
-                    }`}
-                  >
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      onChange={handleImageUpload}
-                      accept="image/*"
-                      className="hidden"
-                    />
-                    {mockupImage ? (
-                      <div className="relative w-full aspect-video rounded-lg overflow-hidden border border-slate-800 flex items-center justify-center bg-black/40">
-                        <img src={mockupImage} alt="Mockup" className="max-h-24 object-contain" />
-                        <div className="absolute inset-0 bg-black/60 opacity-0 hover:opacity-100 flex items-center justify-center transition-opacity text-[9px] font-mono text-white">
-                          CHANGE IMAGE
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-center py-1">
-                        <Upload className="w-4 h-4 text-slate-500 mx-auto mb-1" />
-                        <span className="text-[10px] font-sans text-slate-400 font-medium block">
-                          {lang === "bn" ? "এখানে ডিজাইন ড্রপ বা ক্লিক করুন" : "Drop wireframe or click to attach layout"}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        {/* Collapsible Resource Fetcher Panel */}
-        <div className="border-b border-slate-800/50 bg-slate-950/20 shrink-0">
-          <button
-            onClick={() => setIsFetcherOpen(!isFetcherOpen)}
-            className="w-full px-4 py-2.5 flex items-center justify-between text-left hover:bg-slate-900/35 transition-all text-xs font-mono text-slate-300"
-          >
-            <div className="flex items-center gap-2">
-              <Globe className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-              <span>
-                {lang === "bn" ? "রিসোর্স ও ডকুমেন্টেশন ফেচার" : "RESOURCE & DOCUMENTATION FETCHER"}
-              </span>
-              {fetchedContent && (
-                <span className="text-[9px] text-emerald-400 px-1.5 py-0.2 rounded-full bg-emerald-500/10 border border-emerald-500/20 font-mono">
-                  LOADED
-                </span>
-              )}
-            </div>
-            {isFetcherOpen ? (
-              <ChevronUp className="w-4 h-4 text-slate-400" />
-            ) : (
-              <ChevronDown className="w-4 h-4 text-slate-400" />
-            )}
-          </button>
-
-          <AnimatePresence>
-            {isFetcherOpen && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: "auto", opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="overflow-hidden bg-slate-950/85 border-t border-slate-800/40 p-4 space-y-3.5"
-              >
-                <div>
-                  <label className="block text-[9px] font-mono text-emerald-400 mb-1.5 tracking-widest uppercase">
-                    {lang === "bn" ? "ডকুমেন্টেশন বা এপিআই ইউআরএল লিখুন:" : "ENTER DOCS / API URL TO FETCH:"}
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={fetchUrl}
-                      onChange={(e) => setFetchUrl(e.target.value)}
-                      placeholder="e.g. https://api.github.com/repos/... or website url"
-                      className="flex-1 bg-[#000612] border border-slate-800 rounded-lg px-3 py-1.5 text-xs font-mono text-emerald-300 placeholder-slate-700 focus:outline-none focus:border-emerald-500/40"
-                    />
+                {/* Quick Pills Row with scroll indicators */}
+                <div className="w-full space-y-2">
+                  <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500 px-1 font-bold">Quick integration accelerators:</div>
+                  <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none scroll-smooth">
                     <button
-                      onClick={handleFetchResource}
-                      disabled={isFetching || !fetchUrl.trim()}
-                      className="px-3.5 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/20 font-mono text-xs font-bold transition-all disabled:opacity-40"
+                      onClick={() => setStudioPromptInput("Build an Android application dashboard with dark material styling, interactive touch cards, and fitness charts.")}
+                      className="px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs text-slate-300 font-sans flex items-center gap-1.5 shrink-0 transition-all cursor-pointer"
                     >
-                      {isFetching ? (
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <span>{lang === "bn" ? "ফেচ" : "Fetch"}</span>
-                      )}
+                      <span>🤖 Build an Android app</span>
+                    </button>
+                    <button
+                      onClick={() => setStudioPromptInput("Integrate Google Drive API explorer layout with visual folder grids, offline search bars, and document previews.")}
+                      className="px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs text-slate-300 font-sans flex items-center gap-1.5 shrink-0 transition-all cursor-pointer"
+                    >
+                      <span>📂 Google Drive</span>
+                    </button>
+                    <button
+                      onClick={() => setStudioPromptInput("Connect live Google Sheets database with editable cells, formula evaluations, and automatic data analytics charts.")}
+                      className="px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs text-slate-300 font-sans flex items-center gap-1.5 shrink-0 transition-all cursor-pointer"
+                    >
+                      <span>📊 Google Sheets</span>
+                    </button>
+                    <button
+                      onClick={() => setStudioPromptInput("Create a Gmail intelligent mailroom client with visual category thread filters and one-click smart responders.")}
+                      className="px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs text-slate-300 font-sans flex items-center gap-1.5 shrink-0 transition-all cursor-pointer"
+                    >
+                      <span>✉️ Gmail</span>
+                    </button>
+                    <button
+                      onClick={() => setStudioPromptInput("Design a Google Calendar planner dashboard featuring meeting drag logs, automated notifications, and schedule blockers.")}
+                      className="px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs text-slate-300 font-sans flex items-center gap-1.5 shrink-0 transition-all cursor-pointer"
+                    >
+                      <span>📅 Google Calendar</span>
                     </button>
                   </div>
                 </div>
 
-                {fetchedContent && (
+                {/* Browse Gallery Footer Accent */}
+                <div className="pt-6 border-t border-slate-800/40 w-full flex items-center justify-between text-xs">
+                  <span className="text-slate-500">Discover and remix app ideas</span>
+                  <button
+                    onClick={() => setSidebarSubTab("gallery")}
+                    className="text-indigo-400 hover:text-indigo-300 font-bold flex items-center gap-1 hover:underline cursor-pointer"
+                  >
+                    <span>Browse the app gallery</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+              </div>
+            )}
+
+            {/* 2. HISTORY TAB */}
+            {sidebarSubTab === "history" && (
+              <div className="p-6 md:p-8 max-w-4xl mx-auto w-full space-y-6">
+                <div>
+                  <h2 className="text-xl font-bold font-sans text-white">Prompt Request History</h2>
+                  <p className="text-xs text-slate-400 mt-1">Select any previous query to instantly populate the playground or trigger compilation.</p>
+                </div>
+                
+                <div className="space-y-2.5">
+                  {historyPrompts.map((h, i) => (
+                    <div
+                      key={i}
+                      onClick={() => {
+                        setStudioPromptInput(h);
+                        setSidebarSubTab("playground");
+                      }}
+                      className="p-3.5 rounded-xl bg-[#0c0d0f] border border-slate-800/80 hover:border-indigo-500/20 hover:bg-[#111215] transition-all cursor-pointer flex items-center justify-between group"
+                    >
+                      <div className="flex items-center gap-3 w-[90%]">
+                        <span className="text-slate-500 font-mono text-[10px]">0{i + 1}</span>
+                        <p className="text-xs text-slate-300 truncate font-sans group-hover:text-white">{h}</p>
+                      </div>
+                      <ArrowRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-indigo-400 group-hover:translate-x-0.5 transition-all shrink-0" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 3. MY APPS FILES/RESOURCES TAB */}
+            {sidebarSubTab === "myapps" && (
+              <div className="p-6 md:p-8 max-w-4xl mx-auto w-full space-y-6">
+                <div>
+                  <h2 className="text-xl font-bold font-sans text-white">My Local Workspace Applications</h2>
+                  <p className="text-xs text-slate-400 mt-1">Explore files generated in your active local sandbox and launch them in the active editor workspace.</p>
+                </div>
+
+                {projectFiles.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="p-5 rounded-2xl bg-[#0c0d0f] border border-indigo-500/15 space-y-4">
+                      <div className="flex items-center justify-between border-b border-slate-800/50 pb-2">
+                        <span className="text-xs font-mono font-bold text-indigo-400">ACTIVE PROJECT STATE</span>
+                        <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">COMPILED</span>
+                      </div>
+                      <div className="space-y-1 text-xs text-slate-300">
+                        <div><strong className="text-slate-400 font-mono text-[11px]">Primary Entry:</strong> src/App.tsx</div>
+                        <div><strong className="text-slate-400 font-mono text-[11px]">Active Preset:</strong> {activePresetId}</div>
+                        <div><strong className="text-slate-400 font-mono text-[11px]">Total File Nodes:</strong> {projectFiles.length} nodes loaded</div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setBuilderTab("workspace");
+                          setSidebarSubTab("activeworkspace");
+                        }}
+                        className="w-full py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 font-bold font-sans text-xs text-white text-center transition-all cursor-pointer"
+                      >
+                        Open Active Editor Workspace
+                      </button>
+                    </div>
+
+                    <div className="p-5 rounded-2xl bg-[#0c0d0f] border border-slate-800 space-y-3">
+                      <span className="text-[10px] font-mono text-slate-500 font-bold uppercase tracking-widest block">Local File Nodes:</span>
+                      <div className="space-y-2 max-h-48 overflow-y-auto" style={{ scrollbarWidth: "thin" }}>
+                        {projectFiles.map((file, idx) => (
+                          <div key={idx} className="flex items-center justify-between p-2 rounded bg-slate-900/40 text-xs border border-slate-800">
+                            <span className="font-mono text-slate-300">{file.name}</span>
+                            <span className="text-[9px] text-slate-500 font-mono uppercase">{file.type}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-8 rounded-2xl border border-dashed border-slate-800 text-center space-y-4 max-w-md mx-auto">
+                    <Folder className="w-8 h-8 text-slate-500 mx-auto" />
+                    <div className="text-xs text-slate-300 font-sans">No applications have been generated in the workspace yet.</div>
+                    <button
+                      onClick={() => setSidebarSubTab("playground")}
+                      className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-sans text-xs font-bold"
+                    >
+                      Start building an app
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 4. GALLERY TAB */}
+            {sidebarSubTab === "gallery" && (
+              <div className="p-6 md:p-8 max-w-4xl mx-auto w-full space-y-6">
+                <div>
+                  <h2 className="text-xl font-bold font-sans text-white">Remix & Launch App Templates</h2>
+                  <p className="text-xs text-slate-400 mt-1">Choose any beautifully crafted preset environment to remix, analyze, or run instantly in your terminal sandbox.</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {presets.map((p) => {
+                    const PresetIcon = p.icon;
+                    return (
+                      <div
+                        key={p.id}
+                        className={`p-5 rounded-2xl border transition-all text-left flex flex-col justify-between space-y-4 ${
+                          activePresetId === p.id
+                            ? "bg-[#0c0d0f] border-indigo-500/40 shadow-[0_0_20px_rgba(99,102,241,0.06)]"
+                            : "bg-[#0c0d0f] border-slate-800 hover:border-slate-700 hover:bg-[#111215]"
+                        }`}
+                      >
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <div className={`p-1.5 rounded bg-slate-900 text-slate-400 border border-slate-800`}>
+                              <PresetIcon className="w-4 h-4 text-indigo-400" />
+                            </div>
+                            <h3 className="font-sans font-bold text-sm text-white">{p.name}</h3>
+                          </div>
+                          <p className="text-xs text-slate-400 leading-relaxed font-sans">{p.description}</p>
+                        </div>
+
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => {
+                              handleSelectPreset(p.id);
+                              setBuilderTab("workspace");
+                              setSidebarSubTab("activeworkspace");
+                            }}
+                            className="flex-1 py-1.5 rounded bg-indigo-600/10 hover:bg-indigo-600/20 border border-indigo-500/25 text-indigo-300 font-sans text-xs font-bold text-center cursor-pointer"
+                          >
+                            Inspect Code
+                          </button>
+                          <button
+                            onClick={() => {
+                              handleSelectPreset(p.id);
+                              setBuilderTab("workspace");
+                              setSidebarSubTab("activeworkspace");
+                              triggerRealCompile(p.prompt || p.name);
+                            }}
+                            className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-sans text-xs font-bold cursor-pointer"
+                          >
+                            Launch App
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* 5. DIAGNOSTIC DASHBOARD TAB */}
+            {sidebarSubTab === "dashboard" && (
+              <div className="p-6 md:p-8 max-w-4xl mx-auto w-full space-y-6">
+                <div>
+                  <h2 className="text-xl font-bold font-sans text-white">Local Host Diagnostic Dashboard</h2>
+                  <p className="text-xs text-slate-400 mt-1">Check communication pipelines, engine health, active models, and configure connection parameters.</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Ollama Engine Status Panel */}
+                  <div className="p-5 rounded-2xl bg-[#0c0d0f] border border-slate-800 space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                      <span className="text-xs font-mono font-bold text-slate-400">OLLAMA OFFLINE BRAIN</span>
+                      <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold ${
+                        ollamaStatus === "available"
+                          ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                          : "bg-rose-500/10 text-rose-400 border border-rose-500/20"
+                      }`}>
+                        {ollamaStatus === "available" ? "CONNECTED" : "OFFLINE / STOPPED"}
+                      </span>
+                    </div>
+
+                    <div className="space-y-2 text-xs text-slate-300 font-sans">
+                      <div>
+                        <strong>Connection Base URL:</strong>
+                        <div className="flex items-center gap-2 mt-1">
+                          <input
+                            type="text"
+                            defaultValue={localStorage.getItem("neora_ollama_base_url") || "http://127.0.0.1:11434"}
+                            onBlur={(e) => {
+                              localStorage.setItem("neora_ollama_base_url", e.target.value);
+                              addLog(`🔧 Updated custom Ollama endpoint to: ${e.target.value}`);
+                            }}
+                            className="flex-1 bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-xs text-slate-200 font-mono focus:outline-none focus:border-indigo-500/30"
+                            placeholder="e.g. http://127.0.0.1:11434"
+                          />
+                        </div>
+                      </div>
+                      <div className="pt-2">
+                        <strong>Expected Models:</strong>
+                        <span className="text-slate-400 font-mono block mt-1">llama3, deepseek-r1:8b, phi3, mistral</span>
+                      </div>
+                      <div className="text-[10px] text-slate-500 leading-normal bg-slate-950/40 p-2.5 rounded border border-slate-900 mt-2">
+                        To run Ollama completely offline, make sure to launch the Ollama terminal tool with CORS origins configured correctly (read the guide in the Documentation tab).
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* System Environment States */}
+                  <div className="p-5 rounded-2xl bg-[#0c0d0f] border border-slate-800 space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                      <span className="text-xs font-mono font-bold text-slate-400">PC AGENT STATUS</span>
+                      <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold ${
+                        pcAgentStatus === "online"
+                          ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                          : "bg-rose-500/10 text-rose-400 border border-rose-500/20"
+                      }`}>
+                        {pcAgentStatus === "online" ? "CONNECTED" : "AGENT OFFLINE"}
+                      </span>
+                    </div>
+
+                    <div className="space-y-3.5 text-xs text-slate-300 font-sans">
+                      <div className="grid grid-cols-2 gap-2 text-center text-xs">
+                        <div className="p-2.5 rounded-lg bg-slate-950/40 border border-slate-900">
+                          <div className="text-slate-500 font-mono text-[9px] uppercase tracking-wider">LATENCY</div>
+                          <div className="font-bold font-mono text-white mt-1">14 ms</div>
+                        </div>
+                        <div className="p-2.5 rounded-lg bg-slate-950/40 border border-slate-900">
+                          <div className="text-slate-500 font-mono text-[9px] uppercase tracking-wider">SANDBOX HP</div>
+                          <div className="font-bold font-mono text-emerald-400 mt-1">{appHealth}%</div>
+                        </div>
+                      </div>
+                      <div>
+                        <strong>Connection File Path:</strong>
+                        <div className="font-mono text-slate-400 text-[10px] mt-1 bg-slate-950/45 p-1.5 rounded border border-slate-900 truncate">
+                          {pcFilePath}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 6. DOCUMENTATION TAB */}
+            {sidebarSubTab === "documentation" && (
+              <div className="p-6 md:p-8 max-w-3xl mx-auto w-full space-y-6">
+                <div className="border-b border-slate-800 pb-4">
+                  <h2 className="text-xl font-bold font-sans text-white">Local Ollama Setup & Offline Guide</h2>
+                  <p className="text-xs text-slate-400 mt-1">Everything you need to configure local model acceleration and configure safe offline workflows on your machine.</p>
+                </div>
+
+                <div className="space-y-5 text-sm text-slate-300 font-sans leading-relaxed text-left">
+                  
                   <div className="space-y-2">
-                    <label className="block text-[9px] font-mono text-slate-400 tracking-widest uppercase">
-                      {lang === "bn" ? "ফেচ করা রিসোর্স প্রিভিউ:" : "FETCHED RESOURCE PREVIEW:"}
-                    </label>
-                    <textarea
-                      readOnly
-                      value={fetchedContent}
-                      className="w-full h-32 bg-slate-950 border border-slate-900 rounded-lg p-2.5 text-[10px] font-mono text-slate-300 focus:outline-none scrollbar-thin"
+                    <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono">1. Download & Install Ollama</h3>
+                    <p className="text-xs text-slate-400">
+                      Ollama is a lightweight, easy-to-use open engine designed to host Large Language Models locally on your PC.
+                    </p>
+                    <div className="bg-slate-950 p-3 rounded-lg border border-slate-900 text-xs font-mono text-indigo-300">
+                      Download page: <a href="https://ollama.com" target="_blank" rel="noreferrer" className="underline hover:text-indigo-200">https://ollama.com</a>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono">2. Download a Supported Model</h3>
+                    <p className="text-xs text-slate-400">
+                      Open your command prompt or terminal application, and download a model using the command below:
+                    </p>
+                    <pre className="bg-slate-950 p-3 rounded-lg border border-slate-900 text-xs font-mono text-slate-200">
+                      ollama run llama3{"\n"}
+                      ollama run deepseek-r1:8b{"\n"}
+                      ollama run phi3
+                    </pre>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono">3. CRITICAL: Configure CORS Origins</h3>
+                    <p className="text-xs text-slate-400 leading-relaxed">
+                      Because Neora runs in a secure sandbox, your browser blocks client requests to 127.0.0.1 due to browser security restrictions. To resolve this, configure the CORS permissions setting when running Ollama:
+                    </p>
+                    
+                    <div className="space-y-1 text-left">
+                      <span className="text-xs font-bold text-slate-200">On Windows (Command Prompt):</span>
+                      <pre className="bg-slate-950 p-2.5 rounded border border-slate-900 text-xs font-mono text-slate-200">
+                        set OLLAMA_ORIGINS="*"{"\n"}
+                        ollama serve
+                      </pre>
+                    </div>
+
+                    <div className="space-y-1 pt-1 text-left">
+                      <span className="text-xs font-bold text-slate-200">On macOS / Linux (Terminal):</span>
+                      <pre className="bg-slate-950 p-2.5 rounded border border-slate-900 text-xs font-mono text-slate-200">
+                        OLLAMA_ORIGINS="*" ollama serve
+                      </pre>
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-indigo-500/5 border border-indigo-500/15 text-xs text-slate-400 leading-normal text-left">
+                    <strong>Why this works:</strong> Once running, Neora client-side browser queries bypass any external firewalls or internet requirements. Your data never leaves your machine!
+                  </div>
+
+                </div>
+              </div>
+            )}
+
+            {/* 7. AI SKILLS HUB TAB */}
+            {sidebarSubTab === "skills" && (
+              <div className="p-6 md:p-8 max-w-6xl mx-auto w-full space-y-6 animate-fadeIn">
+                
+                {/* Header Banner */}
+                <div className="border-b border-slate-800 pb-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="text-left">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span className="px-2 py-0.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] font-mono rounded font-bold uppercase tracking-wider animate-pulse">
+                        ⭐ {lang === "bn" ? "১০১+ এআই স্কিলস রেজিস্ট্রি" : "101+ AI Skills Registry"}
+                      </span>
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      <span className="text-[10px] font-mono text-slate-500 uppercase">SYSTEM ACTIVE</span>
+                    </div>
+                    <h2 className="text-2xl font-black tracking-tight text-white font-sans flex items-center gap-2">
+                      <Sliders className="w-6 h-6 text-indigo-400 animate-spin" />
+                      <span>{lang === "bn" ? "নিওরা এআই অ্যাসিস্ট্যান্ট স্কিলস হাব" : "Neora AI Assistant Skills Hub"}</span>
+                    </h2>
+                    <p className="text-xs text-slate-400 mt-1 max-w-2xl leading-relaxed">
+                      {lang === "bn" 
+                        ? "নিওরা-র ১০১টি বিশেষায়িত এআই স্কিল পরিচালনা ও কাস্টমাইজ করুন। এই সিস্টেম প্রম্পট ইঞ্জেকশন, ডেটাবেস আর্কিটেকচার, সিকিউরিটি শিল্ড এবং কম্পাইলার অপ্টিমাইজেশনকে ত্বরান্বিত করে।"
+                        : "Browse, toggle, and install Neora's 101 specialized AI capability modules. These inject expert context into compilation pipelines, database management, security shields, and runtime engines."}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setSkills(prev => prev.map(s => ({ ...s, enabled: true, installed: true })));
+                        addLog("⚡ Installed & Enabled all 101+ AI Skills in active backplane.");
+                      }}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 border border-indigo-400/20 text-white transition-all shadow-[0_4px_12px_rgba(99,102,241,0.2)]"
+                    >
+                      {lang === "bn" ? "সব অ্যাক্টিভেট করুন" : "Enable All 101"}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSkills(aiSkillsList);
+                        setSkillsSearch("");
+                        setSkillsCategoryFilter("ALL");
+                        addLog("🔄 Reset AI Skills registry to factory default active states.");
+                      }}
+                      className="px-3 py-1.5 rounded-lg text-xs font-mono border border-slate-800 hover:bg-slate-900 text-slate-400 transition-all"
+                      title="Reset Registry"
+                    >
+                      RESET
+                    </button>
+                  </div>
+                </div>
+
+                {/* Grid stats */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  
+                  {/* Stat 1 */}
+                  <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800/60 flex flex-col justify-between text-left">
+                    <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">{lang === "bn" ? "সর্বমোট স্কিল লোডেড" : "Total Skills Registry"}</span>
+                    <div className="mt-2 flex items-baseline gap-1.5">
+                      <span className="text-2xl font-bold text-white font-mono">{skills.length}</span>
+                      <span className="text-xs text-indigo-400">/ 101 Modules</span>
+                    </div>
+                    <div className="w-full bg-slate-950 h-1 rounded-full overflow-hidden mt-3">
+                      <div className="bg-indigo-500 h-full transition-all duration-500" style={{ width: `${(skills.length / 101) * 100}%` }} />
+                    </div>
+                  </div>
+
+                  {/* Stat 2 */}
+                  <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800/60 flex flex-col justify-between text-left">
+                    <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">{lang === "bn" ? "ইনস্টলড মডিউল" : "Installed Modules"}</span>
+                    <div className="mt-2 flex items-baseline gap-1.5">
+                      <span className="text-2xl font-bold text-emerald-400 font-mono">
+                        {skills.filter(s => s.installed).length}
+                      </span>
+                      <span className="text-xs text-slate-500">{lang === "bn" ? "সক্রিয় প্যাকেজ" : "active packages"}</span>
+                    </div>
+                    <div className="w-full bg-slate-950 h-1 rounded-full overflow-hidden mt-3">
+                      <div className="bg-emerald-500 h-full transition-all duration-500" style={{ width: `${(skills.filter(s => s.installed).length / skills.length) * 100}%` }} />
+                    </div>
+                  </div>
+
+                  {/* Stat 3 */}
+                  <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800/60 flex flex-col justify-between text-left">
+                    <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">{lang === "bn" ? "চলমান এআই ক্যাপাবিলিটি" : "Enabled Capabilities"}</span>
+                    <div className="mt-2 flex items-baseline gap-1.5">
+                      <span className="text-2xl font-bold text-amber-400 font-mono">
+                        {skills.filter(s => s.installed && s.enabled).length}
+                      </span>
+                      <span className="text-xs text-slate-500">/{skills.filter(s => s.installed).length} {lang === "bn" ? "অনলাইন" : "online"}</span>
+                    </div>
+                    <div className="w-full bg-slate-950 h-1 rounded-full overflow-hidden mt-3">
+                      <div className="bg-amber-500 h-full transition-all duration-500" style={{ width: `${(skills.filter(s => s.installed && s.enabled).length / skills.length) * 100}%` }} />
+                    </div>
+                  </div>
+
+                  {/* Stat 4 */}
+                  <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800/60 flex flex-col justify-between text-left">
+                    <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">{lang === "bn" ? "অতিরিক্ত প্রম্পট বাফার" : "Active Context Overhead"}</span>
+                    <div className="mt-2 flex items-baseline gap-1.5">
+                      <span className="text-2xl font-bold text-cyan-400 font-mono">
+                        {skills.filter(s => s.installed && s.enabled).reduce((acc, curr) => acc + curr.latencyMs, 0)}
+                      </span>
+                      <span className="text-xs text-slate-500">ms latency cost</span>
+                    </div>
+                    <div className="text-[9px] text-slate-500 mt-2.5 truncate font-mono">
+                      ~{((skills.filter(s => s.installed && s.enabled).length * 150) / 1024).toFixed(1)} KB Prompt payload size
+                    </div>
+                  </div>
+
+                </div>
+
+                {/* Filter / Search section */}
+                <div className="flex flex-col md:flex-row md:items-center gap-3 bg-slate-950/50 p-3 rounded-xl border border-slate-800/50">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-500" />
+                    <input
+                      type="text"
+                      placeholder={lang === "bn" ? "স্কিল বা ক্যাটাগরি খুঁজুন..." : "Search 101 AI Skills by name or system prompts..."}
+                      value={skillsSearch}
+                      onChange={(e) => setSkillsSearch(e.target.value)}
+                      className="w-full pl-9 pr-4 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500 font-sans"
                     />
-                    <div className="grid grid-cols-2 gap-2">
+                    {skillsSearch && (
                       <button
-                        onClick={handleInjectContentToPrompt}
-                        className="py-1.5 px-2 rounded bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 text-indigo-300 font-mono text-[9px] font-bold text-center transition-all cursor-pointer"
+                        onClick={() => setSkillsSearch("")}
+                        className="absolute right-3 top-2.5 text-slate-500 hover:text-slate-300 font-bold"
                       >
-                        {lang === "bn" ? "প্রম্পটে যুক্ত করুন" : "APPEND TO CHAT PROMPT"}
+                        ×
                       </button>
+                    )}
+                  </div>
+
+                  {/* Category filters */}
+                  <div className="flex flex-wrap gap-1">
+                    {["ALL", "Frontend Core", "Backend Systems", "Database & Persistence", "AI & Prompt Engineering", "Testing & DevOps", "Voice, Media & Games", "Security & Utilities"].map((cat) => (
                       <button
-                        onClick={handleInjectContentToWorkspace}
-                        className="py-1.5 px-2 rounded bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-300 font-mono text-[9px] font-bold text-center transition-all cursor-pointer"
+                        key={cat}
+                        onClick={() => setSkillsCategoryFilter(cat)}
+                        className={`px-2.5 py-1 rounded text-[10px] font-mono font-bold transition-all cursor-pointer ${
+                          skillsCategoryFilter === cat
+                            ? "bg-indigo-500/10 border border-indigo-500 text-indigo-300 shadow"
+                            : "bg-slate-900 text-slate-400 border border-slate-800/60 hover:text-white"
+                        }`}
                       >
-                        {lang === "bn" ? "ফাইল হিসেবে সেভ করুন" : "SAVE TO WORKSPACE FILE"}
+                        {cat === "ALL" 
+                          ? (lang === "bn" ? "সব স্কিল" : "ALL") 
+                          : cat.replace(" & ", " / ")}
                       </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Skills Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-left">
+                  {skills
+                    .filter(s => {
+                      if (skillsCategoryFilter !== "ALL" && s.category !== skillsCategoryFilter) return false;
+                      if (!skillsSearch) return true;
+                      const q = skillsSearch.toLowerCase();
+                      return s.name.toLowerCase().includes(q) || 
+                             s.description.toLowerCase().includes(q) || 
+                             s.category.toLowerCase().includes(q) || 
+                             s.systemPrompt.toLowerCase().includes(q);
+                    })
+                    .map((skill) => (
+                      <div
+                        key={skill.id}
+                        className={`p-4 rounded-xl transition-all border flex flex-col justify-between relative overflow-hidden group ${
+                          !skill.installed
+                            ? "bg-slate-950/40 border-slate-900 opacity-60 hover:opacity-90"
+                            : !skill.enabled
+                            ? "bg-[#090b11] border-slate-800/80 hover:border-slate-700/80"
+                            : "bg-gradient-to-b from-[#0c0f1a] to-[#060810] border-indigo-500/20 shadow-[0_4px_20px_rgba(0,0,0,0.3)]"
+                        }`}
+                      >
+                        {/* Soft Glow decoration */}
+                        {skill.installed && skill.enabled && (
+                          <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/5 rounded-full blur-2xl pointer-events-none transition-all group-hover:bg-indigo-500/10" />
+                        )}
+
+                        <div>
+                          {/* Top row: complexity badge & category */}
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-[8px] font-mono text-slate-500 font-black uppercase tracking-widest">
+                              {skill.category}
+                            </span>
+                            <span className={`px-1.5 py-0.2 rounded font-mono text-[8px] font-bold ${
+                              skill.complexity === "Expert" 
+                                ? "bg-rose-500/10 text-rose-400 border border-rose-500/20"
+                                : skill.complexity === "Intermediate"
+                                ? "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20"
+                                : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                            }`}>
+                              {skill.complexity}
+                            </span>
+                          </div>
+
+                          {/* Skill title */}
+                          <h4 className="text-xs font-bold text-white flex items-center gap-1.5 font-sans">
+                            {skill.installed && skill.enabled ? (
+                              <CheckCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                            ) : (
+                              <div className="w-1.5 h-1.5 rounded-full bg-slate-600 shrink-0" />
+                            )}
+                            <span className="truncate">{skill.name}</span>
+                          </h4>
+
+                          {/* Description */}
+                          <p className="text-[10px] text-slate-400 mt-1.5 leading-relaxed min-h-[44px]">
+                            {skill.description}
+                          </p>
+
+                          {/* Expandable active system prompt payload injection */}
+                          <div className="mt-3">
+                            <div className="text-[8px] font-mono text-slate-500 mb-1 font-bold uppercase tracking-widest">
+                              SYSTEM INJECTION PROMPT
+                            </div>
+                            <div className="p-2 rounded bg-slate-950 border border-slate-900 text-[8px] font-mono text-slate-300 leading-normal max-h-16 overflow-y-auto select-all">
+                              {skill.systemPrompt}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Action controllers */}
+                        <div className="mt-4 pt-3 border-t border-slate-900 flex items-center justify-between">
+                          <div className="flex items-center gap-1">
+                            <span className="text-[9px] font-mono text-slate-500">Latency:</span>
+                            <span className="text-[9px] font-mono text-slate-300 font-bold">{skill.latencyMs}ms</span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            {/* Toggle active / inactive switch */}
+                            {skill.installed ? (
+                              <>
+                                <button
+                                  onClick={() => {
+                                    setSkills(prev => prev.map(s => s.id === skill.id ? { ...s, enabled: !s.enabled } : s));
+                                    addLog(`⚡ Toggled Skill "${skill.name}" to ${!skill.enabled ? "ACTIVE" : "INACTIVE"}`);
+                                  }}
+                                  className={`px-2 py-1 rounded text-[9px] font-bold tracking-wide transition-all ${
+                                    skill.enabled
+                                      ? "bg-amber-500/10 text-amber-400 border border-amber-500/30 hover:bg-amber-500/20"
+                                      : "bg-slate-900 text-slate-500 border border-slate-800/80 hover:text-slate-300"
+                                  }`}
+                                >
+                                  {skill.enabled ? (lang === "bn" ? "সক্রিয়" : "ACTIVE") : (lang === "bn" ? "নিষ্ক্রিয়" : "INACTIVE")}
+                                </button>
+                                
+                                <button
+                                  onClick={() => {
+                                    setSkills(prev => prev.map(s => s.id === skill.id ? { ...s, installed: false, enabled: false } : s));
+                                    addLog(`🗑️ Uninstalled Skill Package: ${skill.name}`);
+                                  }}
+                                  className="p-1 text-slate-600 hover:text-rose-400 rounded hover:bg-slate-900 transition-all"
+                                  title="Uninstall Module"
+                                >
+                                  <Trash className="w-3 h-3" />
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  setSkills(prev => prev.map(s => s.id === skill.id ? { ...s, installed: true, enabled: true } : s));
+                                  addLog(`📥 Installed Skill Package: ${skill.name}`);
+                                }}
+                                className="px-2.5 py-1 rounded text-[9px] font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm transition-all"
+                              >
+                                {lang === "bn" ? "ইনস্টল" : "INSTALL"}
+                              </button>
+                            )}
+
+                            {/* Simulation run trigger */}
+                            {skill.installed && skill.enabled && (
+                              <button
+                                onClick={() => {
+                                  addLog(`🧪 SIMULATION: Running diagnostics using "${skill.name}" module...`);
+                                  setTimeout(() => {
+                                    addLog(`✅ SUCCESS: "${skill.name}" verified cleanly. Injected prompt instructions into LLM system state.`);
+                                  }, 1200);
+                                }}
+                                className="p-1 text-slate-500 hover:text-emerald-400 rounded hover:bg-slate-900 transition-all"
+                                title="Run Skill Simulation"
+                              >
+                                <PlayCircle className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                      </div>
+                    ))}
+                </div>
+
+                {/* Empty state check */}
+                {skills.filter(s => {
+                  if (skillsCategoryFilter !== "ALL" && s.category !== skillsCategoryFilter) return false;
+                  if (!skillsSearch) return true;
+                  const q = skillsSearch.toLowerCase();
+                  return s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q) || s.category.toLowerCase().includes(q);
+                }).length === 0 && (
+                  <div className="p-12 text-center bg-slate-900/10 border border-slate-800 rounded-xl max-w-sm mx-auto">
+                    <Sliders className="w-8 h-8 text-slate-600 mx-auto mb-2 animate-pulse" />
+                    <h5 className="text-sm font-bold text-slate-300">No matching skills found</h5>
+                    <p className="text-xs text-slate-500 mt-1">Try adjusting your filters or search keywords.</p>
+                  </div>
+                )}
+
+              </div>
+            )}
+
+          </div>
+        ) : (
+          /* OTHERWISE RENDER ORIGINAL INTERACTIVE SPLIT WORKSPACE */
+          <div className="flex-1 flex flex-col xl:flex-row h-full min-h-0 overflow-hidden bg-[#000d1d]">
+            
+            {/* LEFT COLUMN: Neora AI Builder Chat Workspace */}
+            <div 
+              style={{ width: `${chatPanelWidth}px` }}
+              className="w-full xl:w-auto border-b xl:border-b-0 xl:border-r border-slate-800/65 flex flex-col shrink-0 bg-[#000814]/95 backdrop-blur-md min-h-0 h-full overflow-hidden transition-all duration-150"
+            >
+              
+              {/* Chat Header Banner */}
+              <div className="p-4 border-b border-indigo-500/15 bg-gradient-to-r from-indigo-950/20 to-transparent flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-1.5 rounded-lg bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.25)]">
+                    <MessageSquare className="w-4 h-4 animate-pulse" />
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-bold font-sans tracking-wide text-white">NEORA BUILDER CO-PILOT</h2>
+                    <p className="text-[10px] text-slate-400 font-mono tracking-wider uppercase">
+                      {lang === "bn" ? "এআই কোড সহকারী" : "AI CODE ASSISTANT"}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[9px] font-mono text-emerald-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping shrink-0" />
+                  LIVE
+                </div>
+              </div>
+
+              {/* AI Model Selector Bar */}
+              <div className="px-4 py-2 bg-slate-950/90 border-b border-slate-900 flex items-center justify-between gap-3 text-xs shrink-0 select-none">
+                <div className="flex items-center gap-1.5">
+                  <Cpu className="w-3.5 h-3.5 text-indigo-400 animate-pulse" />
+                  <span className="font-mono text-[9px] text-slate-400 uppercase tracking-widest">
+                    {lang === "bn" ? "সক্রিয় মডেল:" : "ACTIVE ENGINE:"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {/* Provider Selector */}
+                  <select
+                    value={selectedProvider}
+                    onChange={(e) => {
+                      const prov = e.target.value as "gemini" | "ollama";
+                      setSelectedProvider(prov);
+                      setSelectedModel(prov === "gemini" ? "gemini-3.5-flash" : "llama3");
+                    }}
+                    className="bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-[9.5px] font-mono text-slate-300 focus:outline-none focus:border-indigo-500/50 cursor-pointer"
+                  >
+                    <option value="gemini">Gemini API</option>
+                    <option value="ollama">Ollama (Offline)</option>
+                  </select>
+
+                  {/* Model Selector */}
+                  <select
+                    value={selectedModel}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                    className="bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-[9.5px] font-mono text-slate-300 focus:outline-none focus:border-indigo-500/50 max-w-[150px] cursor-pointer"
+                  >
+                    {selectedProvider === "gemini" ? (
+                      <>
+                        <option value="gemini-3.5-flash">gemini-3.5-flash (Fast & Stable)</option>
+                        <option value="gemini-3.5-flash-8b">gemini-3.5-flash-8b (Ultra-Fast)</option>
+                        <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite (Lite)</option>
+                        <option value="gemini-3.1-pro">gemini-3.1-pro (Complex Apps)</option>
+                        <option value="gemini-2.5-flash">gemini-2.5-flash (Default)</option>
+                        <option value="gemini-2.5-pro">gemini-2.5-pro (High Intelligence)</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="llama3">llama3 (Meta 8B)</option>
+                        <option value="llama3.1:8b">llama3.1:8b (Meta Upgrade)</option>
+                        <option value="deepseek-r1:1.5b">deepseek-r1:1.5b (Reasoning)</option>
+                        <option value="deepseek-r1:8b">deepseek-r1:8b (Reasoning Pro)</option>
+                        <option value="codellama">codellama (Coding Specialist)</option>
+                        <option value="qwen2.5-coder:7b">qwen2.5-coder:7b (Alibaba Code)</option>
+                        <option value="mistral">mistral (Mistral 7B)</option>
+                        <option value="gemma2">gemma2 (Google 9B)</option>
+                        <option value="phi3">phi3 (Microsoft Phi-3)</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+              </div>
+
+              {/* Collapsible Presets & Reference Panel */}
+              <div className="border-b border-slate-800/50 bg-slate-950/40 shrink-0">
+                <button
+                  onClick={() => setIsPresetsDrawerOpen(!isPresetsDrawerOpen)}
+                  className="w-full px-4 py-2.5 flex items-center justify-between text-left hover:bg-slate-900/35 transition-all text-xs font-mono text-slate-300"
+                >
+                  <div className="flex items-center gap-2">
+                    <Layers className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>
+                      {lang === "bn" ? "প্রোজেক্ট টেমপ্লেট ও ড্রয়িং রেফারেন্স" : "PROJECT TEMPLATES & DESIGN REFERENCE"}
+                    </span>
+                    <span className="text-[10px] text-indigo-400 px-1.5 py-0.2 rounded-full bg-indigo-500/10 border border-indigo-500/20 font-sans font-bold capitalize">
+                      {activePresetId}
+                    </span>
+                    {mockupImage && (
+                      <span className="text-[9px] text-emerald-400 px-1.5 py-0.2 rounded-full bg-emerald-500/10 border border-emerald-500/20 font-mono">
+                        +MOCKUP
+                      </span>
+                    )}
+                  </div>
+                  {isPresetsDrawerOpen ? (
+                    <ChevronUp className="w-4 h-4 text-slate-400" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-slate-400" />
+                  )}
+                </button>
+
+                <AnimatePresence>
+                  {isPresetsDrawerOpen && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="overflow-hidden bg-slate-950/80 border-t border-slate-800/40 p-4 space-y-4"
+                    >
+                      {/* Presets Selection */}
+                      <div>
+                        <label className="block text-[9px] font-mono text-indigo-400 mb-2 tracking-widest uppercase">
+                          {lang === "bn" ? "টার্গেট টেমপ্লেট পরিবর্তন করুন" : "CHANGE TARGET TEMPLATE"}
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {presets.map(p => {
+                            const Icon = p.icon;
+                            return (
+                              <button
+                                key={p.id}
+                                onClick={() => handleSelectPreset(p.id)}
+                                className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                                  activePresetId === p.id
+                                    ? "bg-indigo-500/10 border-indigo-500/40 text-white shadow-[0_0_15px_rgba(99,102,241,0.08)]"
+                                    : "bg-slate-900/30 border-slate-800/80 text-slate-400 hover:text-slate-200 hover:border-slate-700/60"
+                                }`}
+                              >
+                                <Icon className={`w-3.5 h-3.5 mb-1 ${activePresetId === p.id ? "text-indigo-400" : "text-slate-500"}`} />
+                                <div className="text-xs font-bold font-sans truncate">{p.name}</div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Mockup Upload */}
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="text-[9px] font-mono text-indigo-400 tracking-widest uppercase flex items-center gap-1">
+                            <Upload className="w-3 h-3 text-indigo-400" />
+                            <span>{lang === "bn" ? "ইউআই স্ক্রিনশট বা স্কেচ যুক্ত করুন" : "UPLOAD UI SCREENSHOT / DESIGN MOCKUP"}</span>
+                          </label>
+                          {mockupImage && (
+                            <button
+                              onClick={() => setMockupImage(null)}
+                              className="text-[9px] font-mono text-rose-400 hover:underline"
+                            >
+                              {lang === "bn" ? "রিমুভ করুন" : "Clear"}
+                            </button>
+                          )}
+                        </div>
+                        <div
+                          onClick={() => fileInputRef.current?.click()}
+                          className={`border border-dashed rounded-xl p-3 flex flex-col items-center justify-center cursor-pointer transition-all ${
+                            mockupImage
+                              ? "border-indigo-500/40 bg-indigo-950/5"
+                              : "border-slate-800 hover:border-indigo-500/30 bg-slate-950/20"
+                          }`}
+                        >
+                          <input
+                            type="file"
+                            ref={fileInputRef}
+                            onChange={handleImageUpload}
+                            accept="image/*"
+                            className="hidden"
+                          />
+                          {mockupImage ? (
+                            <div className="relative w-full aspect-video rounded-lg overflow-hidden border border-slate-800 flex items-center justify-center bg-black/40">
+                              <img src={mockupImage} alt="Mockup" className="max-h-24 object-contain" />
+                              <div className="absolute inset-0 bg-black/60 opacity-0 hover:opacity-100 flex items-center justify-center transition-opacity text-[9px] font-mono text-white">
+                                CHANGE IMAGE
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="text-center py-1">
+                              <Upload className="w-4 h-4 text-slate-500 mx-auto mb-1" />
+                              <span className="text-[10px] font-sans text-slate-400 font-medium block">
+                                {lang === "bn" ? "এখানে ডিজাইন ড্রপ বা ক্লিক করুন" : "Drop wireframe or click to attach layout"}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* Collapsible Resource Fetcher Panel */}
+              <div className="border-b border-slate-800/50 bg-slate-950/20 shrink-0">
+                <button
+                  onClick={() => setIsFetcherOpen(!isFetcherOpen)}
+                  className="w-full px-4 py-2.5 flex items-center justify-between text-left hover:bg-slate-900/35 transition-all text-xs font-mono text-slate-300"
+                >
+                  <div className="flex items-center gap-2">
+                    <Globe className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+                    <span>
+                      {lang === "bn" ? "রিসোর্স ও ডকুমেন্টেশন ফেচার" : "RESOURCE & DOCUMENTATION FETCHER"}
+                    </span>
+                    {fetchedContent && (
+                      <span className="text-[9px] text-emerald-400 px-1.5 py-0.2 rounded-full bg-emerald-500/10 border border-emerald-500/20 font-mono">
+                        LOADED
+                      </span>
+                    )}
+                  </div>
+                  {isFetcherOpen ? (
+                    <ChevronUp className="w-4 h-4 text-slate-400" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-slate-400" />
+                  )}
+                </button>
+
+                <AnimatePresence>
+                  {isFetcherOpen && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="overflow-hidden bg-slate-950/85 border-t border-slate-800/40 p-4 space-y-3.5"
+                    >
+                      <div>
+                        <label className="block text-[9px] font-mono text-emerald-400 mb-1.5 tracking-widest uppercase">
+                          {lang === "bn" ? "ডকুমেন্টেশন বা এপিআই ইউআরএল লিখুন:" : "ENTER DOCS / API URL TO FETCH:"}
+                        </label>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={fetchUrl}
+                            onChange={(e) => setFetchUrl(e.target.value)}
+                            placeholder="e.g. https://api.github.com/repos/... or website url"
+                            className="flex-1 bg-[#000612] border border-slate-800 rounded-lg px-3 py-1.5 text-xs font-mono text-emerald-300 placeholder-slate-700 focus:outline-none focus:border-emerald-500/40"
+                          />
+                          <button
+                            onClick={handleFetchResource}
+                            disabled={isFetching || !fetchUrl.trim()}
+                            className="px-3.5 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/20 font-mono text-xs font-bold transition-all disabled:opacity-40"
+                          >
+                            {isFetching ? (
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <span>{lang === "bn" ? "ফেচ" : "Fetch"}</span>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+
+                      {fetchedContent && (
+                        <div className="space-y-2">
+                          <label className="block text-[9px] font-mono text-slate-400 tracking-widest uppercase">
+                            {lang === "bn" ? "ফেচ করা রিসোর্স প্রিভিউ:" : "FETCHED RESOURCE PREVIEW:"}
+                          </label>
+                          <textarea
+                            readOnly
+                            value={fetchedContent}
+                            className="w-full h-32 bg-slate-950 border border-slate-900 rounded-lg p-2.5 text-[10px] font-mono text-slate-300 focus:outline-none scrollbar-thin"
+                          />
+                          <button
+                            onClick={handleDeepResearchPrompt}
+                            disabled={isResearching}
+                            className="w-full mb-2 py-2 px-3 rounded bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-mono text-[10px] font-bold text-center transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-md"
+                          >
+                            {isResearching ? (
+                              <>
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" />
+                                <span>{lang === "bn" ? "ডিপ রিসার্স করা হচ্ছে..." : "PERFORMING DEEP RESEARCH..."}</span>
+                              </>
+                            ) : (
+                              <>
+                                <Sparkles className="w-3.5 h-3.5 animate-pulse text-indigo-200" />
+                                <span className="uppercase">{lang === "bn" ? "ডিপ রিসার্স ও প্রম্পট তৈরি" : "DEEP RESEARCH & GENERATE PROMPT"}</span>
+                              </>
+                            )}
+                          </button>
+
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              onClick={handleInjectContentToPrompt}
+                              className="py-1.5 px-2 rounded bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 text-indigo-300 font-mono text-[9px] font-bold text-center transition-all cursor-pointer"
+                            >
+                              {lang === "bn" ? "প্রম্পটে যুক্ত করুন" : "APPEND TO CHAT PROMPT"}
+                            </button>
+                            <button
+                              onClick={handleInjectContentToWorkspace}
+                              className="py-1.5 px-2 rounded bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-300 font-mono text-[9px] font-bold text-center transition-all cursor-pointer"
+                            >
+                              {lang === "bn" ? "ফাইল হিসেবে সেভ করুন" : "SAVE TO WORKSPACE FILE"}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* Chat Message Stream */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4" style={{ scrollbarWidth: "thin" }}>
+                {messages.map((msg) => {
+                  const isNeora = msg.sender === "neora";
+                  return (
+                    <div
+                      key={msg.id}
+                      className={`flex gap-2.5 ${isNeora ? "justify-start" : "justify-end"}`}
+                    >
+                      {isNeora && (
+                        <div className="w-7 h-7 rounded-lg bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center shrink-0 shadow-[0_0_10px_rgba(99,102,241,0.15)] text-indigo-400 font-mono text-[10px] font-bold">
+                          NR
+                        </div>
+                      )}
+                      
+                      <div className={`max-w-[85%] flex flex-col gap-1`}>
+                        <div
+                          className={`rounded-2xl px-3.5 py-2.5 text-xs font-sans leading-relaxed shadow-sm ${
+                            isNeora
+                              ? "bg-slate-950/75 border border-slate-800/70 text-slate-200"
+                              : "bg-indigo-600 text-white rounded-tr-none"
+                          }`}
+                        >
+                          <div className="whitespace-pre-wrap">{msg.text}</div>
+                          
+                          {/* Render attachment badge inside chat message if applicable */}
+                          {!isNeora && mockupImage && msg.id === messages[messages.length - 1].id && (
+                            <div className="mt-2 p-1.5 rounded bg-slate-950/40 border border-indigo-500/20 text-[9px] font-mono flex items-center gap-1">
+                              <Layers className="w-3 h-3 text-indigo-300" />
+                              <span>Attached: UI mockup layout blueprint</span>
+                            </div>
+                          )}
+                        </div>
+                        <span className={`text-[9px] font-mono text-slate-500 px-1 ${!isNeora ? "text-right" : ""}`}>
+                          {msg.timestamp}
+                        </span>
+                      </div>
+
+                      {!isNeora && (
+                        <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center shrink-0 text-white font-mono text-[10px] font-bold shadow-md">
+                          ME
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {isCompiling && (
+                  <div className="flex gap-2.5 justify-start">
+                    <div className="w-7 h-7 rounded-lg bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center shrink-0 text-indigo-400 font-mono text-[10px] font-bold animate-pulse">
+                      NR
+                    </div>
+                    <div className="bg-slate-950/45 border border-slate-850 rounded-2xl px-3.5 py-2.5 text-xs text-slate-400 flex items-center gap-2 font-mono">
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-400" />
+                      <span>{lang === "bn" ? "নিওরা চিন্তা করছে..." : "Neora is synthesizing..."} ({compileProgress}%)</span>
                     </div>
                   </div>
                 )}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
 
-        {/* Chat Message Stream */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4" style={{ scrollbarWidth: "thin" }}>
-          {messages.map((msg) => {
-            const isNeora = msg.sender === "neora";
-            return (
-              <div
-                key={msg.id}
-                className={`flex gap-2.5 ${isNeora ? "justify-start" : "justify-end"}`}
-              >
-                {isNeora && (
-                  <div className="w-7 h-7 rounded-lg bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center shrink-0 shadow-[0_0_10px_rgba(99,102,241,0.15)] text-indigo-400 font-mono text-[10px] font-bold">
-                    NR
-                  </div>
-                )}
-                
-                <div className={`max-w-[85%] flex flex-col gap-1`}>
-                  <div
-                    className={`rounded-2xl px-3.5 py-2.5 text-xs font-sans leading-relaxed shadow-sm ${
-                      isNeora
-                        ? "bg-slate-950/75 border border-slate-800/70 text-slate-200"
-                        : "bg-indigo-600 text-white rounded-tr-none"
-                    }`}
-                  >
-                    <div className="whitespace-pre-wrap">{msg.text}</div>
-                    
-                    {/* Render attachment badge inside chat message if applicable */}
-                    {!isNeora && mockupImage && msg.id === messages[messages.length - 1].id && (
-                      <div className="mt-2 p-1.5 rounded bg-slate-950/40 border border-indigo-500/20 text-[9px] font-mono flex items-center gap-1">
-                        <Layers className="w-3 h-3 text-indigo-300" />
-                        <span>Attached: UI mockup layout blueprint</span>
-                      </div>
-                    )}
-                  </div>
-                  <span className={`text-[9px] font-mono text-slate-500 px-1 ${!isNeora ? "text-right" : ""}`}>
-                    {msg.timestamp}
-                  </span>
-                </div>
-
-                {!isNeora && (
-                  <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center shrink-0 text-white font-mono text-[10px] font-bold shadow-md">
-                    ME
-                  </div>
-                )}
+                <div ref={messagesEndRef} />
               </div>
-            );
-          })}
-
-          {isCompiling && (
-            <div className="flex gap-2.5 justify-start">
-              <div className="w-7 h-7 rounded-lg bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center shrink-0 text-indigo-400 font-mono text-[10px] font-bold animate-pulse">
-                NR
-              </div>
-              <div className="bg-slate-950/45 border border-slate-850 rounded-2xl px-3.5 py-2.5 text-xs text-slate-400 flex items-center gap-2 font-mono">
-                <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-400" />
-                <span>{lang === "bn" ? "নিওরা চিন্তা করছে..." : "Neora is synthesizing..."} ({compileProgress}%)</span>
-              </div>
-            </div>
-          )}
-
-          <div ref={messagesEndRef} />
-        </div>
 
         {/* Chat Input Dock */}
         <div className="p-3 border-t border-slate-800/65 bg-slate-950/70 shrink-0 relative">
@@ -1498,6 +2916,37 @@ export function BuilderView({ lang }: { lang: "en" | "bn" }) {
                         </p>
                       </div>
                     </div>
+
+                    {/* Browser-based Local PC File Attachment */}
+                    <div className="space-y-3 text-xs bg-slate-900/40 p-3.5 rounded-xl border border-slate-800/80 mt-1 select-none">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-mono text-indigo-400 font-bold uppercase tracking-wider">
+                          {lang === "bn" ? "ব্রাউজার দিয়ে লোকাল পিসি ফাইল যুক্ত করুন:" : "ATTACH LOCAL PC FILE FROM BROWSER:"}
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          type="file"
+                          ref={pcFileInputRef}
+                          onChange={handlePcFileAttach}
+                          className="hidden"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => pcFileInputRef.current?.click()}
+                          className="flex-1 py-2 px-3 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-mono text-[10px] font-bold flex items-center justify-center gap-1.5 transition-all shadow-md cursor-pointer"
+                        >
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>{lang === "bn" ? "লোকাল পিসি ফাইল যুক্ত করুন" : "CHOOSE LOCAL PC FILE"}</span>
+                        </button>
+                      </div>
+                      <p className="text-[9px] font-mono text-slate-500 leading-normal">
+                        {lang === "bn"
+                          ? "💡 ফাইল সিলেক্ট করলে এর পুরো সোর্স কোডটি আপনার চ্যাট প্রম্পটে রেফারেন্স হিসেবে যুক্ত হয়ে যাবে।"
+                          : "💡 Selecting a file will parse its content and automatically append it to your prompt container as a code block reference."}
+                      </p>
+                    </div>
+
                   </div>
                 )}
 
@@ -1706,48 +3155,149 @@ export function BuilderView({ lang }: { lang: "en" | "bn" }) {
             )}
           </AnimatePresence>
 
-          <div className="flex gap-2 items-center">
-            {/* Advanced Integrations Toggler button */}
-            <button
-              type="button"
-              onClick={() => setIsHubOpen(!isHubOpen)}
-              className={`w-10 h-10 rounded-xl flex items-center justify-center border transition-all cursor-pointer shadow-md shrink-0 ${
-                isHubOpen
-                  ? "bg-indigo-600 border-indigo-400 text-white shadow-[0_0_12px_rgba(99,102,241,0.5)]"
-                  : "bg-slate-900 border-slate-800 text-indigo-400 hover:border-indigo-500/50 hover:text-indigo-300"
-              }`}
-              title={lang === "bn" ? "অ্যাডভান্সড ক্লাউড ও লোকাল ফাইল ইন্টিগ্রেশন হাব" : "Advanced Cloud & Local File Hub"}
-            >
-              <Plus className={`w-5 h-5 transition-transform duration-300 ${isHubOpen ? "rotate-45 text-white" : ""}`} />
-            </button>
+          {/* Display attached PC files list */}
+          {attachedPcFiles.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-2 px-2 py-1.5 bg-slate-950/60 rounded-xl border border-slate-800/50">
+              {attachedPcFiles.map((file, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 font-mono text-[9px] animate-fadeIn"
+                >
+                  <Laptop className="w-2.5 h-2.5" />
+                  <span className="truncate max-w-[120px]">{file.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAttachedPcFiles(prev => prev.filter((_, i) => i !== idx));
+                      addLog(`Detached local file: ${file.name}`);
+                    }}
+                    className="text-slate-500 hover:text-indigo-300 transition-colors ml-1 font-bold font-sans text-[10px]"
+                    title="Detach File"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => {
+                  setAttachedPcFiles([]);
+                  addLog("Cleared all attached local files.");
+                }}
+                className="text-[9px] font-mono text-slate-500 hover:text-slate-300 px-1.5 py-0.5"
+              >
+                CLEAR ALL
+              </button>
+            </div>
+          )}
 
-            <form onSubmit={handleSendChatMessage} className="flex-1 flex gap-2 relative">
-              <textarea
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSendChatMessage();
+          <div className="flex items-center gap-2 bg-slate-900/70 border border-slate-800/90 rounded-full py-1.5 pl-4 pr-1.5 focus-within:border-indigo-500/50 shadow-[0_4px_24px_rgba(0,0,0,0.5)] focus-within:shadow-[0_0_24px_rgba(99,102,241,0.1)] transition-all flex-1">
+            <input
+              type="text"
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleSendChatMessage();
+                }
+              }}
+              placeholder={
+                lang === "bn"
+                  ? "নতুন কোনো পরিবর্তনের নির্দেশ লিখুন..."
+                  : "Type code updates, game rules, or PC file paths..."
+              }
+              className="flex-1 bg-transparent border-0 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-0"
+              autoComplete="off"
+            />
+
+            {/* Embedded Action Panel inside input bar to match Neora neural chat */}
+            <div className="flex items-center gap-1.5">
+              {/* Paperclip / Plus button */}
+              <button
+                type="button"
+                onClick={() => setIsHubOpen(!isHubOpen)}
+                className={`p-1.5 rounded-full transition-all cursor-pointer flex items-center justify-center border ${
+                  isHubOpen
+                    ? "bg-indigo-600 border-indigo-400 text-white shadow-[0_0_12px_rgba(99,102,241,0.5)]"
+                    : "bg-slate-950 text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-slate-800"
+                }`}
+                title={lang === "bn" ? "অ্যাডভান্সড ক্লাউড ও লোকাল ফাইল হাব" : "Advanced Cloud & Local File Hub"}
+              >
+                <Plus className={`w-3.5 h-3.5 transition-transform duration-300 ${isHubOpen ? "rotate-45" : ""}`} />
+              </button>
+
+              {/* Native PC file input trigger button */}
+              <button
+                type="button"
+                onClick={() => pcFileInputRef.current?.click()}
+                className="p-1.5 rounded-full transition-all cursor-pointer bg-slate-950 text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-slate-800 flex items-center justify-center"
+                title={lang === "bn" ? "লোকাল পিসি ফাইল সংযুক্ত করুন" : "Attach Local PC File"}
+              >
+                <Laptop className="w-3.5 h-3.5 text-indigo-400" />
+              </button>
+
+              {/* Wand2 Prompt Optimizer */}
+              <button
+                type="button"
+                onClick={handleEnhancePrompt}
+                disabled={isEnhancing || !chatInput.trim()}
+                className={`p-1.5 rounded-full transition-all cursor-pointer flex items-center justify-center border ${
+                  isEnhancing
+                    ? "bg-amber-600 border-amber-400 text-white animate-spin"
+                    : chatInput.trim()
+                    ? "bg-slate-950 text-amber-400 hover:text-amber-200 hover:bg-slate-800 border border-amber-500/30 shadow-[0_0_8px_rgba(245,158,11,0.15)] animate-pulse"
+                    : "bg-slate-950 text-slate-600 border border-slate-900 cursor-not-allowed opacity-50"
+                }`}
+                title={lang === "bn" ? "প্রম্পট অপ্টিমাইজ করুন (এআই)" : "Optimize Prompt with AI"}
+              >
+                <Wand2 className="w-3.5 h-3.5" />
+              </button>
+
+              {/* Speech Dictation Simulation */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRecording(!isRecording);
+                  if (!isRecording) {
+                    addLog("🎙️ Listening to vocal prompts... Speak now boss!");
+                    setTimeout(() => {
+                      setChatInput(prev => {
+                        const spacer = prev.trim() ? " " : "";
+                        return prev + spacer + (lang === "bn" ? "একটি সুন্দর রিয়েল-টাইম ড্যাশবোর্ড তৈরি করো।" : "Create a beautiful real-time dashboard.");
+                      });
+                      setIsRecording(false);
+                      addLog("📝 Voice prompt transcribed successfully.");
+                    }, 2500);
+                  } else {
+                    addLog("🎙️ Voice listening stopped.");
                   }
                 }}
-                placeholder={
-                  lang === "bn"
-                    ? "নতুন কোনো পরিবর্তনের নির্দেশ লিখুন..."
-                    : "Type code updates, game rules, or PC file paths..."
-                }
-                className="w-full rounded-xl py-2.5 pl-3.5 pr-12 bg-slate-950 border border-slate-800 text-slate-200 text-xs font-sans focus:outline-none focus:border-indigo-500/40 focus:ring-1 focus:ring-indigo-500/30 transition-all resize-none max-h-24 h-11 style-scrollbar"
-                style={{ scrollbarWidth: "none" }}
-              />
-              
-              <button
-                type="submit"
-                disabled={isCompiling || (!chatInput.trim() && !mockupImage)}
-                className="absolute right-2 top-1.5 w-8 h-8 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white flex items-center justify-center transition-all cursor-pointer shadow-md"
+                className={`p-1.5 rounded-full transition-all cursor-pointer flex items-center justify-center border ${
+                  isRecording
+                    ? "bg-rose-600 border-rose-400 text-white animate-pulse"
+                    : "bg-slate-950 text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-slate-800"
+                }`}
+                title={lang === "bn" ? "ভয়েস ইনপুট" : "Voice input dictation"}
               >
-                <Send className="w-4 h-4" />
+                {isRecording ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
               </button>
-            </form>
+
+              {/* Send Button */}
+              <button
+                type="button"
+                onClick={handleSendChatMessage}
+                disabled={isCompiling || (!chatInput.trim() && !mockupImage)}
+                className={`p-1.5 rounded-full transition-all cursor-pointer flex items-center justify-center ${
+                  chatInput.trim() || mockupImage
+                    ? "bg-indigo-600 hover:bg-indigo-500 text-white shadow-[0_0_12px_rgba(99,102,241,0.3)]"
+                    : "bg-slate-950 text-slate-600 border border-slate-800 cursor-not-allowed opacity-50"
+                }`}
+                title={lang === "bn" ? "নির্দেশনা পাঠান" : "Send instruction"}
+              >
+                <Send className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
 
           {/* Quick Developer Action Pills */}
@@ -1810,6 +3360,20 @@ export function BuilderView({ lang }: { lang: "en" | "bn" }) {
           </div>
           
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsExplorerVisible(!isExplorerVisible)}
+              className={`px-2.5 py-1 rounded text-[10px] font-mono transition-all flex items-center gap-1 border cursor-pointer ${
+                isExplorerVisible 
+                  ? "bg-slate-900 border-slate-800 text-slate-400 hover:text-white" 
+                  : "bg-indigo-600 border-indigo-400 text-white shadow-[0_0_12px_rgba(99,102,241,0.4)]"
+              }`}
+              title={lang === "bn" ? "এক্সপ্লোরার দেখান/লুকান" : "Toggle Explorer Panel"}
+            >
+              {isExplorerVisible ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+              <span>{isExplorerVisible ? (lang === "bn" ? "এক্সপ্লোরার লুকান" : "HIDE EXPLORER") : (lang === "bn" ? "এক্সপ্লোরার দেখান" : "SHOW EXPLORER")}</span>
+            </button>
+            <span className="w-px h-3 bg-slate-800 mx-1" />
+
             {activePreviewTab === "sandbox" ? (
               <>
                 <button
@@ -1847,7 +3411,11 @@ export function BuilderView({ lang }: { lang: "en" | "bn" }) {
         <div className="flex-1 flex flex-col lg:flex-row min-h-0">
           
           {/* File Explorer & Code Editor */}
-          <div className="w-full lg:w-[320px] border-b lg:border-b-0 lg:border-r border-slate-800/65 flex flex-col min-h-0 bg-[#010a15]/95">
+          {isExplorerVisible && (
+            <div 
+              style={{ width: `${explorerWidth}px` }}
+              className="w-full lg:w-auto border-b lg:border-b-0 lg:border-r border-slate-800/65 flex flex-col min-h-0 bg-[#010a15]/95 transition-all duration-150 shrink-0"
+            >
             <div className="p-3 border-b border-slate-800/60 bg-slate-950/40 text-[10px] font-mono tracking-widest text-slate-500 uppercase flex items-center justify-between">
               <span>EXPLORER</span>
               <span className="text-[8px] px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-400">VITE REPO</span>
@@ -1908,7 +3476,10 @@ export function BuilderView({ lang }: { lang: "en" | "bn" }) {
             </div>
 
             {/* Selected File Code view */}
-            <div className="h-[200px] border-t border-slate-800/65 flex flex-col bg-[#010811] min-h-0">
+            <div 
+              style={{ height: `${editorHeight}px` }}
+              className="border-t border-slate-800/65 flex flex-col bg-[#010811] min-h-0 transition-all duration-150"
+            >
               <div className="px-3 py-1.5 border-b border-slate-800/60 flex items-center justify-between text-[10px] font-mono text-slate-400 bg-slate-950/40 shrink-0">
                 <span className="truncate">{selectedFilePath}</span>
                 <button
@@ -1964,6 +3535,7 @@ export function BuilderView({ lang }: { lang: "en" | "bn" }) {
               </div>
             </div>
           </div>
+          )}
 
           {/* Interactive Live Sandbox Preview container */}
           <div className="flex-1 flex flex-col min-h-0 bg-[#00050d] relative overflow-y-auto" style={{ scrollbarWidth: "thin" }}>
@@ -2680,11 +4252,15 @@ export function BuilderView({ lang }: { lang: "en" | "bn" }) {
               )}
             </div>
           </div>
-
         </div>
 
       </div>
 
     </div>
+  )}
+
+  </div>
+
+</div>
   );
 }

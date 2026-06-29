@@ -440,8 +440,9 @@ dotenv.config();
 const app = express();
 const PORT = process.env.NODE_ENV === "production" ? Number(process.env.PORT || 8080) : 3000;
 
-// Enable JSON body parsing
-app.use(express.json());
+// Enable JSON body parsing with increased size limit to handle large prompts and mockups
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // Configure multer storage
 const upload = multer({ storage: multer.memoryStorage() });
@@ -531,6 +532,28 @@ function getGeminiClient(customApiKey?: string) {
       }
     }
   });
+}
+
+function safeStringify(val: any): string {
+  try {
+    if (!val) return "";
+    if (typeof val === "string") return val;
+    if (val instanceof Error) {
+      return (val.stack || "") + " " + (val.message || "") + " " + String(val);
+    }
+    const seen = new WeakSet();
+    return JSON.stringify(val, (key, value) => {
+      if (typeof value === "object" && value !== null) {
+        if (seen.has(value)) {
+          return "[Circular]";
+        }
+        seen.add(value);
+      }
+      return value;
+    });
+  } catch (e) {
+    return String(val);
+  }
 }
 
 function getCleanErrorMessage(err: any): string {
@@ -657,23 +680,23 @@ async function generateGeminiContentWithFallback(client: GoogleGenAI, options: {
     throw new Error("Gemini Service is temporarily down (Circuit Breaker OPEN due to high demand / consecutive 503 errors). Please retry in 15 seconds, or select another provider.");
   }
 
-  const baseModel = options.model || "gemini-3.5-flash";
+  const baseModel = options.model || "gemini-2.5-flash";
   const fallbacks = [
-    baseModel,
-    "gemini-3.5-flash",
-    "gemini-3.1-flash-lite",
-    "gemini-flash-latest",
-    "gemini-3.1-pro-preview"
+    baseModel === "gemini-3.5-flash" ? "gemini-2.5-flash" : baseModel,
+    "gemini-2.5-flash",
+    "gemini-1.5-flash",
+    "gemini-2.5-pro",
+    "gemini-1.5-pro"
   ];
   const uniqueModels = [...new Set(fallbacks)];
 
   let lastError: any = null;
   for (const modelToTry of uniqueModels) {
-    let retries = 3;
+    let retries = 2; // 3 attempts total per model
     let delay = 1000; // Start with 1 second delay
-    while (retries > 0) {
+    while (retries >= 0) {
       try {
-        console.log(`[Gemini SDK fallback] generateContent trying model: ${modelToTry} (retries left: ${retries})`);
+        console.log(`[Gemini SDK fallback] generateContent trying model: ${modelToTry} (${retries} retries left)`);
         const res = await client.models.generateContent({
           ...options,
           model: modelToTry,
@@ -682,7 +705,7 @@ async function generateGeminiContentWithFallback(client: GoogleGenAI, options: {
         return res;
       } catch (err: any) {
         lastError = err;
-        const errStr = JSON.stringify(err) + " " + String(err.message || "");
+        const errStr = safeStringify(err);
         const isTransient = errStr.includes("503") || 
                             errStr.includes("UNAVAILABLE") || 
                             errStr.includes("high demand") || 
@@ -692,24 +715,20 @@ async function generateGeminiContentWithFallback(client: GoogleGenAI, options: {
                             errStr.includes("ResourceExhausted") ||
                             errStr.includes("Service Unavailable");
 
-        if (isTransient) {
-          recordGeminiFailure();
-          if (retries > 1) {
-            console.log(`[Gemini SDK fallback] Model '${modelToTry}' is temporarily busy (transient error). Retrying in ${delay}ms... (Error: ${err.message || String(err)})`);
-            await sleep(delay);
-            delay *= 2; // Exponential backoff
-            retries--;
-          } else {
-            console.log(`[Gemini SDK fallback] Model '${modelToTry}' failed or not retrying. Details: ${err.message || String(err)}`);
-            break; // Move to next fallback model
-          }
+        if (isTransient && retries > 0) {
+          console.log(`[Gemini SDK fallback] Model '${modelToTry}' is temporarily busy (transient error). Retrying in ${delay}ms... (Error: ${err.message || String(err)})`);
+          await sleep(delay);
+          delay *= 2; // Exponential backoff
+          retries--;
         } else {
-          console.log(`[Gemini SDK fallback] Model '${modelToTry}' failed with non-transient error. Details: ${err.message || String(err)}`);
+          console.log(`[Gemini SDK fallback] Model '${modelToTry}' failed. Details: ${err.message || String(err)}`);
           break; // Move to next fallback model
         }
       }
     }
   }
+  // Record failure only if all fallback options failed completely
+  recordGeminiFailure();
   const cleanedError = getCleanErrorMessage(lastError);
   throw new Error(cleanedError);
 }
@@ -723,23 +742,23 @@ async function generateGeminiContentStreamWithFallback(client: GoogleGenAI, opti
     throw new Error("Gemini Service is temporarily down (Circuit Breaker OPEN due to high demand / consecutive 503 errors). Please retry in 15 seconds, or select another provider.");
   }
 
-  const baseModel = options.model || "gemini-3.5-flash";
+  const baseModel = options.model || "gemini-2.5-flash";
   const fallbacks = [
-    baseModel,
-    "gemini-3.5-flash",
-    "gemini-3.1-flash-lite",
-    "gemini-flash-latest",
-    "gemini-3.1-pro-preview"
+    baseModel === "gemini-3.5-flash" ? "gemini-2.5-flash" : baseModel,
+    "gemini-2.5-flash",
+    "gemini-1.5-flash",
+    "gemini-2.5-pro",
+    "gemini-1.5-pro"
   ];
   const uniqueModels = [...new Set(fallbacks)];
 
   let lastError: any = null;
   for (const modelToTry of uniqueModels) {
-    let retries = 3;
+    let retries = 2; // 3 attempts total per model
     let delay = 1000; // Start with 1 second delay
-    while (retries > 0) {
+    while (retries >= 0) {
       try {
-        console.log(`[Gemini SDK fallback] generateContentStream trying model: ${modelToTry} (retries left: ${retries})`);
+        console.log(`[Gemini SDK fallback] generateContentStream trying model: ${modelToTry} (${retries} retries left)`);
         const stream = await client.models.generateContentStream({
           ...options,
           model: modelToTry,
@@ -748,7 +767,7 @@ async function generateGeminiContentStreamWithFallback(client: GoogleGenAI, opti
         return stream;
       } catch (err: any) {
         lastError = err;
-        const errStr = JSON.stringify(err) + " " + String(err.message || "");
+        const errStr = safeStringify(err);
         const isTransient = errStr.includes("503") || 
                             errStr.includes("UNAVAILABLE") || 
                             errStr.includes("high demand") || 
@@ -758,24 +777,20 @@ async function generateGeminiContentStreamWithFallback(client: GoogleGenAI, opti
                             errStr.includes("ResourceExhausted") ||
                             errStr.includes("Service Unavailable");
 
-        if (isTransient) {
-          recordGeminiFailure();
-          if (retries > 1) {
-            console.log(`[Gemini SDK fallback] Model '${modelToTry}' is temporarily busy for streaming (transient error). Retrying in ${delay}ms... (Error: ${err.message || String(err)})`);
-            await sleep(delay);
-            delay *= 2; // Exponential backoff
-            retries--;
-          } else {
-            console.log(`[Gemini SDK fallback] Model '${modelToTry}' failed or not retrying for streaming. Details: ${err.message || String(err)}`);
-            break; // Move to next fallback model
-          }
+        if (isTransient && retries > 0) {
+          console.log(`[Gemini SDK fallback] Model '${modelToTry}' is temporarily busy for streaming (transient error). Retrying in ${delay}ms... (Error: ${err.message || String(err)})`);
+          await sleep(delay);
+          delay *= 2; // Exponential backoff
+          retries--;
         } else {
-          console.log(`[Gemini SDK fallback] Model '${modelToTry}' failed with non-transient error for streaming. Details: ${err.message || String(err)}`);
+          console.log(`[Gemini SDK fallback] Model '${modelToTry}' failed for streaming. Details: ${err.message || String(err)}`);
           break; // Move to next fallback model
         }
       }
     }
   }
+  // Record failure only if all fallback options failed completely
+  recordGeminiFailure();
   const cleanedError = getCleanErrorMessage(lastError);
   throw new Error(cleanedError);
 }
@@ -783,20 +798,10 @@ async function generateGeminiContentStreamWithFallback(client: GoogleGenAI, opti
 // Define Neora Builder Compilation endpoint
 app.post("/api/builder/compile", async (req, res) => {
   try {
-    const { prompt, files, mockupImage, presetId, geminiKey } = req.body;
+    const { prompt, files, mockupImage, presetId, geminiKey, model, provider, ollamaBaseUrl } = req.body;
     if (!prompt) {
       return res.status(400).json({ error: "Missing prompt or specification string" });
     }
-
-    const apiKey = geminiKey || process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return res.json({
-        status: "api_key_missing",
-        message: "Gemini API Key is not configured."
-      });
-    }
-
-    const client = getGeminiClient(apiKey);
 
     const systemInstruction = `You are Neora AI Builder, an expert full-stack React and UI software co-engineer.
 Your task is to analyze the user's specification request, reference files, and any optional mockup image, and then generate a fully complete, elegant, and interactive single-page application (or game/utility) written in React with Tailwind CSS.
@@ -830,9 +835,6 @@ JSON schema format to return:
   "message": "A summary of changes or features built for the user in clear English or Bengali depending on input language."
 }`;
 
-    let contents: any[] = [];
-    
-    // Construct user prompt with current file context
     let userPromptText = `User specification prompt:\n"${prompt}"\n\n`;
     if (presetId) {
       userPromptText += `Target Preset Template ID: "${presetId}"\n`;
@@ -842,7 +844,81 @@ JSON schema format to return:
       userPromptText += `Here is the current files structure/content for reference:\n${JSON.stringify(files, null, 2)}\n\n`;
     }
 
-    userPromptText += `Generate the complete files list containing at least 'src/App.tsx' representing the fully working application matching this spec. Make sure it is beautiful, highly polished, and has real interactive features.`;
+    userPromptText += `Generate the complete files list containing at least 'src/App.tsx' representing the fully working application matching this spec. Make sure it is beautiful, highly polished, and has real interactive features. Your response MUST be valid JSON matching the system instruction schema.`;
+
+    if (provider === "ollama") {
+      const customUrl = (ollamaBaseUrl || "http://127.0.0.1:11434").replace(/\/+$/, '');
+      const ollamaModel = model || "llama3";
+      
+      const formattedMessages = [
+        { role: "system", content: systemInstruction },
+        { role: "user", content: userPromptText }
+      ];
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
+
+      try {
+        const ollamaResponse = await fetch(`${customUrl}/api/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: ollamaModel,
+            messages: formattedMessages,
+            stream: false,
+            options: {
+              temperature: 0.2
+            }
+          }),
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!ollamaResponse.ok) {
+          throw new Error(`Ollama returned status ${ollamaResponse.status}`);
+        }
+
+        const ollamaData = await ollamaResponse.json();
+        const responseText = ollamaData.message?.content || "{}";
+        
+        let parsedData;
+        try {
+          parsedData = JSON.parse(responseText);
+        } catch (parseErr) {
+          const jsonMatch = responseText.match(/```json\s*([\s\S]*?)\s*```/) || responseText.match(/```\s*([\s\S]*?)\s*```/);
+          if (jsonMatch) {
+            parsedData = JSON.parse(jsonMatch[1]);
+          } else {
+            const firstBrace = responseText.indexOf("{");
+            const lastBrace = responseText.lastIndexOf("}");
+            if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+              parsedData = JSON.parse(responseText.substring(firstBrace, lastBrace + 1));
+            } else {
+              throw parseErr;
+            }
+          }
+        }
+
+        return res.json({ status: "success", data: parsedData });
+      } catch (ollamaErr: any) {
+        clearTimeout(timeoutId);
+        console.error("Ollama compile failed:", ollamaErr);
+        throw new Error(`Ollama Compile Failed: ${ollamaErr.message}. Make sure Ollama is serving on ${customUrl} and '${ollamaModel}' model is downloaded.`);
+      }
+    }
+
+    // Otherwise, default to Gemini API
+    const apiKey = geminiKey || process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.json({
+        status: "api_key_missing",
+        message: "Gemini API Key is not configured."
+      });
+    }
+
+    const client = getGeminiClient(apiKey);
+    let contents: any[] = [];
 
     if (mockupImage && mockupImage.startsWith("data:image/")) {
       // It's a base64 data URL. Extract mimeType and base64 string
@@ -861,8 +937,9 @@ JSON schema format to return:
 
     contents.push({ text: userPromptText });
 
+    const targetModel = model || "gemini-3.5-flash";
     const response = await generateGeminiContentWithFallback(client, {
-      model: "gemini-3.5-flash",
+      model: targetModel,
       contents: [{ parts: contents }],
       config: {
         systemInstruction: systemInstruction,
@@ -947,6 +1024,55 @@ app.get("/api/builder/fetch", async (req, res) => {
   } catch (err: any) {
     console.error("Error in Neora Builder fetcher endpoint:", err);
     return res.status(500).json({ status: "error", error: err.message || "Failed to fetch resource" });
+  }
+});
+
+// Deep Research and Code Prompt Generation Endpoint
+app.post("/api/builder/research-prompt", async (req, res) => {
+  try {
+    const { content, lang, geminiKey } = req.body;
+    if (!content) {
+      return res.status(400).json({ error: "No content provided to analyze" });
+    }
+
+    const apiKey = geminiKey || process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.json({
+        status: "api_key_missing",
+        message: "Gemini API Key is not configured."
+      });
+    }
+
+    const client = getGeminiClient(apiKey);
+    const targetLang = lang === "bn" ? "Bengali" : "English";
+    
+    const systemInstruction = `You are Neora's Elite Software Architect and prompt engineering compiler.
+Your task is to analyze the user's fetched documentation, reference code, webpage, API, or data, and perform "Deep Research" on how to construct fully working software, web apps, tools, or games with it.
+You MUST generate a highly descriptive, comprehensive, professional, and precise instruction/prompt for a code generation LLM (like Gemini) to build a production-grade React with Tailwind CSS application.
+
+CRITICAL DIRECTIVES:
+1. The generated prompt MUST be written entirely and naturally in ${targetLang}.
+2. It must clearly outline the design, the state structure (using local react state, types, or caches), beautiful custom UI with tailwind slate/indigo/emerald palettes, and complete feature sets.
+3. The prompt should explicitly direct the AI to build a REAL-WORLD functional software (no mock lists or placeholder stubs) that is perfectly aligned with the fetched material.
+4. Keep the output prompt beautifully structured, clean, and highly detailed (200-400 words) so it can be fed directly into Neora's code builder. Do not wrap the output prompt in any JSON/markdown codeblocks, just return the direct text.`;
+
+    const userMessage = `Here is the reference content to deeply research and generate the prompt from:\n\n"""\n${content.substring(0, 40000)}\n"""`;
+
+    const response = await generateGeminiContentWithFallback(client, {
+      model: "gemini-3.5-flash",
+      contents: [{ parts: [{ text: userMessage }] }],
+      config: {
+        systemInstruction: systemInstruction,
+        temperature: 0.3,
+      }
+    });
+
+    const generatedPrompt = response.text || "";
+    return res.json({ status: "success", prompt: generatedPrompt.trim() });
+  } catch (err: any) {
+    console.error("Error in research-prompt endpoint:", err);
+    const cleaned = getCleanErrorMessage(err);
+    return res.status(500).json({ status: "error", error: cleaned });
   }
 });
 

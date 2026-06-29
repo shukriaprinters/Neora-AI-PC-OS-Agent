@@ -294,6 +294,62 @@ export const LLMRequestAdapter: LLMProviderAdapter = {
       if (activeProvider === 'groq') endpoint = '/api/chat-groq';
       if (activeProvider === 'ollama') endpoint = '/api/chat-ollama';
 
+      // Robust direct client-side fetch for local Ollama
+      if (activeProvider === 'ollama') {
+        const localUrl = (options.ollamaBaseUrl || "http://127.0.0.1:11434").replace(/\/+$/, '');
+        const ollamaModel = options.model === 'llama-3.3-70b-versatile' ? 'llama3' : (options.model || 'llama3');
+        try {
+          console.log(`[LLMRequestAdapter] Attempting DIRECT CLIENT-SIDE fetch to local Ollama at ${localUrl}...`);
+          const systemInstruction = `You are Neora X7, a helpful AI assistant. Answer in ${options.lang === 'bn' ? 'Bengali (বাংলা)' : 'English'}.`;
+          const formattedMessages = [
+            { role: "system", content: systemInstruction },
+            ...options.messages.map(m => ({
+              role: m.role === "assistant" ? "assistant" : "user",
+              content: m.content
+            }))
+          ];
+          
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 12000); // 12s timeout for local model response
+
+          const clientRes = await fetch(`${localUrl}/api/chat`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: ollamaModel,
+              messages: formattedMessages,
+              stream: false
+            }),
+            signal: controller.signal
+          });
+          
+          clearTimeout(timeoutId);
+
+          if (clientRes.ok) {
+            const result = await clientRes.json();
+            const rawText = result?.message?.content || "";
+            const containsBangla = /[\u0980-\u09FF]/.test(rawText);
+            
+            console.log("[LLMRequestAdapter] Direct Ollama fetch successful!");
+            return {
+              text: rawText,
+              provider: 'ollama',
+              modelUsed: ollamaModel,
+              audioMetadata: {
+                speakText: sanitizeTextForVoice(rawText),
+                shouldSpeak: true,
+                lang: containsBangla ? 'bn' : (options.lang as 'en' | 'bn' || 'en')
+              },
+              success: true
+            };
+          } else {
+            console.warn(`[LLMRequestAdapter] Direct Ollama response status: ${clientRes.status}`);
+          }
+        } catch (directErr: any) {
+          console.warn(`[LLMRequestAdapter] Direct local Ollama fetch failed: ${directErr.message || directErr}. Falling back to proxy/cloud...`);
+        }
+      }
+
       const requestPayload: any = {
         messages: options.messages,
         lang: options.lang || 'en',

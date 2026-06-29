@@ -704,6 +704,20 @@ export default function App() {
       const groqK = localStorage.getItem("neora_groq_key") || "";
       const ollamaUrl = localStorage.getItem("neora_ollama_base_url") || "http://127.0.0.1:11434";
 
+      // Direct client-side local Ollama status check
+      let directOllamaAlive = false;
+      try {
+        const controller = new AbortController();
+        const t = setTimeout(() => controller.abort(), 1000);
+        const res = await fetch(`${ollamaUrl.replace(/\/+$/, '')}/api/tags`, { signal: controller.signal });
+        clearTimeout(t);
+        if (res.ok) {
+          directOllamaAlive = true;
+        }
+      } catch (e) {
+        // quiet fail
+      }
+
       try {
         const result: any = await neoraPost("/api/diagnostic/heartbeat", {
           geminiKey: geminiK,
@@ -718,7 +732,7 @@ export default function App() {
 
           const check = result.check;
           
-          if (check.ollama.alive) {
+          if (directOllamaAlive || check.ollama.alive) {
             setOllamaStatus("available");
           } else {
             setOllamaStatus("not_responding");
@@ -3161,7 +3175,7 @@ export default function App() {
 
                     {activeTab === "vscode" && <VSCodeView />}
 
-                    {activeTab === "builder" && <BuilderView lang={lang} />}
+                    {activeTab === "builder" && <BuilderView lang={lang} onChangeLang={setLang} />}
                   </motion.div>
                 </AnimatePresence>
               </main>
