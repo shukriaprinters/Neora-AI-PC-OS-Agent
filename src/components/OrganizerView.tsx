@@ -14,7 +14,7 @@ interface OrganizerViewProps {
   reminders: Reminder[];
   notes: Note[];
   memories: Memory[];
-  onAddTask: (title: string, priority: 'low' | 'medium' | 'high' | 'critical', tags?: string[]) => void;
+  onAddTask: (title: string, priority: 'low' | 'medium' | 'high' | 'critical', tags?: string[], reminderAt?: string, category?: string) => void;
   onAddReminder: (title: string, remindAt: string, repeat: 'none' | 'daily' | 'weekly' | 'monthly') => void;
   onAddNote: (title: string, content: string) => void;
   onAddMemory: (key: string, value: string, category: 'personal' | 'work' | 'preference' | 'skill', importance: number) => void;

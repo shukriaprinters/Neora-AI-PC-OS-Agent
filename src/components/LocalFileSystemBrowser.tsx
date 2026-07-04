@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Folder, File, FileCode, ArrowLeft, RefreshCw, Eye, Check, Download, 
-  ChevronRight, HardDrive, Files, Lock, FileText, LayoutTemplate, Terminal
+  ChevronRight, HardDrive, Files, Lock, FileText, LayoutTemplate, Terminal,
+  Plus, Save, FilePlus, FolderPlus, Edit2, X
 } from 'lucide-react';
-import { neoraGet } from '../lib/neoraApi';
+import { neoraGet, neoraPost } from '../lib/neoraApi';
 
 interface FileBrowserItem {
   name: string;
@@ -30,6 +31,14 @@ export function LocalFileSystemBrowser({ lang, selectedFilePath, onFileSelected 
   const [previewFile, setPreviewFile] = useState<FileBrowserItem | null>(null);
   const [previewContent, setPreviewContent] = useState<string | null>(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState<boolean>(false);
+
+  // Read/Write / Creation States
+  const [isEditing, setIsEditing] = useState<boolean>(false);
+  const [editContent, setEditContent] = useState<string>('');
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [showCreator, setShowCreator] = useState<'file' | 'folder' | null>(null);
+  const [newItemName, setNewItemName] = useState<string>('');
+  const [isCreating, setIsCreating] = useState<boolean>(false);
 
   const fetchDirectory = async (targetPath: string) => {
     setIsLoading(true);
@@ -60,17 +69,67 @@ export function LocalFileSystemBrowser({ lang, selectedFilePath, onFileSelected 
     setPreviewFile(file);
     setIsPreviewLoading(true);
     setPreviewContent(null);
+    setIsEditing(false);
     try {
       const res: any = await neoraGet(`/api/os/browser/content?filePath=${encodeURIComponent(file.path)}`);
       if (res && res.content !== undefined) {
         setPreviewContent(res.content);
+        setEditContent(res.content);
       } else {
         throw new Error("Preview failed");
       }
     } catch (_) {
-      setPreviewContent(lang === 'bn' ? 'ফাইল প্রিভিউ লোড করা যায়নি।' : 'Unable to preview active binary content.');
+      const fallbackMsg = lang === 'bn' ? 'ফাইল প্রিভিউ লোড করা যায়নি।' : 'Unable to preview active content.';
+      setPreviewContent(fallbackMsg);
+      setEditContent(fallbackMsg);
     } finally {
       setIsPreviewLoading(false);
+    }
+  };
+
+  const handleCreateItem = async (isFolder: boolean) => {
+    if (!newItemName.trim()) return;
+    setIsCreating(true);
+    try {
+      const res: any = await neoraPost('/api/os/browser/create', {
+        parentPath: currentPath,
+        name: newItemName.trim(),
+        isFolder
+      });
+      if (res && res.status === 'success') {
+        setNewItemName('');
+        setShowCreator(null);
+        fetchDirectory(currentPath);
+      } else {
+        throw new Error("Creation failed");
+      }
+    } catch (err) {
+      console.error(err);
+      alert(lang === 'bn' ? 'তৈরি করতে ব্যর্থ হয়েছে।' : 'Failed to create item.');
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const handleSaveFile = async () => {
+    if (!previewFile) return;
+    setIsSaving(true);
+    try {
+      const res: any = await neoraPost('/api/os/browser/save', {
+        filePath: previewFile.path,
+        content: editContent
+      });
+      if (res && res.status === 'success') {
+        setPreviewContent(editContent);
+        setIsEditing(false);
+      } else {
+        throw new Error("Save failed");
+      }
+    } catch (err) {
+      console.error(err);
+      alert(lang === 'bn' ? 'সংরক্ষণ করতে ব্যর্থ হয়েছে।' : 'Failed to save file changes.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -119,13 +178,29 @@ export function LocalFileSystemBrowser({ lang, selectedFilePath, onFileSelected 
             <HardDrive className="w-4 h-4 text-cyan-500 animate-pulse" />
             {lang === 'bn' ? 'ড্রাইভ রিয়েল-ফাইলস' : 'WORKSPACE DISK MANAGER'}
           </h3>
-          <button 
-            onClick={() => fetchDirectory(currentPath)}
-            disabled={isLoading}
-            className="p-1 text-slate-400 hover:text-cyan-400 hover:bg-slate-800 rounded transition-colors"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button 
+              onClick={() => setShowCreator(showCreator === 'file' ? null : 'file')}
+              className={`p-1 rounded text-xs transition-colors flex items-center gap-1 ${showCreator === 'file' ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-400 hover:text-cyan-400 hover:bg-slate-850'}`}
+              title="New File"
+            >
+              <FilePlus className="w-3.5 h-3.5" />
+            </button>
+            <button 
+              onClick={() => setShowCreator(showCreator === 'folder' ? null : 'folder')}
+              className={`p-1 rounded text-xs transition-colors flex items-center gap-1 ${showCreator === 'folder' ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-400 hover:text-cyan-400 hover:bg-slate-850'}`}
+              title="New Folder"
+            >
+              <FolderPlus className="w-3.5 h-3.5" />
+            </button>
+            <button 
+              onClick={() => fetchDirectory(currentPath)}
+              disabled={isLoading}
+              className="p-1 text-slate-400 hover:text-cyan-400 hover:bg-slate-800 rounded transition-colors"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
         </div>
 
         {/* Path navigation breadcrumbs */}
@@ -135,6 +210,40 @@ export function LocalFileSystemBrowser({ lang, selectedFilePath, onFileSelected 
           <ChevronRight className="w-3 h-3 text-slate-600" />
           <span className="text-cyan-400 whitespace-nowrap">{currentPath}</span>
         </div>
+
+        {/* Create Item Inputs */}
+        {showCreator && (
+          <div className="bg-slate-950/80 p-2 border border-cyan-500/20 rounded-lg mb-3 flex items-center gap-2 select-none">
+            <span className="text-[10px] text-cyan-400 uppercase font-mono font-bold shrink-0">
+              {showCreator === 'file' ? (lang === 'bn' ? 'নতুন ফাইল:' : 'New File:') : (lang === 'bn' ? 'নতুন ফোল্ডার:' : 'New Folder:')}
+            </span>
+            <input
+              type="text"
+              value={newItemName}
+              onChange={(e) => setNewItemName(e.target.value)}
+              placeholder={showCreator === 'file' ? 'index.html' : 'my_folder'}
+              className="flex-1 bg-slate-900 text-xs font-mono px-2 py-1 rounded text-slate-200 border border-slate-800 outline-none focus:border-cyan-500"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleCreateItem(showCreator === 'folder');
+                if (e.key === 'Escape') { setShowCreator(null); setNewItemName(''); }
+              }}
+              autoFocus
+            />
+            <button
+              onClick={() => handleCreateItem(showCreator === 'folder')}
+              disabled={isCreating}
+              className="px-2 py-1 text-[10px] font-bold bg-cyan-600 hover:bg-cyan-500 text-white rounded transition cursor-pointer"
+            >
+              {isCreating ? '...' : (lang === 'bn' ? 'তৈরি' : 'Create')}
+            </button>
+            <button
+              onClick={() => { setShowCreator(null); setNewItemName(''); }}
+              className="p-1 hover:bg-slate-800 text-slate-400 rounded"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Browser List stage */}
         <div className="flex-1 overflow-y-auto pr-1 scrollbar-thin">
@@ -236,15 +345,50 @@ export function LocalFileSystemBrowser({ lang, selectedFilePath, onFileSelected 
       <div className="border border-cyan-500/10 rounded-xl p-4 bg-slate-900/60 backdrop-blur-md flex flex-col h-[380px]">
         {/* Header */}
         <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-800">
-          <h3 className="text-sm font-bold font-mono text-cyan-400 flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5">
             <Terminal className="w-4 h-4 text-cyan-500" />
-            {lang === 'bn' ? 'সরাসরি ফাইল প্রিভিউয়ার' : 'FILE CONTENT VIEWPORT'}
-          </h3>
-          {previewFile && (
-            <span className="text-[10px] text-slate-400 font-mono italic">
-              {previewFile.name} ({formatBytes(previewFile.size)})
-            </span>
-          )}
+            <h3 className="text-sm font-bold font-mono text-cyan-400">
+              {lang === 'bn' ? 'সরাসরি ফাইল প্রিভিউয়ার' : 'FILE CONTENT VIEWPORT'}
+            </h3>
+          </div>
+          <div className="flex items-center gap-2">
+            {previewFile && !isPreviewLoading && (
+              <>
+                {!isEditing ? (
+                  <button
+                    onClick={() => setIsEditing(true)}
+                    className="flex items-center gap-1 text-[10px] font-bold bg-slate-800 hover:bg-slate-750 text-cyan-300 px-2 py-0.5 rounded transition cursor-pointer"
+                  >
+                    <Edit2 className="w-3 h-3" />
+                    <span>{lang === 'bn' ? 'সম্পাদনা' : 'Edit'}</span>
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={handleSaveFile}
+                      disabled={isSaving}
+                      className="flex items-center gap-1 text-[10px] font-bold bg-cyan-600 hover:bg-cyan-500 text-white px-2 py-0.5 rounded transition cursor-pointer"
+                    >
+                      <Save className="w-3 h-3" />
+                      <span>{isSaving ? 'Saving...' : (lang === 'bn' ? 'সংরক্ষণ' : 'Save')}</span>
+                    </button>
+                    <button
+                      onClick={() => { setIsEditing(false); setEditContent(previewContent || ''); }}
+                      className="flex items-center gap-1 text-[10px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-400 px-1.5 py-0.5 rounded transition cursor-pointer"
+                    >
+                      <X className="w-3 h-3" />
+                      <span>{lang === 'bn' ? 'বাতিল' : 'Cancel'}</span>
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+            {previewFile && (
+              <span className="text-[10px] text-slate-400 font-mono italic">
+                {previewFile.name} ({formatBytes(previewFile.size)})
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Content Box */}
@@ -259,6 +403,12 @@ export function LocalFileSystemBrowser({ lang, selectedFilePath, onFileSelected 
               <RefreshCw className="w-5 h-5 animate-spin text-cyan-500" />
               <span>Loading preview buffer...</span>
             </div>
+          ) : isEditing ? (
+            <textarea
+              value={editContent}
+              onChange={(e) => setEditContent(e.target.value)}
+              className="flex-1 w-full bg-transparent text-slate-200 outline-none font-mono text-[11px] leading-relaxed resize-none h-full"
+            />
           ) : (
             <pre className="text-slate-300 text-[11px] whitespace-pre-wrap select-all font-mono">
               {previewContent || 'Empty File'}
@@ -275,7 +425,7 @@ export function LocalFileSystemBrowser({ lang, selectedFilePath, onFileSelected 
             </span>
             <button 
               onClick={() => onFileSelected('')}
-              className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition-colors"
+              className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
             >
               x
             </button>

@@ -158,6 +158,23 @@ export function NeoraNotifications({ reminders, apiHealth, lang = 'en' }: Props)
     return () => window.removeEventListener("neora-skills-updated", handleSkillUpdated);
   }, [lang, push]);
 
+  // Listen for generic Neora custom notifications
+  useEffect(() => {
+    const handleGenericNotification = (e: Event) => {
+      const customEvent = e as CustomEvent<{ title: string; message?: string; body?: string; type?: NotiType }>;
+      if (!customEvent.detail) return;
+      const { title, message, body, type } = customEvent.detail;
+      push({
+        type: type || 'info',
+        title: title || 'NOTIFICATION',
+        body: message || body || '',
+      });
+    };
+
+    window.addEventListener("neora-notification", handleGenericNotification);
+    return () => window.removeEventListener("neora-notification", handleGenericNotification);
+  }, [push]);
+
   // Poll OS status for completed tasks
   useEffect(() => {
     let cancelled = false;

@@ -24,6 +24,9 @@ export interface Task {
   completed: boolean;
   tags?: string[];
   completedAt?: string;
+  archived?: boolean;
+  reminderAt?: string;
+  category?: string;
 }
 
 export interface Reminder {

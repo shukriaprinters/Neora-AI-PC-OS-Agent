@@ -64,6 +64,12 @@ export function OsAgentView({ lang, geminiKey, setGeminiKey, useGroq, groqKey, g
   const [watchdogNote, setWatchdogNote] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<CommandItem | HistoryItem | null>(null);
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
+
+  const [clipboardText, setClipboardText] = useState<string>('');
+  const [copiedClipboard, setCopiedClipboard] = useState<boolean>(false);
+  const [isUpdatingClipboard, setIsUpdatingClipboard] = useState<boolean>(false);
+  const [devices, setDevices] = useState<any[]>([]);
+  const [targetDeviceId, setTargetDeviceId] = useState<string>('Primary-PC');
   
   // Custom Quick Launch application paths loaded from local storage
   const [quickLaunchPaths, setQuickLaunchPaths] = useState(() => {
@@ -265,6 +271,8 @@ export function OsAgentView({ lang, geminiKey, setGeminiKey, useGroq, groqKey, g
       setLogs(data.logs || []);
       setQueue(data.queue || []);
       setHistory(data.history || []);
+      setClipboardText(data.clipboardText || '');
+      setDevices(data.devices || []);
       const staleRunning = (data.queue || []).some((item: CommandItem) => item.status === 'running');
       setWatchdogNote(staleRunning ? (lang === 'bn' ? 'ওয়াচডগ সক্রিয়: চলমান কমান্ড পর্যবেক্ষণ করছে' : 'Watchdog active: monitoring running commands') : null);
     } catch (err) {
@@ -489,7 +497,8 @@ export function OsAgentView({ lang, geminiKey, setGeminiKey, useGroq, groqKey, g
         geminiKey, 
         useGroq, 
         groqKey, 
-        groqModel 
+        groqModel,
+        targetDeviceId
       });
       if (resData.status === 'success') {
         setPrompt('');
@@ -1193,6 +1202,115 @@ while True:
                 <span className="text-emerald-400">{new Date(recoveryAutoSaveAt).toLocaleTimeString()}</span>
               </div>
             )}
+          </div>
+
+          {/* Multi-Device Cluster Control */}
+          <div className="bg-slate-900/50 border border-slate-850/80 rounded-xl p-4 mb-6 select-none">
+            <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wide flex items-center gap-1.5">
+              <Laptop className="w-3.5 h-3.5 text-cyan-400" />
+              {lang === 'bn' ? 'মাল্টি-ডিভাইস ক্লাস্টার কন্ট্রোল' : 'Multi-Device Cluster Manager'}
+            </h3>
+            <p className="text-[10px] text-slate-400 mt-1">
+              {lang === 'bn' 
+                ? 'আপনার স্টুডিও ক্লাস্টারের ডিভাইসগুলির লাইভ অবস্থা এবং কন্ট্রোল নোড নির্বাচন:' 
+                : 'Manage and switch between connected local PCs in your studio cluster:'}
+            </p>
+            {devices.length === 0 ? (
+              <div className="mt-3 text-center py-2 bg-slate-950/40 rounded border border-slate-850/60 text-[10px] text-slate-500 font-mono">
+                {lang === 'bn' ? 'কোন ডিভাইস এখনো কানেক্ট হয়নি' : 'No devices active in cluster'}
+              </div>
+            ) : (
+              <div className="mt-3 space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
+                {devices.map((dev: any) => (
+                  <button
+                    key={dev.deviceId}
+                    type="button"
+                    onClick={() => {
+                      setTargetDeviceId(dev.deviceId);
+                      setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Target execution PC switched to: [${dev.deviceId}]`]);
+                    }}
+                    className={`w-full text-left px-2.5 py-1.5 rounded border transition flex items-center justify-between text-[11px] ${
+                      targetDeviceId === dev.deviceId
+                        ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-300 font-semibold'
+                        : 'bg-slate-950/60 border-slate-850/60 text-slate-400 hover:bg-slate-900/40'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className={`w-1.5 h-1.5 rounded-full ${dev.status === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-600'}`}></span>
+                      <span className="truncate font-mono font-bold text-xs">{dev.deviceId}</span>
+                    </div>
+                    <span className="text-[9px] text-slate-500 max-w-[120px] truncate">{dev.systemInfo || 'Active Client'}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {targetDeviceId && (
+              <div className="mt-2 text-[9px] font-mono text-cyan-400/80 flex justify-between select-none bg-cyan-950/20 px-2 py-1 rounded border border-cyan-900/30">
+                <span>TARGETING DEVICE:</span>
+                <span className="font-bold">{targetDeviceId}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Shared Clipboard Memory */}
+          <div className="bg-slate-900/50 border border-slate-850/80 rounded-xl p-4 mb-6">
+            <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wide flex items-center gap-1.5">
+              <Copy className="w-3.5 h-3.5 text-cyan-400" />
+              {lang === 'bn' ? 'শেয়ার্ড ক্লিপবোর্ড মেমরি' : 'Shared Clipboard Memory'}
+            </h3>
+            <p className="text-[10px] text-slate-400 mt-1">
+              {lang === 'bn' 
+                ? 'ব্রোকার ও ক্লায়েন্ট পিসির মধ্যে রিয়েল-টাইম ডাটা বা টেক্সট সিঙ্ক করুন:' 
+                : 'Bidirectionally sync copy-pastes between web client and local desktop clipboards:'}
+            </p>
+            <div className="mt-3 space-y-2">
+              <textarea
+                value={clipboardText}
+                onChange={(e) => setClipboardText(e.target.value)}
+                placeholder={lang === 'bn' ? 'ক্লিপবোর্ডে সিঙ্ক করার টেক্সট...' : 'Type text to push to shared clipboard...'}
+                className="w-full h-[60px] bg-slate-950 border border-slate-800 rounded p-2 text-[10px] text-slate-300 outline-none focus:border-cyan-500 resize-none leading-relaxed font-mono"
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setIsUpdatingClipboard(true);
+                    try {
+                      const res: any = await neoraPost('/api/os/clipboard', { text: clipboardText });
+                      if (res.status === 'success') {
+                        setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Shared Clipboard updated: "${clipboardText.slice(0, 30)}..."`]);
+                        setStatusBanner(lang === 'bn' ? 'ক্লিপবোর্ড ক্লাউডে সিঙ্ক হয়েছে' : 'Clipboard synced to broker');
+                        setTimeout(() => setStatusBanner(null), 2000);
+                      }
+                    } catch (err: any) {
+                      setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Clipboard sync failed: ${err.message}`]);
+                    } finally {
+                      setIsUpdatingClipboard(false);
+                    }
+                  }}
+                  disabled={isUpdatingClipboard}
+                  className="flex-1 py-1 px-2 text-[10px] rounded bg-cyan-600 hover:bg-cyan-500 text-white font-bold transition flex items-center justify-center gap-1 cursor-pointer"
+                >
+                  <RefreshCw className={`w-3 h-3 ${isUpdatingClipboard ? 'animate-spin' : ''}`} />
+                  <span>{lang === 'bn' ? 'সিঙ্ক ও পুশ' : 'Sync & Push'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    copyToClipboardFailsafe(clipboardText).then((success) => {
+                      if (success) {
+                        setCopiedClipboard(true);
+                        setTimeout(() => setCopiedClipboard(false), 2000);
+                      }
+                    });
+                  }}
+                  className="py-1 px-3 text-[10px] rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition flex items-center justify-center cursor-pointer"
+                  title="Copy to Local Clipboard"
+                >
+                  {copiedClipboard ? <Check className="w-3.5 h-3.5 text-emerald-450" /> : <Copy className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            </div>
           </div>
 
           {/* Core Action Direct Prompts */}

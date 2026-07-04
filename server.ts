@@ -88,6 +88,7 @@ interface OsCommand {
   classification?: "chat" | "os-command" | "rejected";
   result?: string;
   retryCount?: number;
+  targetDeviceId?: string;
 }
 
 interface OsCommandHistory {
@@ -99,6 +100,7 @@ interface OsCommandHistory {
   classification?: "chat" | "os-command" | "rejected";
   result?: string;
   retryCount?: number;
+  targetDeviceId?: string;
 }
 
 const AGENT_TOKEN = (process.env.NEORA_AGENT_TOKEN || "NEORA-X7-AGENT").trim();
@@ -323,6 +325,13 @@ function persistConversationContext(userPrompt: string, assistantReply: string) 
   );
 }
 
+interface ConnectedDevice {
+  deviceId: string;
+  lastPing: string;
+  status: "online" | "offline";
+  systemInfo?: string;
+}
+
 const osAgentState = {
   status: "offline" as "online" | "offline",
   token: AGENT_TOKEN,
@@ -330,7 +339,9 @@ const osAgentState = {
   currentScreenshot: null as string | null, // base64 representation
   logs: [`[${new Date().toLocaleTimeString()}] OS Automation Broker server initialized.`] as string[],
   queue: [] as OsCommand[],
-  history: [] as OsCommandHistory[]
+  history: [] as OsCommandHistory[],
+  clipboardText: "Designed professionally by Neora Operator",
+  devices: {} as { [deviceId: string]: ConnectedDevice }
 };
 
 const WATCHDOG_STALE_MS = Number(process.env.NEORA_WATCHDOG_STALE_MS || 30000);
@@ -1857,6 +1868,15 @@ app.get("/api/os/status", (req, res) => {
     osAgentState.status = "offline";
   }
 
+  // Update status for registered devices in cluster
+  const deviceList = Object.values(osAgentState.devices).map(dev => {
+    const elapsed = now - new Date(dev.lastPing).getTime();
+    if (elapsed > 30000) {
+      dev.status = "offline";
+    }
+    return dev;
+  });
+
   res.json({
     status: osAgentState.status,
     token: osAgentState.token,
@@ -1868,41 +1888,90 @@ app.get("/api/os/status", (req, res) => {
     history: osAgentState.history.slice(-30).map((item) => ({
       ...item,
       classification: item.classification || classifyNeoraPrompt(item.prompt)
-    })) // Historical logs
+    })), // Historical logs
+    clipboardText: osAgentState.clipboardText,
+    devices: deviceList
   });
 });
 
 app.post("/api/os/ping", (req, res) => {
-  const { token, client_time } = req.body;
+  const { token, client_time, clipboardText, deviceId, systemInfo } = req.body;
   if (!token || token !== AGENT_TOKEN) {
     return res.status(401).json({ error: "Unauthorized token provided" });
   }
+  const id = deviceId || "Primary-PC";
   osAgentState.status = "online";
   osAgentState.lastPing = client_time || new Date().toISOString();
-  res.json({ status: "ok" });
+
+  // Register/update device info
+  osAgentState.devices[id] = {
+    deviceId: id,
+    lastPing: osAgentState.lastPing,
+    status: "online",
+    systemInfo: systemInfo || "Connected Local Agent"
+  };
+
+  if (typeof clipboardText === "string" && clipboardText !== osAgentState.clipboardText) {
+    osAgentState.clipboardText = clipboardText;
+    pushAgentLog(`[${new Date().toLocaleTimeString()}] ✓ Clipboard synced from device [${id}]: "${clipboardText.slice(0, 50)}..."`);
+  }
+
+  res.json({ status: "ok", clipboardText: osAgentState.clipboardText });
 });
 
 app.get("/api/os/poll", (req, res) => {
-  const { token } = req.query;
+  const { token, deviceId } = req.query;
   if (!token || token !== AGENT_TOKEN) {
     return res.status(401).json({ error: "Unauthorized token" });
   }
+  const id = (deviceId as string) || "Primary-PC";
 
-  const pendingIdx = osAgentState.queue.findIndex(c => c.status === "pending");
+  // Mark device online on poll
+  if (!osAgentState.devices[id]) {
+    osAgentState.devices[id] = {
+      deviceId: id,
+      lastPing: new Date().toISOString(),
+      status: "online",
+      systemInfo: "Connected Local Agent"
+    };
+  } else {
+    osAgentState.devices[id].status = "online";
+    osAgentState.devices[id].lastPing = new Date().toISOString();
+  }
+
+  const pendingIdx = osAgentState.queue.findIndex(c => {
+    return c.status === "pending" && (!c.targetDeviceId || c.targetDeviceId === id);
+  });
+
   if (pendingIdx === -1) {
-    return res.json({ hasCommand: false });
+    return res.json({ hasCommand: false, clipboardText: osAgentState.clipboardText });
   }
 
   const command = osAgentState.queue[pendingIdx];
   command.status = "running";
-  osAgentState.logs.push(`[${new Date().toLocaleTimeString()}] Local Client PC fetched command ID: ${command.id}`);
+  osAgentState.logs.push(`[${new Date().toLocaleTimeString()}] Device [${id}] fetched command ID: ${command.id}`);
 
   res.json({
     hasCommand: true,
     commandId: command.id,
     prompt: command.prompt,
-    actions: command.actions
+    actions: command.actions,
+    clipboardText: osAgentState.clipboardText
   });
+});
+
+app.get("/api/os/clipboard", (req, res) => {
+  res.json({ clipboardText: osAgentState.clipboardText });
+});
+
+app.post("/api/os/clipboard", (req, res) => {
+  const { text } = req.body;
+  if (typeof text === "string") {
+    osAgentState.clipboardText = text;
+    pushAgentLog(`[${new Date().toLocaleTimeString()}] ✓ Clipboard synchronized on server: "${text.slice(0, 50)}..."`);
+    return res.json({ status: "success", clipboardText: osAgentState.clipboardText });
+  }
+  return res.status(400).json({ error: "Invalid text payload" });
 });
 
 async function healFailedCommand(command: OsCommand, errorLogs: string[]) {
@@ -2046,7 +2115,7 @@ app.post("/api/os/report", (req, res) => {
 
 app.post("/api/os/command", async (req, res) => {
   try {
-    const { prompt, token, geminiKey, useGroq, groqKey, groqModel } = req.body;
+    const { prompt, token, geminiKey, useGroq, groqKey, groqModel, targetDeviceId } = req.body;
     if (!prompt) {
       return res.status(400).json({ error: "Missing prompt query string" });
     }
@@ -2083,7 +2152,8 @@ app.post("/api/os/command", async (req, res) => {
           status: "failed",
           timestamp: new Date().toLocaleTimeString(),
           classification: "rejected",
-          result: "Access Denied: Non-whitelisted binary detected."
+          result: "Access Denied: Non-whitelisted binary detected.",
+          targetDeviceId: targetDeviceId || undefined
         };
         return res.json({ status: "success", command: blockedCmd, blocked: true });
       }
@@ -2094,7 +2164,8 @@ app.post("/api/os/command", async (req, res) => {
         actions: fallbackActions,
         status: "pending",
         timestamp: new Date().toLocaleTimeString(),
-        classification: classifyNeoraPrompt(prompt)
+        classification: classifyNeoraPrompt(prompt),
+        targetDeviceId: targetDeviceId || undefined
       };
       const now = Date.now();
       let isClientOnline = false;
@@ -2246,11 +2317,11 @@ Output ONLY the final raw JSON action plan matching the response schema!`;
                 properties: {
                   action: {
                     type: Type.STRING,
-                    description: "The low-level desktop action: open_browser, write_file, execute_cmd, type_text, press_key, wait, mouse_click, mouse_drag, open_file, save_file_as, take_screenshot, alert_msg"
+                    description: "The low-level desktop action: open_browser, write_file, execute_cmd, type_text, press_key, wait, mouse_click, mouse_drag, open_file, save_file_as, take_screenshot, alert_msg, vision_click"
                   },
                   param: {
                     type: Type.STRING,
-                    description: "The parameter for the action."
+                    description: "The parameter for the action. For vision_click, this is a clear description of the button/menu/icon to find and click."
                   }
                 },
                 required: ["action", "param"]
@@ -2291,7 +2362,8 @@ Output ONLY the final raw JSON action plan matching the response schema!`;
         status: "failed",
         timestamp: new Date().toLocaleTimeString(),
         classification: "rejected",
-        result: "Access Denied: Non-whitelisted binary detected."
+        result: "Access Denied: Non-whitelisted binary detected.",
+        targetDeviceId: targetDeviceId || undefined
       };
       return res.json({ status: "success", command: blockedCmd, blocked: true });
     }
@@ -2302,7 +2374,8 @@ Output ONLY the final raw JSON action plan matching the response schema!`;
       actions,
       status: "pending",
       timestamp: new Date().toLocaleTimeString(),
-      classification: classifyNeoraPrompt(prompt)
+      classification: classifyNeoraPrompt(prompt),
+      targetDeviceId: targetDeviceId || undefined
     };
 
     const now2 = Date.now();
@@ -2498,6 +2571,51 @@ app.get("/api/memory", (req, res) => {
   if (!requireAgentToken(req, res)) return;
   const store = readNeoraStore();
   res.json({ status: "success", memories: store.memories, summaries: store.conversationSummaries });
+});
+
+app.get("/api/cli/suggestions", (req, res) => {
+  if (!requireAgentToken(req, res)) return;
+  const activeToolsStr = req.query.activeTools as string || "";
+  const activeTools = activeToolsStr.split(",").filter(Boolean);
+  
+  const suggestions: Array<{ cmd: string; desc: string }> = [];
+  
+  suggestions.push({ cmd: "open [tab]", desc: 'e.g., open "planner" or "chat"' });
+  
+  activeTools.forEach(tool => {
+    if (suggestions.length >= 6) return;
+    
+    if (tool === "command_center") {
+      suggestions.push({ cmd: "diagnose system", desc: "Scan Neora system health" });
+      suggestions.push({ cmd: "optimize layout", desc: "Max out dashboard density" });
+    } else if (tool === "tasks") {
+      suggestions.push({ cmd: "add task [name]", desc: "Directly schedule a planner item" });
+    } else if (tool === "memory") {
+      suggestions.push({ cmd: "add memory [key]", desc: "Persist key facts in active memory" });
+    } else if (tool === "agent") {
+      suggestions.push({ cmd: "execute [command]", desc: "Run background OS python script" });
+    } else if (tool === "scratchpad") {
+      suggestions.push({ cmd: "write draft [text]", desc: "Direct scratchpad insertion" });
+    } else if (tool === "os_quick") {
+      suggestions.push({ cmd: "rerun last failed", desc: "Re-execute last failed terminal code" });
+    }
+  });
+
+  // Default fallbacks if too short
+  if (suggestions.length < 4) {
+    suggestions.push({ cmd: "help", desc: "List all active capabilities" });
+    suggestions.push({ cmd: "clear logs", desc: "Flush the active system console logs" });
+  }
+  
+  // Dedup
+  const seen = new Set<string>();
+  const filtered = suggestions.filter(item => {
+    if (seen.has(item.cmd)) return false;
+    seen.add(item.cmd);
+    return true;
+  }).slice(0, 4);
+
+  res.json({ status: "success", suggestions: filtered });
 });
 
 app.post("/api/memory", (req, res) => {
@@ -2947,6 +3065,49 @@ app.get("/api/os/browser/content", (req, res) => {
   } catch (err: any) {
     console.error("Read file error:", err);
     res.status(500).json({ error: err.message || "Failed to read file content" });
+  }
+});
+
+// Save File content back to workspace
+app.post("/api/os/browser/save", (req, res) => {
+  try {
+    const { filePath, content } = req.body;
+    if (!filePath) {
+      return res.status(400).json({ error: "Missing filePath parameter" });
+    }
+    const safePath = path.resolve(process.cwd(), filePath);
+    if (!isPathWithinWorkspace(safePath, WORKSPACE_ROOT)) {
+      return res.status(403).json({ error: "Access Denied: Path outside workspace sandbox." });
+    }
+    fs.writeFileSync(safePath, content || "", "utf-8");
+    res.json({ status: "success", size: content?.length || 0 });
+  } catch (err: any) {
+    console.error("Save file error:", err);
+    res.status(500).json({ error: err.message || "Failed to save file content" });
+  }
+});
+
+// Create File or Folder in workspace
+app.post("/api/os/browser/create", (req, res) => {
+  try {
+    const { parentPath, name, isFolder } = req.body;
+    if (!name) {
+      return res.status(400).json({ error: "Missing name parameter" });
+    }
+    const safeParent = path.resolve(process.cwd(), parentPath || ".");
+    if (!isPathWithinWorkspace(safeParent, WORKSPACE_ROOT)) {
+      return res.status(403).json({ error: "Access Denied: Path outside workspace sandbox." });
+    }
+    const newPath = path.join(safeParent, name);
+    if (isFolder) {
+      fs.mkdirSync(newPath, { recursive: true });
+    } else {
+      fs.writeFileSync(newPath, "", "utf-8");
+    }
+    res.json({ status: "success" });
+  } catch (err: any) {
+    console.error("Create item error:", err);
+    res.status(500).json({ error: err.message || "Failed to create item" });
   }
 });
 

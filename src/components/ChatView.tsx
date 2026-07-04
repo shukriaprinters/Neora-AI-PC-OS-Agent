@@ -1644,17 +1644,6 @@ const handleUpdateMessage = async (id: string, newText: string) => {
         ? selectedOllamaModel 
         : (targetProvider === 'groq' ? groqModel : 'gemini-3.5-flash');
 
-      // Map history payload and insert attachment data if present on the final user message
-      const mappedHistory = historyPayload.map((m, idx) => {
-        if (m.role === 'user' && idx === historyPayload.length - 1 && attachmentImage) {
-          return {
-            ...m,
-            image: attachmentImage
-          };
-        }
-        return m;
-      });
-
       let activeSkillsList = [];
       try {
         const saved = localStorage.getItem("neora_ai_skills");
@@ -1664,6 +1653,64 @@ const handleUpdateMessage = async (id: string, newText: string) => {
       } catch (e) {
         console.error("Failed to parse active skills:", e);
       }
+
+      // Aggregate active user skills from memories state and local storage
+      let skillNamesFromMemories: string[] = [];
+      try {
+        recentMemories.forEach(mem => {
+          const isSkill = mem.category === 'skill' || mem.category === 'skills' || 
+                          mem.tags?.includes('skill') || mem.tags?.includes('skills') ||
+                          mem.tags?.includes('capability') ||
+                          String(mem.content || mem.text || '').toLowerCase().includes('skill') ||
+                          String(mem.title || '').toLowerCase().includes('skill');
+          if (isSkill) {
+            const label = mem.title ? `${mem.title}: ${mem.content || mem.text || ''}` : (mem.content || mem.text || '');
+            if (label) skillNamesFromMemories.push(label);
+          }
+        });
+      } catch (e) {
+        console.error("Failed to parse skills from memories state:", e);
+      }
+
+      const enabledLocalSkills = activeSkillsList
+        .filter((s: any) => s.enabled)
+        .map((s: any) => `${s.name} (${s.category}): ${s.description}`);
+
+      const combinedSkills = [
+        ...skillNamesFromMemories,
+        ...enabledLocalSkills
+      ];
+
+      const uniqueSkills = Array.from(new Set(combinedSkills));
+
+      const systemCapabilityProfile = `### SYSTEM CAPABILITY PROFILE (ACTIVE AI SKILLS)
+You are running inside Neora OS. To prevent hallucinating capabilities, you must reference this precise list of active skills. If you need a skill/tool/integration not listed here to execute the user's task, you MUST explicitly tell the user that you currently lack that skill, and request them to download or activate it from GitHub or local registry (e.g. "I don't have the XYZ skill. Would you like to install it?").
+
+Active Skills & Capabilities:
+${uniqueSkills.length > 0 ? uniqueSkills.map((sk, index) => `${index + 1}. ${sk}`).join('\n') : '- No custom skills currently activated. Baseline task and chat utilities only.'}
+--------------------------------------------------\n\n`;
+
+      // Map history payload and insert attachment data if present on the final user message
+      const mappedHistory = historyPayload.map((m, idx) => {
+        let content = m.content;
+        if (m.role === 'user' && idx === historyPayload.length - 1) {
+          content = systemCapabilityProfile + m.content;
+        }
+        if (m.role === 'user' && idx === historyPayload.length - 1 && attachmentImage) {
+          return {
+            ...m,
+            content,
+            image: attachmentImage
+          };
+        }
+        if (m.role === 'user' && idx === historyPayload.length - 1) {
+          return {
+            ...m,
+            content
+          };
+        }
+        return m;
+      });
 
       const response = await fetch('/api/chat-stream', {
         method: 'POST',

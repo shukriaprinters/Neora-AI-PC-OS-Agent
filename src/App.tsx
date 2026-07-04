@@ -132,6 +132,8 @@ const BuilderView = lazyRetry<any>(
   "BuilderView",
 );
 import { usePredictiveLayout } from "./components/DashboardManager";
+import { AgentIntelligenceWidget } from "./components/AgentIntelligenceWidget";
+import { CommandHistoryDrawer } from "./components/CommandHistoryDrawer";
 import { useSkillNotification } from "./hooks/useSkillNotification";
 import { MetaAgent } from "./components/MetaAgent";
 import { SECTIONS, RAW_MASTER_PROMPT } from "./masterPromptText";
@@ -169,7 +171,13 @@ import {
   Sparkles,
   HelpCircle,
   Plus,
-  CheckCircle
+  CheckCircle,
+  ChevronDown,
+  Calendar,
+  Edit,
+  AlertTriangle,
+  History,
+  Zap
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -880,6 +888,12 @@ export default function App() {
     return () => window.removeEventListener("neora-navigation", handleNav);
   }, []);
 
+  React.useEffect(() => {
+    const handleCloseContext = () => setContextMenuTask(null);
+    window.addEventListener("click", handleCloseContext);
+    return () => window.removeEventListener("click", handleCloseContext);
+  }, []);
+
   const [evolutionSubTab, setEvolutionSubTab] = useState<"protocol" | "status">("protocol");
 
   // Dynamic collections
@@ -958,6 +972,34 @@ export default function App() {
       value:
         "Never write onto /etc/ or system roots system-wide without password prompt",
       importance: 4,
+    },
+    {
+      id: "syntax-home",
+      key: "Syntax: home tab",
+      category: "preference",
+      value: "open [tab] (Navigate), add task [name] (Schedule task), diagnose (Run health check)",
+      importance: 3,
+    },
+    {
+      id: "syntax-chat",
+      key: "Syntax: chat tab",
+      category: "preference",
+      value: "/clear (Reset active chat), /analyze (Audit workspace logs), /heal (Auto-patch errors)",
+      importance: 3,
+    },
+    {
+      id: "syntax-osAgent",
+      key: "Syntax: osAgent tab",
+      category: "preference",
+      value: "run [app] (Launch dynamic app), write [file] (Write custom script), status (Hardware probe)",
+      importance: 3,
+    },
+    {
+      id: "syntax-autonomy",
+      key: "Syntax: autonomy tab",
+      category: "preference",
+      value: "schedule [job] (Setup scheduler), prioritize [task] (Increase item latency weight)",
+      importance: 3,
     },
   ]);
 
@@ -1121,6 +1163,21 @@ export default function App() {
   const [overlayBlocked, setOverlayBlocked] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [isDashboardAddTaskOpen, setIsDashboardAddTaskOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isSystemHealing, setIsSystemHealing] = useState(false);
+  const [isPlusRotating, setIsPlusRotating] = useState(false);
+  const [selectedDashboardTag, setSelectedDashboardTag] = useState<string>("ALL");
+  const [isTagDropdownOpen, setIsTagDropdownOpen] = useState(false);
+  const [contextMenuTask, setContextMenuTask] = useState<{
+    id: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editingTaskTitle, setEditingTaskTitle] = useState<string>("");
+  const [newTaskPriority, setNewTaskPriority] = useState<"low" | "medium" | "high" | "critical">("medium");
+  const [dashboardTaskTab, setDashboardTaskTab] = useState<"active" | "completed">("active");
+  const [selectedCompletedTaskIds, setSelectedCompletedTaskIds] = useState<string[]>([]);
   const [showQuickHelp, setShowQuickHelp] = useState(false);
   const [showDebugBanner, setShowDebugBanner] = useState(false);
   const [voicePanelOpen, setVoicePanelOpen] = useState(false);
@@ -1157,20 +1214,112 @@ export default function App() {
     optimizeLayoutAllInterfaces
   } = usePredictiveLayout();
 
+  const [cliSuggestions, setCliSuggestions] = useState<Array<{ cmd: string; desc: string }>>([
+    { cmd: "open [tab]", desc: 'e.g., open "planner" or "chat"' },
+    { cmd: "diagnose system", desc: "Scan Neora system health" },
+    { cmd: "optimize layout", desc: "Max out dashboard density" },
+    { cmd: "add task [name]", desc: "Directly schedule a planner item" }
+  ]);
+
+  React.useEffect(() => {
+    const fetchCliSuggestions = async () => {
+      try {
+        const sortedWidgets = [...predictiveWidgets].sort((a, b) => b.clicks - a.clicks);
+        const activeToolsParam = sortedWidgets.map(w => w.id).join(",");
+        const data: any = await neoraGet(`/api/cli/suggestions?activeTools=${activeToolsParam}`);
+        if (data && Array.isArray(data.suggestions)) {
+          setCliSuggestions(data.suggestions);
+        }
+      } catch (err) {
+        console.warn("Error fetching dynamic CLI suggestions:", err);
+      }
+    };
+    if (predictiveWidgets && predictiveWidgets.length > 0) {
+      fetchCliSuggestions();
+    }
+  }, [predictiveWidgets]);
+
+  React.useEffect(() => {
+    // Automatically archive completed tasks older than 7 days
+    const archiveCompletedTasksOlderThan7Days = () => {
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      
+      setTasks(prevTasks => {
+        let changed = false;
+        const updated = prevTasks.map(task => {
+          if (task.completed && !task.archived) {
+            const dateToCompare = task.completedAt ? new Date(task.completedAt) : new Date(task.dueAt);
+            if (dateToCompare < sevenDaysAgo) {
+              changed = true;
+              return { ...task, archived: true };
+            }
+          }
+          return task;
+        });
+        return changed ? updated : prevTasks;
+      });
+    };
+    
+    archiveCompletedTasksOlderThan7Days();
+    // Periodically run every 5 minutes
+    const interval = setInterval(archiveCompletedTasksOlderThan7Days, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const playSystemChirp = (type: "beep" | "click" | "success" = "beep") => {
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      
+      if (type === "click") {
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(800, ctx.currentTime);
+        gain.gain.setValueAtTime(0.05, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.05);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.05);
+      } else if (type === "success") {
+        osc.type = "triangle";
+        osc.frequency.setValueAtTime(523.25, ctx.currentTime);
+        osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.1, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.3);
+      } else {
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(600, ctx.currentTime);
+        gain.gain.setValueAtTime(0.08, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.15);
+      }
+    } catch (e) {
+      console.warn("Sound play failed", e);
+    }
+  };
+
   // Skill notifications & Drag & Drop layout state (Tasks 4, 7)
   const { notification: skillNotification, clearNotification: clearSkillNotification } = useSkillNotification();
   const [draggedWidgetId, setDraggedWidgetId] = useState<string | null>(null);
 
-  const handleDragStart = (e: React.DragEvent, widgetId: string) => {
+  const handleDragStart = (e: any, widgetId: string) => {
     setDraggedWidgetId(widgetId);
-    e.dataTransfer.effectAllowed = "move";
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = "move";
+    }
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
+  const handleDragOver = (e: any) => {
     e.preventDefault();
   };
 
-  const handleDrop = (e: React.DragEvent, targetWidgetId: string) => {
+  const handleDrop = (e: any, targetWidgetId: string) => {
     e.preventDefault();
     if (!draggedWidgetId || draggedWidgetId === targetWidgetId) return;
 
@@ -1301,7 +1450,7 @@ export default function App() {
 
       setApiHealth((prev) => {
         if (isAnomalyTick) {
-          nextHealth = Math.floor(Math.random() * 15) + 78; // Drops to 78% - 93%
+          nextHealth = Math.floor(Math.random() * 18) + 70; // Drops to 70% - 88%
         } else {
           nextHealth = prev < 100 ? Math.min(100, prev + 2) : 100;
         }
@@ -1684,6 +1833,8 @@ export default function App() {
     title: string,
     priority: "low" | "medium" | "high" | "critical",
     tags?: string[],
+    reminderAt?: string,
+    category?: string,
   ) => {
     const newTask: Task = {
       id: Math.random().toString(),
@@ -1693,6 +1844,8 @@ export default function App() {
       dueAt: new Date().toISOString().substring(0, 10),
       completed: false,
       tags: tags || [],
+      reminderAt: reminderAt || "",
+      category: category || "",
     };
     setTasks((prev) => [newTask, ...prev]);
     triggerDbSyncAnimation();
@@ -1721,6 +1874,194 @@ export default function App() {
       createdAt: new Date().toLocaleDateString(),
     };
     setNotes((prev) => [newNote, ...prev]);
+  };
+
+  const parseJarvisCommand = (command: string) => {
+    const cmd = command.trim();
+    if (!cmd) return;
+
+    // Save to LocalStorage command history
+    const prevHistory = JSON.parse(localStorage.getItem("neora_command_history") || "[]");
+    const newHistoryItem = {
+      id: Date.now().toString(),
+      command: cmd,
+      timestamp: new Date().toLocaleTimeString(),
+      date: new Date().toLocaleDateString(),
+      success: true
+    };
+    localStorage.setItem("neora_command_history", JSON.stringify([newHistoryItem, ...prevHistory].slice(0, 50)));
+
+    // Custom Event to update drawer
+    window.dispatchEvent(new CustomEvent("neora-command-history-update"));
+
+    const lowerCmd = cmd.toLowerCase();
+
+    // 1. Tasks Scheduling
+    if (lowerCmd.startsWith("schedule") || lowerCmd.includes("task") || lowerCmd.includes("sync")) {
+      let title = cmd.replace(/schedule/i, "").trim();
+      let priority: "low" | "medium" | "high" | "critical" = "medium";
+      let dueAt = new Date().toISOString().substring(0, 10);
+      let category = "Workspace";
+      let tags: string[] = ["Jarvis"];
+      let repeat: "none" | "daily" | "weekly" | "monthly" = "none";
+
+      if (lowerCmd.includes("weekly")) {
+        repeat = "weekly";
+        title = title.replace(/weekly/i, "").trim();
+      }
+      if (lowerCmd.includes("daily")) {
+        repeat = "daily";
+        title = title.replace(/daily/i, "").trim();
+      }
+      if (lowerCmd.includes("urgent") || lowerCmd.includes("critical")) {
+        priority = "critical";
+      } else if (lowerCmd.includes("high")) {
+        priority = "high";
+      } else if (lowerCmd.includes("low")) {
+        priority = "low";
+      }
+
+      // Parse Day
+      const daysOfWeek = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+      let targetDayOffset = 0;
+      let foundDay = false;
+      
+      for (let i = 0; i < 7; i++) {
+        if (lowerCmd.includes(daysOfWeek[i])) {
+          const todayDay = new Date().getDay();
+          const targetDay = i;
+          targetDayOffset = (targetDay - todayDay + 7) % 7;
+          if (targetDayOffset === 0) targetDayOffset = 7;
+          foundDay = true;
+          title = title.replace(new RegExp(daysOfWeek[i], "i"), "").trim();
+          break;
+        }
+      }
+
+      if (lowerCmd.includes("tomorrow")) {
+        targetDayOffset = 1;
+        title = title.replace(/tomorrow/i, "").trim();
+      } else if (lowerCmd.includes("today")) {
+        targetDayOffset = 0;
+        title = title.replace(/today/i, "").trim();
+      }
+
+      const dueDate = new Date();
+      dueDate.setDate(dueDate.getDate() + targetDayOffset);
+      dueAt = dueDate.toISOString().substring(0, 10);
+
+      title = title.replace(/on/i, "").replace(/a\s+/i, "").replace(/for/i, "").replace(/morning/i, "").replace(/afternoon/i, "").trim();
+      title = title.charAt(0).toUpperCase() + title.slice(1);
+
+      handleAddTask(title || "Untitled Jarvis Task", priority, tags, "", category);
+      
+      const notifEvent = new CustomEvent("neora-notification", {
+        detail: {
+          title: lang === "bn" ? "টাস্ক যুক্ত হয়েছে" : "Task Scheduled",
+          message: lang === "bn" 
+            ? `"${title}" টাস্কটি ${dueAt} তারিখের জন্য তৈরি করা হয়েছে।` 
+            : `Scheduled "${title}" (Priority: ${priority}) for ${dueAt}.`,
+          type: "success"
+        }
+      });
+      window.dispatchEvent(notifEvent);
+      playSystemChirp("success");
+      return;
+    }
+
+    // 2. Reminders Parsing
+    if (lowerCmd.includes("remind") || lowerCmd.includes("reminder") || lowerCmd.startsWith("set a reminder")) {
+      let title = cmd.replace(/remind me to/i, "").replace(/set a reminder to/i, "").replace(/set a reminder for/i, "").trim();
+      let remindAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+      let repeat: "none" | "daily" | "weekly" | "monthly" = "none";
+
+      const minMatch = lowerCmd.match(/in\s+(\d+)\s*(minutes|minute|mins|min)/);
+      const hourMatch = lowerCmd.match(/in\s+(\d+)\s*(hours|hour|hrs|hr)/);
+      
+      if (minMatch) {
+        const mins = parseInt(minMatch[1]);
+        remindAt = new Date(Date.now() + mins * 60 * 1000).toISOString();
+        title = title.replace(minMatch[0], "").trim();
+      } else if (hourMatch) {
+        const hours = parseInt(hourMatch[1]);
+        remindAt = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
+        title = title.replace(hourMatch[0], "").trim();
+      }
+
+      title = title.replace(/in\s+\d+\s*\w+/i, "").trim();
+      title = title.charAt(0).toUpperCase() + title.slice(1);
+
+      handleAddReminder(title || "Jarvis Reminder", remindAt, repeat);
+
+      const formattedTime = new Date(remindAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const notifEvent = new CustomEvent("neora-notification", {
+        detail: {
+          title: lang === "bn" ? "রিমাইন্ডার সেট হয়েছে" : "Reminder Configured",
+          message: lang === "bn"
+            ? `"${title}" রিমাইন্ডারটি ${formattedTime} এ সেট করা হয়েছে।`
+            : `Configured reminder for "${title}" at ${formattedTime}.`,
+          type: "info"
+        }
+      });
+      window.dispatchEvent(notifEvent);
+      playSystemChirp("success");
+      return;
+    }
+
+    // Fallback notification
+    const fallbackEvent = new CustomEvent("neora-notification", {
+      detail: {
+        title: "Command Processed",
+        message: `Jarvis parser completed execution: "${cmd}"`,
+        type: "info"
+      }
+    });
+    window.dispatchEvent(fallbackEvent);
+  };
+
+  const handleQuickFixSystem = () => {
+    if (isSystemHealing) return;
+    setIsSystemHealing(true);
+    playSystemChirp("beep");
+
+    // Show a notification that healing has started
+    const startEvent = new CustomEvent("neora-notification", {
+      detail: {
+        title: lang === "bn" ? "নিরাময় শুরু হয়েছে" : "Diagnostics Initialized",
+        message: lang === "bn" ? "অটোমেটেড সিস্টেম হিলিং প্রোটোকল সক্রিয় করা হচ্ছে..." : "Automated neural reconciliation protocol initiated.",
+        type: "info"
+      }
+    });
+    window.dispatchEvent(startEvent);
+
+    // Simulate repair process over 2 seconds
+    setTimeout(() => {
+      setApiHealth(100);
+      setIsSystemHealing(false);
+      playSystemChirp("success");
+
+      // Custom Event for system log update
+      const customEvt = new CustomEvent("neora-system-event", {
+        detail: {
+          id: "evt-opt-" + Math.floor(Math.random() * 10000),
+          timestamp: new Date().toTimeString().split(" ")[0],
+          category: "system_heal",
+          level: "CRITICAL",
+          message: "System health self-healed and reconciled successfully."
+        }
+      });
+      window.dispatchEvent(customEvt);
+
+      // Success notification toast
+      const successEvent = new CustomEvent("neora-notification", {
+        detail: {
+          title: lang === "bn" ? "সিস্টেম নিরাময় সম্পূর্ণ" : "System Integrity Restored",
+          message: lang === "bn" ? "নিওরা আর্কিটেক্ট সিস্টেম ১০০% স্থিতিশীল অবস্থায় ফিরে এসেছে।" : "Neora system parameters are fully reconciled and stabilized at 100%.",
+          type: "success"
+        }
+      });
+      window.dispatchEvent(successEvent);
+    }, 2200);
   };
 
   const handleSelfEvolution = (action: string) => {
@@ -1763,6 +2104,11 @@ export default function App() {
       window.dispatchEvent(customEvt);
     }
   };
+
+  React.useEffect(() => {
+    // Trigger Adaptive UI Engine on mount to reorganize dashboard widgets for better engagement
+    handleSelfEvolution("optimize-all-interfaces");
+  }, []);
 
   const handleAddMemory = (
     key: string,
@@ -2051,7 +2397,7 @@ export default function App() {
                       )}
                     </div>
 
-                    <button
+                     <button
                       onClick={() => setIsSearchOpen(true)}
                       className="flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[10px] cursor-pointer font-mono transition-all jarvis-nav-btn"
                       style={{
@@ -2063,6 +2409,21 @@ export default function App() {
                     >
                       <Search className="w-3 h-3" />
                       <span className="hidden md:inline">CMD+K</span>
+                    </button>
+
+                    <button
+                      onClick={() => setIsDashboardAddTaskOpen(true)}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[10px] cursor-pointer font-mono transition-all jarvis-nav-btn hover:border-cyan-400 hover:text-white"
+                      style={{
+                        border: "1px solid rgba(0,212,255,0.35)",
+                        background: "rgba(0,212,255,0.12)",
+                        color: "#00d4ff",
+                        boxShadow: "0 0 10px rgba(0,212,255,0.25)",
+                      }}
+                      title="Add New Task"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>{lang === "bn" ? "টাস্ক যোগ" : "ADD TASK"}</span>
                     </button>
 
                     <button
@@ -2300,44 +2661,34 @@ export default function App() {
                     {predictiveWidgets
                       .filter((w) => w.visible)
                       .map((widget) => {
+                        if (widget.id === "agent_intelligence") {
+                          return (
+                            <motion.div
+                              layoutId="agent_intelligence"
+                              key="agent_intelligence"
+                              draggable
+                              onDragStart={(e) => handleDragStart(e, "agent_intelligence")}
+                              onDragOver={handleDragOver}
+                              onDrop={(e) => handleDrop(e, "agent_intelligence")}
+                              className="col-span-1 md:col-span-2 cursor-grab active:cursor-grabbing"
+                              onClick={() => trackWidgetInteraction("agent_intelligence")}
+                              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                            >
+                              <AgentIntelligenceWidget lang={lang} apiHealth={apiHealth} />
+                            </motion.div>
+                          );
+                        }
+
                         if (widget.id === "command_center") {
                           // Compute dynamic suggestions based on most active tools (Task 2)
                           const getDynamicSuggestions = () => {
-                            const sortedWidgets = [...predictiveWidgets].sort((a, b) => b.clicks - a.clicks);
-                            const suggestions: Array<{ cmd: string; desc: string }> = [];
-                            
-                            suggestions.push({ cmd: "open [tab]", desc: 'e.g., open "planner" or "chat"' });
-                            
-                            sortedWidgets.forEach(w => {
-                              if (suggestions.length >= 5) return;
-                              
-                              if (w.id === "command_center") {
-                                suggestions.push({ cmd: "diagnose system", desc: "Scan Neora system health" });
-                                suggestions.push({ cmd: "optimize layout", desc: "Max out dashboard density" });
-                              } else if (w.id === "tasks") {
-                                suggestions.push({ cmd: "add task [name]", desc: "Directly schedule a planner item" });
-                              } else if (w.id === "memory") {
-                                suggestions.push({ cmd: "add memory [key]", desc: "Persist key facts in active memory" });
-                              } else if (w.id === "agent") {
-                                suggestions.push({ cmd: "execute [command]", desc: "Run background OS python script" });
-                              } else if (w.id === "scratchpad") {
-                                suggestions.push({ cmd: "write draft [text]", desc: "Direct scratchpad insertion" });
-                              } else if (w.id === "os_quick") {
-                                suggestions.push({ cmd: "rerun last failed", desc: "Re-execute last failed terminal code" });
-                              }
-                            });
-                            
-                            const seenCmds = new Set<string>();
-                            return suggestions.filter(item => {
-                              if (seenCmds.has(item.cmd)) return false;
-                              seenCmds.add(item.cmd);
-                              return true;
-                            }).slice(0, 4);
+                            return cliSuggestions;
                           };
 
                           return (
                             <motion.div
                               layoutId="command_center"
+                              id="command-center"
                               key="command_center"
                               draggable
                               onDragStart={(e) => handleDragStart(e, "command_center")}
@@ -2383,42 +2734,51 @@ export default function App() {
 
                               <div>
                                 <div className="flex justify-between items-center mb-1.5">
-                                  <div className="flex items-center gap-1.5 relative">
+                                  <div 
+                                    className="flex items-center gap-1.5 relative"
+                                    onMouseEnter={() => setShowQuickHelp(true)}
+                                    onMouseLeave={() => setShowQuickHelp(false)}
+                                  >
                                     <div className="jarvis-label">
                                       WORKSPACE COMMAND CENTER
                                     </div>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setShowQuickHelp(!showQuickHelp);
-                                      }}
+                                    <span
                                       className="p-0.5 hover:bg-slate-800/60 rounded text-slate-400 hover:text-cyan-400 transition-colors cursor-pointer"
-                                      title="Quick Commands Syntax Help"
+                                      title="Hover for Quick Commands Syntax Help"
                                     >
-                                      <HelpCircle className="w-3.5 h-3.5" />
-                                    </button>
+                                      <HelpCircle className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+                                    </span>
                                     <AnimatePresence>
                                       {showQuickHelp && (
                                         <motion.div
                                           initial={{ opacity: 0, y: 10, scale: 0.95 }}
                                           animate={{ opacity: 1, y: 0, scale: 1 }}
                                           exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                                          className="absolute left-0 top-6 z-50 w-64 p-3 bg-slate-950 border border-cyan-500/35 rounded-xl shadow-2xl backdrop-blur-md text-[10px] font-mono text-slate-300 space-y-1.5"
+                                          className="absolute left-0 top-6 z-50 w-72 p-3 bg-slate-950/95 border border-cyan-500/35 rounded-xl shadow-2xl backdrop-blur-md text-[10px] font-mono text-slate-300 space-y-1.5"
                                           onClick={(e) => e.stopPropagation()}
                                         >
                                           <div className="flex justify-between items-center border-b border-slate-900 pb-1 text-cyan-400 font-bold uppercase">
-                                            <span>⚡ QUICK SYNTAX COMMANDS</span>
-                                            <button onClick={() => setShowQuickHelp(false)} className="text-slate-500 hover:text-slate-200">✕</button>
+                                            <span>⚡ {lang === "bn" ? "ট্যাব ভিত্তিক কমান্ড সিনট্যাক্স" : `SYNTAX: ${activeTab.toUpperCase()}`}</span>
                                           </div>
-                                          <div className="space-y-1 pt-1">
-                                            {getDynamicSuggestions().map((item, idx) => (
-                                              <div key={idx}>
-                                                <span className="text-cyan-400">{item.cmd}</span> - {item.desc}
-                                              </div>
-                                            ))}
+                                          <div className="space-y-1.5 pt-1.5">
+                                            {(memories.find(m => m.key.toLowerCase().includes(`syntax: ${activeTab.toLowerCase()} tab`))?.value.split(',') || [
+                                              "open [tab] (Navigate to tab)",
+                                              "diagnose (System integrity scan)",
+                                              "add task [name] (Direct planner scheduling)"
+                                            ]).map((item, idx) => {
+                                              const parts = item.split('(');
+                                              const cmd = parts[0]?.trim() || "";
+                                              const desc = parts[1]?.replace(')', '').trim() || "";
+                                              return (
+                                                <div key={idx} className="bg-slate-900/60 p-1.5 rounded border border-slate-900 text-left">
+                                                  <span className="text-cyan-400 font-bold">{cmd}</span>
+                                                  {desc && <span className="block text-[9px] text-slate-400 font-sans mt-0.5">{desc}</span>}
+                                                </div>
+                                              );
+                                            })}
                                           </div>
-                                          <div className="text-[8px] text-slate-500 border-t border-slate-900 pt-1.5">
-                                            Type these directly in the chat!
+                                          <div className="text-[8px] text-slate-500 border-t border-slate-900 pt-1">
+                                            {lang === "bn" ? "* মেমোরি ব্যাংক থেকে সিনট্যাক্স লোড করা হয়েছে" : "* Pulled contextually from Neora memory bank"}
                                           </div>
                                         </motion.div>
                                       )}
@@ -2435,34 +2795,87 @@ export default function App() {
                                       className="text-[9px] font-mono flex items-center gap-1.5 bg-slate-950/40 px-2 py-0.5 rounded-md border border-slate-900"
                                     >
                                       {dataSyncStatus === "checking" ? (
-                                        <svg className="w-3 h-3 text-cyan-400 animate-spin shrink-0" viewBox="0 0 24 24" fill="none">
-                                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
-                                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                                        </svg>
+                                        <div className="relative w-3.5 h-3.5 flex items-center justify-center shrink-0">
+                                          {/* Outer progress ring */}
+                                          <svg className="w-3.5 h-3.5 text-cyan-400 animate-spin" viewBox="0 0 36 36">
+                                            <circle 
+                                              className="opacity-25" 
+                                              strokeWidth="3" 
+                                              stroke="currentColor" 
+                                              fill="none" 
+                                              r="16" 
+                                              cx="18" 
+                                              cy="18" 
+                                            />
+                                            <circle 
+                                              className="opacity-100" 
+                                              strokeWidth="3" 
+                                              strokeDasharray="100" 
+                                              strokeDashoffset="35" 
+                                              strokeLinecap="round" 
+                                              stroke="currentColor" 
+                                              fill="none" 
+                                              r="16" 
+                                              cx="18" 
+                                              cy="18" 
+                                            />
+                                          </svg>
+                                          {/* Center pulse dot */}
+                                          <span className="absolute w-1 h-1 bg-cyan-400 rounded-full animate-pulse" />
+                                        </div>
                                       ) : (
-                                        <span
-                                          className={`w-1.5 h-1.5 rounded-full ${
-                                            dataSyncStatus === "consistent"
-                                              ? "bg-emerald-400"
-                                              : dataSyncStatus === "reconciled"
-                                                ? "bg-amber-400"
-                                                : "bg-cyan-400 animate-pulse"
-                                          }`}
-                                        />
-                                      )}
-                                      <span className="text-slate-500 uppercase font-bold">
-                                        {dataSyncStatus === "checking"
-                                          ? "Verifying..."
-                                          : dataSyncStatus === "consistent"
-                                            ? "Consistent"
-                                            : dataSyncStatus === "reconciled"
-                                              ? "Balanced"
-                                              : "Standby"}
-                                      </span>
-                                    </motion.div>
-                                  </AnimatePresence>
-                                </div>
-                                <h2
+                                        <div className="relative w-3.5 h-3.5 flex items-center justify-center shrink-0">
+                                          {isSyncingDb && (
+                                            <div className="absolute inset-0 pointer-events-none">
+                                              <svg className="w-3.5 h-3.5 text-emerald-400 animate-spin" viewBox="0 0 36 36">
+                                                <circle 
+                                                  className="opacity-30" 
+                                                  strokeWidth="4.5" 
+                                                  stroke="currentColor" 
+                                                  fill="none" 
+                                                  r="15" 
+                                                  cx="18" 
+                                                  cy="18" 
+                                                />
+                                                <circle 
+                                                  className="opacity-100" 
+                                                  strokeWidth="4.5" 
+                                                  strokeDasharray="100" 
+                                                  strokeDashoffset="40" 
+                                                  strokeLinecap="round" 
+                                                  stroke="currentColor" 
+                                                  fill="none" 
+                                                  r="15" 
+                                                  cx="18" 
+                                                  cy="18" 
+                                                />
+                                              </svg>
+                                            </div>
+                                          )}
+                                          <span
+                                            className={`w-1.5 h-1.5 rounded-full relative z-10 ${
+                                              dataSyncStatus === "consistent"
+                                                ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]"
+                                                : dataSyncStatus === "reconciled"
+                                                   ? "bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.6)]"
+                                                   : "bg-cyan-400 animate-pulse"
+                                             }`}
+                                           />
+                                         </div>
+                                       )}
+                                       <span className="text-slate-500 uppercase font-bold">
+                                         {dataSyncStatus === "checking"
+                                           ? "Verifying..."
+                                           : dataSyncStatus === "consistent"
+                                             ? "Consistent"
+                                             : dataSyncStatus === "reconciled"
+                                               ? "Balanced"
+                                               : "Standby"}
+                                       </span>
+                                     </motion.div>
+                                   </AnimatePresence>
+                                 </div>
+                                 <h2
                                   className="font-jarvis text-base font-bold mb-1"
                                   style={{
                                     color: "#00d4ff",
@@ -2494,7 +2907,40 @@ export default function App() {
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setIsDashboardAddTaskOpen(true);
+                                    setIsHistoryOpen(true);
+                                  }}
+                                  className="px-2.5 py-1 rounded text-[10px] font-mono font-bold uppercase transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98] flex items-center gap-1"
+                                  style={{
+                                    background: "rgba(0,212,255,0.1)",
+                                    border: "1px solid rgba(0,212,255,0.3)",
+                                    color: "#00d4ff",
+                                    textShadow: "0 0 6px rgba(0,212,255,0.4)",
+                                  }}
+                                >
+                                  <History className="w-3 h-3 text-[#00d4ff]" />
+                                  <span>HISTORY</span>
+                                </button>
+
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (dataSyncStatus === "error") {
+                                      const notifEvent = new CustomEvent("neora-notification", {
+                                        detail: {
+                                          title: lang === "bn" ? "ভ্যালিডেশন ব্যর্থ" : "Sync Fault Detected",
+                                          message: lang === "bn" ? "ডাটাবেস অসঙ্গতির কারণে কাজ যোগ করা সম্ভব নয়।" : "Workspace synchronization error prevents dynamic additions.",
+                                          type: "error"
+                                        }
+                                      });
+                                      window.dispatchEvent(notifEvent);
+                                      return;
+                                    }
+                                    
+                                    setIsPlusRotating(true);
+                                    setTimeout(() => {
+                                      setIsPlusRotating(false);
+                                      setIsDashboardAddTaskOpen(true);
+                                    }, 400);
                                   }}
                                   className="px-2.5 py-1 rounded text-[10px] font-mono font-bold uppercase transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98] flex items-center gap-1"
                                   style={{
@@ -2504,7 +2950,7 @@ export default function App() {
                                     textShadow: "0 0 6px rgba(16,185,129,0.4)",
                                   }}
                                 >
-                                  <Plus className="w-3 h-3 text-[#10b981]" />
+                                  <Plus className={`w-3 h-3 text-[#10b981] transition-transform duration-300 ${isPlusRotating ? "rotate-180 scale-125" : ""}`} />
                                   <span>QUICK TASK</span>
                                 </button>
 
@@ -2546,16 +2992,100 @@ export default function App() {
                                   </button>
                                 ))}
                               </div>
+
+                              <form
+                                onSubmit={(e) => {
+                                  e.preventDefault();
+                                  const fd = new FormData(e.currentTarget);
+                                  const cmdText = fd.get("jarvis-cmd") as string;
+                                  if (cmdText?.trim()) {
+                                    parseJarvisCommand(cmdText.trim());
+                                    e.currentTarget.reset();
+                                  }
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                className="mt-3 flex gap-1.5 items-center bg-slate-900/60 border border-cyan-500/15 rounded-lg px-2.5 py-1.5 focus-within:border-cyan-400/40 transition-all"
+                              >
+                                <Terminal className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                                <input
+                                  name="jarvis-cmd"
+                                  type="text"
+                                  placeholder={
+                                    lang === "bn"
+                                      ? "জারভিসকে বলুন: 'Schedule a weekly sync on Friday morning'..."
+                                      : "Ask Jarvis: 'Schedule a weekly sync on Friday morning'..."
+                                  }
+                                  className="flex-1 bg-transparent text-[11px] font-mono text-slate-200 placeholder-slate-500 focus:outline-none"
+                                />
+                                <button
+                                  type="submit"
+                                  className="px-2.5 py-1 rounded bg-cyan-400/10 hover:bg-cyan-400 text-cyan-400 hover:text-slate-950 font-mono text-[9px] font-bold uppercase transition-all cursor-pointer shrink-0"
+                                >
+                                  EXECUTE
+                                </button>
+                              </form>
                             </motion.div>
                           );
                         }
 
                         if (widget.id === "tasks") {
+                          const dotColors = {
+                            critical: "bg-rose-500 shadow-[0_0_6px_#f43f5e]",
+                            high: "bg-amber-500 shadow-[0_0_6px_#f59e0b]",
+                            medium: "bg-cyan-500 shadow-[0_0_6px_#06b6d4]",
+                            low: "bg-slate-500 shadow-[0_0_6px_#64748b]"
+                          };
+
+                          const priorityBadges = {
+                            critical: "bg-rose-500/10 text-rose-400 border-rose-500/30",
+                            high: "bg-amber-500/10 text-amber-400 border-amber-500/30",
+                            medium: "bg-cyan-500/10 text-cyan-400 border-cyan-500/30",
+                            low: "bg-slate-500/10 text-slate-400 border-slate-500/30",
+                          };
+
+                          const isOverdue = (dueAt?: string) => {
+                            if (!dueAt) return false;
+                            try {
+                              const today = new Date();
+                              today.setHours(0, 0, 0, 0);
+                              const dueDate = new Date(dueAt);
+                              dueDate.setHours(0, 0, 0, 0);
+                              return dueDate < today;
+                            } catch {
+                              return false;
+                            }
+                          };
+
+                          const uniqueTags = Array.from(
+                            new Set(
+                              tasks.flatMap((tk) => {
+                                const tks: string[] = [];
+                                if (tk.tags) tks.push(...tk.tags);
+                                if (tk.category) tks.push(tk.category);
+                                return tks;
+                              }).map((t) => t.trim()).filter(Boolean)
+                            )
+                          );
+
+                          const visibleActiveTasks = tasks.filter(
+                            (tk) =>
+                              !tk.completed &&
+                              !tk.archived &&
+                              selectedDashboardPriorities.includes(tk.priority) &&
+                              (selectedDashboardTag === "ALL" ||
+                                (tk.tags && tk.tags.includes(selectedDashboardTag)) ||
+                                tk.category === selectedDashboardTag),
+                          );
+
                           return (
                             <motion.div
                               layoutId="tasks"
                               key="tasks"
-                              className="col-span-1 md:col-span-1 xl:col-span-1 relative rounded-xl overflow-hidden p-3 flex flex-col justify-between transition-all duration-300"
+                              draggable
+                              onDragStart={(e) => handleDragStart(e, "tasks")}
+                              onDragOver={handleDragOver}
+                              onDrop={(e) => handleDrop(e, "tasks")}
+                              className="col-span-1 md:col-span-1 xl:col-span-1 relative rounded-xl overflow-hidden p-3 flex flex-col justify-between cursor-grab active:cursor-grabbing transition-all duration-300"
                               onClick={() => trackWidgetInteraction("tasks")}
                               style={{
                                 background:
@@ -2576,100 +3106,414 @@ export default function App() {
                               />
                               <div>
                                 <div className="flex justify-between items-center mb-1">
-                                  <span className="jarvis-label">TASKS</span>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="jarvis-label">TASKS</span>
+                                    <div className="flex bg-slate-950/60 p-0.5 rounded border border-slate-900 ml-2 shrink-0">
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setDashboardTaskTab("active");
+                                        }}
+                                        className={`text-[8px] font-mono font-bold px-1.5 py-0.5 rounded transition-all cursor-pointer ${
+                                          dashboardTaskTab === "active" ? "bg-cyan-950 text-cyan-400 border border-cyan-800/30" : "text-slate-500 hover:text-slate-350"
+                                        }`}
+                                      >
+                                        ACTIVE
+                                      </button>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setDashboardTaskTab("completed");
+                                        }}
+                                        className={`text-[8px] font-mono font-bold px-1.5 py-0.5 rounded transition-all cursor-pointer ${
+                                          dashboardTaskTab === "completed" ? "bg-cyan-950 text-cyan-400 border border-cyan-800/30" : "text-slate-500 hover:text-slate-350"
+                                        }`}
+                                      >
+                                        DONE
+                                      </button>
+                                    </div>
+
+                                    {/* TAG FILTER DROPDOWN */}
+                                    <div className="relative shrink-0 ml-1">
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setIsTagDropdownOpen(!isTagDropdownOpen);
+                                        }}
+                                        className="text-[8px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-950/60 border border-slate-900 text-cyan-400 flex items-center gap-1 cursor-pointer hover:bg-slate-900 transition-all"
+                                      >
+                                        <span>TAG: {selectedDashboardTag === "ALL" ? "ALL" : selectedDashboardTag.toUpperCase()}</span>
+                                        <ChevronDown className="w-2.5 h-2.5 text-cyan-500" />
+                                      </button>
+                                      {isTagDropdownOpen && (
+                                        <div className="absolute top-full left-0 mt-1 z-50 w-28 max-h-32 overflow-y-auto bg-slate-950 border border-cyan-500/30 rounded shadow-2xl p-1 space-y-0.5 text-[8px] font-mono custom-scrollbar">
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setSelectedDashboardTag("ALL");
+                                              setIsTagDropdownOpen(false);
+                                            }}
+                                            className={`w-full text-left px-1.5 py-0.5 rounded cursor-pointer ${selectedDashboardTag === "ALL" ? "bg-cyan-950 text-cyan-400" : "text-slate-400 hover:bg-slate-900 hover:text-slate-200"}`}
+                                          >
+                                            ALL
+                                          </button>
+                                          {uniqueTags.map((tag) => (
+                                            <button
+                                              key={tag}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setSelectedDashboardTag(tag);
+                                                setIsTagDropdownOpen(false);
+                                              }}
+                                              className={`w-full text-left px-1.5 py-0.5 rounded truncate cursor-pointer ${selectedDashboardTag === tag ? "bg-cyan-950 text-cyan-400" : "text-slate-400 hover:bg-slate-900 hover:text-slate-200"}`}
+                                            >
+                                              {tag.toUpperCase()}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Select All Checkbox for Active Tab */}
+                                  {dashboardTaskTab === "active" && visibleActiveTasks.length > 0 && (
+                                    <div className="flex items-center gap-1 ml-auto mr-3 bg-slate-950/50 px-1.5 py-0.5 rounded border border-slate-900/40" onClick={(e) => e.stopPropagation()}>
+                                      <input
+                                        type="checkbox"
+                                        checked={visibleActiveTasks.length > 0 && visibleActiveTasks.every((t) => t.completed)}
+                                        onChange={(e) => {
+                                          e.stopPropagation();
+                                          const allCompleted = visibleActiveTasks.every((t) => t.completed);
+                                          setTasks((prev) =>
+                                            prev.map((t) => {
+                                              const isVisible = !t.completed && !t.archived && selectedDashboardPriorities.includes(t.priority);
+                                              if (isVisible) {
+                                                return {
+                                                  ...t,
+                                                  completed: !allCompleted,
+                                                  completedAt: !allCompleted ? new Date().toISOString() : undefined,
+                                                };
+                                              }
+                                              return t;
+                                            })
+                                          );
+                                          playSystemChirp("success");
+                                          triggerDbSyncAnimation();
+                                        }}
+                                        className="w-3 h-3 rounded border border-slate-800 bg-slate-900 text-cyan-500 focus:ring-0 focus:ring-offset-0 cursor-pointer shrink-0"
+                                        id="select-all-active-tasks"
+                                      />
+                                      <label htmlFor="select-all-active-tasks" className="text-[7px] font-mono text-slate-400 select-none font-bold cursor-pointer">ALL</label>
+                                    </div>
+                                  )}
+
                                   <span className="text-[10px] text-cyan-400 font-mono font-bold bg-cyan-950/30 px-1.5 py-0.5 rounded border border-cyan-500/10 shrink-0">
                                     {tasks.filter((x) => x.completed).length}/
                                     {tasks.length} DONE
                                   </span>
                                 </div>
 
-                                <div className="flex flex-wrap gap-1 mt-1.5 mb-1.5">
-                                  {(["critical", "high", "medium", "low"] as const).map(
-                                    (p) => {
-                                      const isSelected =
-                                        selectedDashboardPriorities.includes(p);
-                                      const colors = {
-                                        critical: {
-                                          activeBg: "bg-rose-500/20",
-                                          text: "text-rose-400",
-                                          border: "border-rose-500/30",
+                                {dashboardTaskTab === "active" ? (
+                                  <>
+                                    <div className="flex flex-wrap gap-1 mt-1.5 mb-1.5">
+                                      {(["critical", "high", "medium", "low"] as const).map(
+                                        (p) => {
+                                          const isSelected =
+                                            selectedDashboardPriorities.includes(p);
+                                          const colors = {
+                                            critical: {
+                                              activeBg: "bg-rose-500/20",
+                                              text: "text-rose-400",
+                                              border: "border-rose-500/30",
+                                            },
+                                            high: {
+                                              activeBg: "bg-amber-500/20",
+                                              text: "text-amber-400",
+                                              border: "border-amber-500/30",
+                                            },
+                                            medium: {
+                                              activeBg: "bg-cyan-500/20",
+                                              text: "text-cyan-400",
+                                              border: "border-cyan-500/30",
+                                            },
+                                            low: {
+                                              activeBg: "bg-slate-500/20",
+                                              text: "text-slate-400",
+                                              border: "border-slate-500/30",
+                                            },
+                                          }[p];
+                                          return (
+                                            <button
+                                              key={p}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                toggleDashboardPriority(p);
+                                              }}
+                                              className={`text-[8px] font-bold font-mono px-1.5 py-0.5 rounded border uppercase transition-all cursor-pointer ${
+                                                isSelected
+                                                  ? `${colors.activeBg} ${colors.text} ${colors.border} shadow-[0_0_5px_rgba(0,180,255,0.1)]`
+                                                  : "bg-slate-900/40 text-slate-550 border-transparent opacity-50 hover:opacity-100"
+                                              }`}
+                                            >
+                                              {p}
+                                            </button>
+                                          );
                                         },
-                                        high: {
-                                          activeBg: "bg-amber-500/20",
-                                          text: "text-amber-400",
-                                          border: "border-amber-500/30",
-                                        },
-                                        medium: {
-                                          activeBg: "bg-cyan-500/20",
-                                          text: "text-cyan-400",
-                                          border: "border-cyan-500/30",
-                                        },
-                                        low: {
-                                          activeBg: "bg-slate-500/20",
-                                          text: "text-slate-400",
-                                          border: "border-slate-500/30",
-                                        },
-                                      }[p];
-                                      return (
+                                      )}
+                                    </div>
+
+                                    <div className="overflow-y-auto max-h-[80px] space-y-1 pr-1 custom-scrollbar mb-2 text-left min-h-[40px]">
+                                      <AnimatePresence mode="popLayout">
+                                        {visibleActiveTasks
+                                          .map((tk) => {
+                                            const isTaskOverdue = isOverdue(tk.dueAt);
+                                            const priorityColor = dotColors[tk.priority];
+                                            return (
+                                              <motion.div
+                                                key={tk.id}
+                                                initial={{ opacity: 1, height: "auto" }}
+                                                exit={{ opacity: 0, height: 0, marginTop: 0, marginBottom: 0, padding: 0 }}
+                                                transition={{ duration: 0.25, ease: "easeInOut" }}
+                                                className="relative overflow-hidden rounded"
+                                              >
+                                                {/* Swipe Action Indicator under the card */}
+                                                <div className="absolute inset-0 bg-gradient-to-l from-rose-600/20 via-rose-500/5 to-transparent flex items-center justify-end pr-3 pointer-events-none rounded border border-transparent">
+                                                  <span className="text-[7px] font-mono text-rose-400 font-bold uppercase tracking-wider animate-pulse">
+                                                    SWIPE TO DELETE ←
+                                                  </span>
+                                                </div>
+
+                                                <motion.div
+                                                  drag="x"
+                                                  dragDirectionLock
+                                                  dragConstraints={{ left: -120, right: 0 }}
+                                                  dragElastic={{ left: 0.2, right: 0.1 }}
+                                                  onDragEnd={(event, info) => {
+                                                    if (info.offset.x < -60) {
+                                                      setTasks((prev) =>
+                                                        prev.map((t) =>
+                                                          t.id === tk.id
+                                                            ? {
+                                                                ...t,
+                                                                completed: true,
+                                                                completedAt: new Date().toISOString(),
+                                                              }
+                                                            : t,
+                                                        ),
+                                                      );
+                                                      playSystemChirp("success");
+                                                      triggerDbSyncAnimation();
+                                                    }
+                                                  }}
+                                                  onContextMenu={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    setContextMenuTask({
+                                                      id: tk.id,
+                                                      x: e.clientX,
+                                                      y: e.clientY,
+                                                    });
+                                                  }}
+                                                  className={`relative z-10 text-[10px] bg-slate-950 border px-2 py-1 rounded flex justify-between items-center gap-1.5 cursor-grab active:cursor-grabbing select-none ${
+                                                    tk.priority === "critical"
+                                                      ? "border-rose-500/35"
+                                                      : "border-slate-900/60"
+                                                  }`}
+                                                  animate={
+                                                    tk.priority === "critical"
+                                                      ? {
+                                                          boxShadow: [
+                                                            "0 0 4px rgba(244, 63, 94, 0.15)",
+                                                            "0 0 12px rgba(244, 63, 94, 0.55)",
+                                                            "0 0 4px rgba(244, 63, 94, 0.15)",
+                                                          ],
+                                                          borderColor: [
+                                                            "rgba(244, 63, 94, 0.25)",
+                                                            "rgba(244, 63, 94, 0.75)",
+                                                            "rgba(244, 63, 94, 0.25)",
+                                                          ],
+                                                        }
+                                                      : {}
+                                                  }
+                                                  transition={
+                                                    tk.priority === "critical"
+                                                      ? {
+                                                          duration: 2,
+                                                          repeat: Infinity,
+                                                          ease: "easeInOut",
+                                                        }
+                                                      : {}
+                                                  }
+                                                >
+                                                  <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                                                    <input
+                                                      type="checkbox"
+                                                      checked={false}
+                                                      onChange={(e) => {
+                                                        e.stopPropagation();
+                                                        setTasks((prev) =>
+                                                          prev.map((t) =>
+                                                            t.id === tk.id
+                                                              ? {
+                                                                  ...t,
+                                                                  completed: true,
+                                                                  completedAt: new Date().toISOString(),
+                                                                }
+                                                              : t,
+                                                          ),
+                                                        );
+                                                        playSystemChirp("success");
+                                                        triggerDbSyncAnimation();
+                                                      }}
+                                                      className="w-3.5 h-3.5 rounded border border-slate-800 bg-slate-900 text-cyan-500 focus:ring-0 focus:ring-offset-0 cursor-pointer shrink-0"
+                                                    />
+                                                    
+                                                    {/* Colored priority badge */}
+                                                    <span className={`text-[7px] font-mono font-bold uppercase px-1 py-0.2 rounded border ${priorityBadges[tk.priority]} flex items-center gap-1 shrink-0`}>
+                                                      <span className={`w-1 h-1 rounded-full ${priorityColor}`} />
+                                                      {tk.priority}
+                                                    </span>
+
+                                                    {editingTaskId === tk.id ? (
+                                                      <input
+                                                        autoFocus
+                                                        type="text"
+                                                        value={editingTaskTitle}
+                                                        onChange={(e) => setEditingTaskTitle(e.target.value)}
+                                                        onBlur={() => {
+                                                          if (editingTaskTitle.trim()) {
+                                                            setTasks((prev) =>
+                                                              prev.map((t) =>
+                                                                t.id === tk.id ? { ...t, title: editingTaskTitle.trim() } : t
+                                                              )
+                                                            );
+                                                            triggerDbSyncAnimation();
+                                                          }
+                                                          setEditingTaskId(null);
+                                                        }}
+                                                        onKeyDown={(e) => {
+                                                          if (e.key === "Enter") {
+                                                            if (editingTaskTitle.trim()) {
+                                                              setTasks((prev) =>
+                                                                prev.map((t) =>
+                                                                  t.id === tk.id ? { ...t, title: editingTaskTitle.trim() } : t
+                                                                )
+                                                              );
+                                                              triggerDbSyncAnimation();
+                                                            }
+                                                            setEditingTaskId(null);
+                                                          } else if (e.key === "Escape") {
+                                                            setEditingTaskId(null);
+                                                          }
+                                                        }}
+                                                        className="bg-slate-900 border border-cyan-500/50 rounded px-1.5 py-0.5 text-[10px] text-slate-100 focus:outline-none w-full font-sans"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                      />
+                                                    ) : (
+                                                      <span className="truncate text-slate-300 flex-1 font-sans font-medium">
+                                                        {tk.title}
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                  <div className="flex items-center gap-1 shrink-0">
+                                                    {/* Optional Category tag */}
+                                                    {tk.category && (
+                                                      <span className="text-[7px] font-mono font-bold text-cyan-400 bg-cyan-950/40 px-1 py-0.2 rounded border border-cyan-500/20 shrink-0 uppercase tracking-wider">
+                                                        {tk.category}
+                                                      </span>
+                                                    )}
+                                                    {isTaskOverdue && (
+                                                      <span className="text-[7px] font-mono font-bold text-rose-400 bg-rose-950/40 px-1 py-0.2 rounded border border-rose-500/20 animate-pulse uppercase shrink-0">
+                                                        OVERDUE
+                                                      </span>
+                                                    )}
+                                                    {tk.dueAt && (
+                                                      <span className={`text-[8px] font-mono shrink-0 ${isTaskOverdue ? "text-rose-400" : "text-slate-500"}`}>
+                                                        {tk.dueAt}
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                </motion.div>
+                                              </motion.div>
+                                            );
+                                          })}
+                                      </AnimatePresence>
+                                      {visibleActiveTasks.length === 0 && (
+                                        <div className="text-[8px] font-mono text-slate-550 text-center py-2 italic">
+                                          No active tasks in selected priorities
+                                        </div>
+                                      )}
+                                    </div>
+                                  </>
+                                ) : (
+                                  <div className="overflow-y-auto max-h-[110px] space-y-1 pr-1 custom-scrollbar mb-2 text-left mt-2 min-h-[40px]">
+                                    {tasks
+                                      .filter((tk) => tk.completed && !tk.archived)
+                                      .map((tk) => {
+                                        const isSelectedForDeletion = selectedCompletedTaskIds.includes(tk.id);
+                                        const priorityColor = dotColors[tk.priority];
+                                        return (
+                                          <div
+                                            key={tk.id}
+                                            className={`text-[10px] bg-slate-950/35 border px-2 py-1 rounded flex justify-between items-center gap-1.5 transition-all duration-200 ${
+                                              isSelectedForDeletion ? "border-cyan-500/40 bg-cyan-950/10 shadow-[0_0_8px_rgba(6,182,212,0.1)]" : "border-slate-900/30"
+                                            }`}
+                                          >
+                                            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                                              <input
+                                                type="checkbox"
+                                                checked={isSelectedForDeletion}
+                                                onChange={(e) => {
+                                                  e.stopPropagation();
+                                                  if (isSelectedForDeletion) {
+                                                    setSelectedCompletedTaskIds((prev) =>
+                                                      prev.filter((id) => id !== tk.id),
+                                                    );
+                                                  } else {
+                                                    setSelectedCompletedTaskIds((prev) => [...prev, tk.id]);
+                                                  }
+                                                  playSystemChirp("click");
+                                                }}
+                                                className="w-3.5 h-3.5 rounded border border-slate-800 bg-slate-900 text-cyan-500 focus:ring-0 focus:ring-offset-0 cursor-pointer shrink-0"
+                                              />
+                                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${priorityColor}`} />
+                                              <span className="truncate text-slate-500 line-through flex-1 font-sans font-medium">
+                                                {tk.title}
+                                              </span>
+                                            </div>
+                                            <span className="text-[8px] font-mono text-slate-600 uppercase shrink-0">DONE</span>
+                                          </div>
+                                        );
+                                      })}
+                                    {tasks.filter((tk) => tk.completed && !tk.archived).length > 0 && (
+                                      <div className="pt-1.5 flex justify-end">
                                         <button
-                                          key={p}
                                           onClick={(e) => {
                                             e.stopPropagation();
-                                            toggleDashboardPriority(p);
+                                            if (selectedCompletedTaskIds.length === 0) return;
+                                            setTasks((prev) => prev.filter((t) => !selectedCompletedTaskIds.includes(t.id)));
+                                            setSelectedCompletedTaskIds([]);
+                                            playSystemChirp("success");
+                                            triggerDbSyncAnimation();
                                           }}
-                                          className={`text-[8px] font-bold font-mono px-1.5 py-0.5 rounded border uppercase transition-all cursor-pointer ${
-                                            isSelected
-                                              ? `${colors.activeBg} ${colors.text} ${colors.border} shadow-[0_0_5px_rgba(0,180,255,0.1)]`
-                                              : "bg-slate-900/40 text-slate-550 border-transparent opacity-50 hover:opacity-100"
+                                          disabled={selectedCompletedTaskIds.length === 0}
+                                          className={`px-2.5 py-1 rounded text-[8px] font-mono font-bold uppercase transition-all flex items-center gap-1 border ${
+                                            selectedCompletedTaskIds.length > 0
+                                              ? "bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border-rose-500/30 cursor-pointer"
+                                              : "bg-slate-900/40 text-slate-600 border-transparent opacity-40 cursor-not-allowed"
                                           }`}
                                         >
-                                          {p}
+                                          Delete Selected ({selectedCompletedTaskIds.length})
                                         </button>
-                                      );
-                                    },
-                                  )}
-                                </div>
-
-                                <div className="overflow-y-auto max-h-[80px] space-y-1 pr-1 custom-scrollbar mb-2 text-left">
-                                  {tasks
-                                    .filter(
-                                      (tk) =>
-                                        !tk.completed &&
-                                        selectedDashboardPriorities.includes(tk.priority),
-                                    )
-                                    .map((tk) => {
-                                      const priorityColor = {
-                                        critical: "text-rose-400",
-                                        high: "text-amber-400",
-                                        medium: "text-cyan-400",
-                                        low: "text-slate-400",
-                                      }[tk.priority];
-                                      return (
-                                        <div
-                                          key={tk.id}
-                                          className="text-[10px] bg-slate-950/45 border border-slate-900/40 px-2 py-0.5 rounded flex justify-between items-center gap-1"
-                                        >
-                                          <span className="truncate text-slate-300 flex-1 font-sans font-medium">
-                                            {tk.title}
-                                          </span>
-                                          <span
-                                            className={`text-[7px] font-mono font-bold uppercase shrink-0 ${priorityColor}`}
-                                          >
-                                            {tk.priority}
-                                          </span>
-                                        </div>
-                                      );
-                                    })}
-                                  {tasks.filter(
-                                    (tk) =>
-                                      !tk.completed &&
-                                      selectedDashboardPriorities.includes(tk.priority),
-                                  ).length === 0 && (
-                                    <div className="text-[8px] font-mono text-slate-550 text-center py-1.5 italic">
-                                      No active tasks in selected priorities
-                                    </div>
-                                  )}
-                                </div>
+                                      </div>
+                                    )}
+                                    {tasks.filter((tk) => tk.completed && !tk.archived).length === 0 && (
+                                      <div className="text-[8px] font-mono text-slate-550 text-center py-4 italic">
+                                        No completed tasks in history
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
                               </div>
 
                               <div>
@@ -2725,12 +3569,129 @@ export default function App() {
                           );
                         }
 
+                        if (widget.id === "task_chart") {
+                          const getLast7DaysData = () => {
+                            const data = [];
+                            const today = new Date();
+                            for (let i = 6; i >= 0; i--) {
+                              const d = new Date(today);
+                              d.setDate(today.getDate() - i);
+                              const label = d.toLocaleDateString("en-US", { weekday: "short" });
+                              
+                              const totalCompleted = tasks.filter(t => t.completed).length;
+                              const totalTasks = tasks.length || 1;
+                              const baseRatio = Math.round((totalCompleted / totalTasks) * 100);
+                              
+                              const variation = [ -15, -10, -12, -5, -3, -2, 0 ][6 - i];
+                              const rate = Math.max(0, Math.min(100, baseRatio + variation));
+                              
+                              data.push({
+                                date: label,
+                                rate: rate
+                              });
+                            }
+                            return data;
+                          };
+
+                          const chartData = getLast7DaysData();
+
+                          return (
+                            <motion.div
+                              layoutId="task_chart"
+                              key="task_chart"
+                              draggable
+                              onDragStart={(e) => handleDragStart(e, "task_chart")}
+                              onDragOver={handleDragOver}
+                              onDrop={(e) => handleDrop(e, "task_chart")}
+                              className="col-span-1 md:col-span-1 xl:col-span-1 relative rounded-xl overflow-hidden p-3 flex flex-col justify-between cursor-grab active:cursor-grabbing transition-all duration-300"
+                              onClick={() => trackWidgetInteraction("task_chart")}
+                              style={{
+                                background:
+                                  "linear-gradient(135deg, rgba(15,0,35,0.92), rgba(8,0,20,0.85))",
+                                border: "1px solid rgba(168,85,247,0.15)",
+                                boxShadow: "inset 0 0 20px rgba(168,85,247,0.03)",
+                                backdropFilter: "blur(20px)",
+                                minHeight: "140px",
+                              }}
+                              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                            >
+                              <div
+                                className="absolute top-0 left-0 right-0 h-px"
+                                style={{
+                                  background:
+                                    "linear-gradient(90deg, transparent, rgba(168,85,247,0.4), transparent)",
+                                }}
+                              />
+                              <div>
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className="jarvis-label" style={{ color: "#a855f7" }}>PERFORMANCE</span>
+                                  <span className="text-[8px] text-purple-400 font-mono font-bold bg-purple-950/30 px-1.5 py-0.5 rounded border border-purple-500/10 shrink-0">
+                                    7-DAY RATIO
+                                  </span>
+                                </div>
+                                
+                                <p className="text-[9px] text-slate-400 text-left mb-2 font-sans font-medium">
+                                  Task Completion Velocity Rate (%)
+                                </p>
+
+                                <div className="w-full h-[85px] -ml-4 pr-2">
+                                  <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={chartData}>
+                                      <XAxis 
+                                        dataKey="date" 
+                                        stroke="#475569" 
+                                        fontSize={7} 
+                                        tickLine={false} 
+                                        axisLine={false}
+                                      />
+                                      <YAxis 
+                                        stroke="#475569" 
+                                        fontSize={7} 
+                                        tickLine={false} 
+                                        axisLine={false}
+                                        domain={[0, 100]}
+                                      />
+                                      <Tooltip 
+                                        contentStyle={{
+                                          background: "rgba(15, 23, 42, 0.9)",
+                                          border: "1px solid rgba(168, 85, 247, 0.2)",
+                                          borderRadius: "6px",
+                                          fontSize: "8px",
+                                          color: "#f1f5f9"
+                                        }}
+                                        labelStyle={{ color: "#a855f7", fontWeight: "bold" }}
+                                      />
+                                      <Line 
+                                        type="monotone" 
+                                        dataKey="rate" 
+                                        stroke="#a855f7" 
+                                        strokeWidth={1.5}
+                                        dot={{ r: 2, fill: "#a855f7", strokeWidth: 0 }}
+                                        activeDot={{ r: 4 }}
+                                      />
+                                    </LineChart>
+                                  </ResponsiveContainer>
+                                </div>
+                              </div>
+
+                              <div className="text-[8px] font-mono text-purple-400/80 text-left pt-1 flex justify-between border-t border-purple-950/20">
+                                <span>EFFICIENCY LEDGER</span>
+                                <span>{chartData[6]?.rate}% NOW</span>
+                              </div>
+                            </motion.div>
+                          );
+                        }
+
                         if (widget.id === "memory") {
                           return (
                             <motion.div
                               layoutId="memory"
                               key="memory"
-                              className="col-span-1 md:col-span-1 xl:col-span-1 relative rounded-xl overflow-hidden p-3 flex flex-col justify-between"
+                              draggable
+                              onDragStart={(e) => handleDragStart(e, "memory")}
+                              onDragOver={handleDragOver}
+                              onDrop={(e) => handleDrop(e, "memory")}
+                              className="col-span-1 md:col-span-1 xl:col-span-1 relative rounded-xl overflow-hidden p-3 flex flex-col justify-between cursor-grab active:cursor-grabbing"
                               onClick={() => trackWidgetInteraction("memory")}
                               style={{
                                 background:
@@ -2829,7 +3790,11 @@ export default function App() {
                             <motion.div
                               layoutId="agent"
                               key="agent"
-                              className="col-span-1 md:col-span-1 xl:col-span-1 relative rounded-xl overflow-hidden p-3 flex flex-col justify-between transition-all duration-300"
+                              draggable
+                              onDragStart={(e) => handleDragStart(e, "agent")}
+                              onDragOver={handleDragOver}
+                              onDrop={(e) => handleDrop(e, "agent")}
+                              className="col-span-1 md:col-span-1 xl:col-span-1 relative rounded-xl overflow-hidden p-3 flex flex-col justify-between cursor-grab active:cursor-grabbing transition-all duration-300"
                               onClick={() => trackWidgetInteraction("agent")}
                               style={{
                                 background: hasCriticalEvent
@@ -2977,7 +3942,11 @@ export default function App() {
                             <motion.div
                               layoutId="scratchpad"
                               key="scratchpad"
-                              className="col-span-1 md:col-span-1 xl:col-span-1 relative rounded-xl overflow-hidden p-3 flex flex-col justify-between"
+                              draggable
+                              onDragStart={(e) => handleDragStart(e, "scratchpad")}
+                              onDragOver={handleDragOver}
+                              onDrop={(e) => handleDrop(e, "scratchpad")}
+                              className="col-span-1 md:col-span-1 xl:col-span-1 relative rounded-xl overflow-hidden p-3 flex flex-col justify-between cursor-grab active:cursor-grabbing"
                               onClick={() => trackWidgetInteraction("scratchpad")}
                               style={{
                                 background:
@@ -3036,7 +4005,11 @@ export default function App() {
                             <motion.div
                               layoutId="os_quick"
                               key="os_quick"
-                              className="col-span-1 md:col-span-2 lg:col-span-3 xl:col-span-5 relative rounded-xl overflow-hidden"
+                              draggable
+                              onDragStart={(e) => handleDragStart(e, "os_quick")}
+                              onDragOver={handleDragOver}
+                              onDrop={(e) => handleDrop(e, "os_quick")}
+                              className="col-span-1 md:col-span-2 lg:col-span-3 xl:col-span-5 relative rounded-xl overflow-hidden cursor-grab active:cursor-grabbing"
                               onClick={() => trackWidgetInteraction("os_quick")}
                               style={{
                                 background:
@@ -3146,7 +4119,11 @@ export default function App() {
                             <motion.div
                               layoutId="live_journal"
                               key="live_journal"
-                              className="col-span-1 md:col-span-2 lg:col-span-3 xl:col-span-5"
+                              draggable
+                              onDragStart={(e) => handleDragStart(e, "live_journal")}
+                              onDragOver={handleDragOver}
+                              onDrop={(e) => handleDrop(e, "live_journal")}
+                              className="col-span-1 md:col-span-2 lg:col-span-3 xl:col-span-5 cursor-grab active:cursor-grabbing"
                               onClick={() => trackWidgetInteraction("live_journal")}
                               transition={{ type: "spring", stiffness: 300, damping: 30 }}
                             >
@@ -3160,7 +4137,11 @@ export default function App() {
                             <motion.div
                               layoutId="system_log"
                               key="system_log"
-                              className="col-span-1 md:col-span-2 lg:col-span-3 xl:col-span-5"
+                              draggable
+                              onDragStart={(e) => handleDragStart(e, "system_log")}
+                              onDragOver={handleDragOver}
+                              onDrop={(e) => handleDrop(e, "system_log")}
+                              className="col-span-1 md:col-span-2 lg:col-span-3 xl:col-span-5 cursor-grab active:cursor-grabbing"
                               onClick={() => trackWidgetInteraction("system_log")}
                               transition={{ type: "spring", stiffness: 300, damping: 30 }}
                             >
@@ -3785,8 +4766,223 @@ export default function App() {
               )}
             </AnimatePresence>
 
+            {/* ===== EVOLUTIONARY SKILL DISCOVERED TOAST ===== */}
+            <AnimatePresence>
+              {skillNotification && (
+                <motion.div
+                  initial={{ opacity: 0, y: -50, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95, y: -20 }}
+                  className="fixed top-24 right-6 z-[9999] max-w-sm flex flex-col gap-2 p-4 rounded-xl border border-emerald-500/35 shadow-[0_0_30px_rgba(16,185,129,0.2)] bg-slate-950/95 backdrop-blur-xl text-left"
+                >
+                  <div className="absolute top-0 left-0 w-8 h-px bg-emerald-400" />
+                  <div className="absolute top-0 left-0 w-px h-8 bg-emerald-400" />
+                  
+                  <div className="flex items-center justify-between border-b border-emerald-500/10 pb-2">
+                    <div className="flex items-center gap-2 text-emerald-400">
+                      <Sparkles className="w-4 h-4 animate-pulse" />
+                      <span className="text-[10px] font-mono font-bold tracking-widest uppercase">
+                        {lang === "bn" ? "নতুন দক্ষতা অর্জিত" : "NEW SKILL REGISTERED"}
+                      </span>
+                    </div>
+                    <button
+                      onClick={clearSkillNotification}
+                      className="text-slate-500 hover:text-slate-300 transition-colors p-1"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <div className="text-left py-1">
+                    <h4 className="text-xs font-bold text-slate-100 font-sans">
+                      {skillNotification.skillName}
+                    </h4>
+                    <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                      {skillNotification.description}
+                    </p>
+                    <div className="mt-2 pt-2 border-t border-slate-900/40 text-[9px] font-mono text-emerald-400/80 flex items-center gap-1">
+                      <span className="text-slate-500">Use case:</span>
+                      <span>{skillNotification.useCase}</span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={clearSkillNotification}
+                    className="w-full py-1.5 text-center text-[10px] font-mono font-bold uppercase rounded border border-emerald-500/35 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 transition-all cursor-pointer mt-1"
+                  >
+                    {lang === "bn" ? "নিশ্চিত" : "ACKNOWLEDGE CAPABILITY"}
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* ===== HOLOGRAPHIC NOTIFICATION SYSTEM ===== */}
             <NeoraNotifications reminders={reminders} apiHealth={apiHealth} lang={lang} />
+
+            {/* ===== TASK CONTEXT MENU ===== */}
+            <AnimatePresence>
+              {(() => {
+                if (!contextMenuTask) return null;
+                const menuWidth = 176;
+                const menuHeight = 150;
+                let left = contextMenuTask.x;
+                let top = contextMenuTask.y;
+                if (left + menuWidth > window.innerWidth) {
+                  left = window.innerWidth - menuWidth - 10;
+                }
+                if (top + menuHeight > window.innerHeight) {
+                  top = window.innerHeight - menuHeight - 10;
+                }
+                return (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    transition={{ duration: 0.1 }}
+                    className="fixed z-[9999] bg-slate-950/95 border border-cyan-500/40 rounded-lg shadow-2xl p-1 w-44 font-mono text-[9px] backdrop-blur-md text-left"
+                    style={{
+                      left,
+                      top,
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="px-2 py-1 text-slate-500 border-b border-slate-900 mb-1 text-[8px] uppercase tracking-wider">
+                      Task Actions
+                    </div>
+                    
+                    <button
+                      onClick={() => {
+                        const tk = tasks.find((t) => t.id === contextMenuTask.id);
+                        if (tk) {
+                          setEditingTaskId(tk.id);
+                          setEditingTaskTitle(tk.title);
+                        }
+                        setContextMenuTask(null);
+                      }}
+                      className="w-full text-left px-2 py-1.5 rounded text-slate-350 hover:bg-cyan-950/50 hover:text-cyan-400 transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Edit className="w-3 h-3 text-cyan-400" />
+                      <span>EDIT TITLE</span>
+                    </button>
+
+                    {/* RESCHEDULE SUB-MENU */}
+                    <div className="relative group/resched">
+                      <div className="w-full text-left px-2 py-1.5 rounded text-slate-350 hover:bg-cyan-950/50 hover:text-cyan-400 transition-all flex items-center justify-between cursor-pointer">
+                        <div className="flex items-center gap-1.5">
+                          <Calendar className="w-3 h-3 text-cyan-400" />
+                          <span>RESCHEDULE</span>
+                        </div>
+                        <span className="text-[7px] text-slate-500">▶</span>
+                      </div>
+                      
+                      <div className="absolute left-full top-0 ml-0.5 hidden group-hover/resched:block bg-slate-950/95 border border-cyan-500/40 rounded-lg shadow-2xl p-1 w-32 space-y-0.5 backdrop-blur-md">
+                        <button
+                          onClick={() => {
+                            const today = new Date().toISOString().substring(0, 10);
+                            setTasks((prev) =>
+                              prev.map((t) => (t.id === contextMenuTask.id ? { ...t, dueAt: today } : t))
+                            );
+                            triggerDbSyncAnimation();
+                            setContextMenuTask(null);
+                          }}
+                          className="w-full text-left px-2 py-1 rounded text-slate-350 hover:bg-cyan-950/50 hover:text-cyan-400 transition-all cursor-pointer"
+                        >
+                          TODAY
+                        </button>
+                        <button
+                          onClick={() => {
+                            const tomorrow = new Date();
+                            tomorrow.setDate(tomorrow.getDate() + 1);
+                            const tomorrowStr = tomorrow.toISOString().substring(0, 10);
+                            setTasks((prev) =>
+                              prev.map((t) => (t.id === contextMenuTask.id ? { ...t, dueAt: tomorrowStr } : t))
+                            );
+                            triggerDbSyncAnimation();
+                            setContextMenuTask(null);
+                          }}
+                          className="w-full text-left px-2 py-1 rounded text-slate-350 hover:bg-cyan-950/50 hover:text-cyan-400 transition-all cursor-pointer"
+                        >
+                          TOMORROW
+                        </button>
+                        <button
+                          onClick={() => {
+                            const nextWeek = new Date();
+                            nextWeek.setDate(nextWeek.getDate() + 7);
+                            const nextWeekStr = nextWeek.toISOString().substring(0, 10);
+                            setTasks((prev) =>
+                              prev.map((t) => (t.id === contextMenuTask.id ? { ...t, dueAt: nextWeekStr } : t))
+                            );
+                            triggerDbSyncAnimation();
+                            setContextMenuTask(null);
+                          }}
+                          className="w-full text-left px-2 py-1 rounded text-slate-350 hover:bg-cyan-950/50 hover:text-cyan-400 transition-all cursor-pointer"
+                        >
+                          NEXT WEEK
+                        </button>
+                        <div className="px-2 py-1 border-t border-slate-900 mt-1">
+                          <input
+                            type="date"
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                setTasks((prev) =>
+                                  prev.map((t) =>
+                                    t.id === contextMenuTask.id ? { ...t, dueAt: e.target.value } : t
+                                  )
+                                );
+                                triggerDbSyncAnimation();
+                                setContextMenuTask(null);
+                              }
+                            }}
+                            className="w-full bg-slate-900 border border-slate-800 text-[8px] text-slate-300 rounded px-1 py-0.5 focus:outline-none focus:border-cyan-500/50"
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* CHANGE PRIORITY SUB-MENU */}
+                    <div className="relative group/prio">
+                      <div className="w-full text-left px-2 py-1.5 rounded text-slate-350 hover:bg-cyan-950/50 hover:text-cyan-400 transition-all flex items-center justify-between cursor-pointer">
+                        <div className="flex items-center gap-1.5">
+                          <AlertTriangle className="w-3 h-3 text-cyan-400" />
+                          <span>CHANGE PRIORITY</span>
+                        </div>
+                        <span className="text-[7px] text-slate-500">▶</span>
+                      </div>
+
+                      <div className="absolute left-full top-0 ml-0.5 hidden group-hover/prio:block bg-slate-950/95 border border-cyan-500/40 rounded-lg shadow-2xl p-1 w-32 space-y-0.5 backdrop-blur-md">
+                        {(["critical", "high", "medium", "low"] as const).map((p) => (
+                          <button
+                            key={p}
+                            onClick={() => {
+                              setTasks((prev) =>
+                                prev.map((t) => (t.id === contextMenuTask.id ? { ...t, priority: p } : t))
+                              );
+                              triggerDbSyncAnimation();
+                              setContextMenuTask(null);
+                            }}
+                            className="w-full text-left px-2 py-1 rounded text-slate-350 hover:bg-cyan-950/50 hover:text-cyan-400 transition-all flex items-center gap-1.5 cursor-pointer uppercase"
+                          >
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full ${
+                                p === "critical"
+                                  ? "bg-rose-500"
+                                  : p === "high"
+                                    ? "bg-amber-500"
+                                    : p === "medium"
+                                      ? "bg-cyan-500"
+                                      : "bg-slate-500"
+                              }`}
+                            />
+                            <span>{p}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })()}
+            </AnimatePresence>
 
             {/* ===== COMMAND STATUS CORNER DOCKED INDICATOR ===== */}
             <CommandStatusIndicator queue={commandQueue} lang={lang} />
@@ -3875,6 +5071,67 @@ export default function App() {
               />
             )}
 
+            {/* System Health Warning Overlay */}
+            <AnimatePresence>
+              {(apiHealth < 80 || isSystemHealing) && (
+                <motion.div
+                  initial={{ opacity: 0, y: -50, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -50, scale: 0.95 }}
+                  className="fixed top-20 left-1/2 -translate-x-1/2 z-[999] w-full max-w-lg px-4"
+                >
+                  <div className="relative overflow-hidden rounded-2xl bg-slate-950/95 border border-rose-500/40 p-4 shadow-[0_0_25px_rgba(239,68,68,0.25)] backdrop-blur-md flex flex-col sm:flex-row items-center justify-between gap-4">
+                    {/* Pulsing hazard decoration */}
+                    <div className="absolute inset-y-0 left-0 w-1.5 bg-rose-500 animate-pulse" />
+                    
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 shrink-0 animate-bounce">
+                        <AlertTriangle className="w-5 h-5" />
+                      </div>
+                      <div className="text-left">
+                        <h4 className="font-jarvis text-xs font-bold text-rose-400 tracking-wide uppercase flex items-center gap-2">
+                          <span>SYSTEM INTEGRITY COMPROMISED</span>
+                          <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
+                        </h4>
+                        <p className="text-[11px] text-slate-300 font-mono mt-0.5">
+                          {isSystemHealing ? (
+                            <span className="text-cyan-400 animate-pulse flex items-center gap-1">
+                              <Cpu className="w-3.5 h-3.5 animate-spin" />
+                              Reconciling neural weights & core buffers...
+                            </span>
+                          ) : (
+                            `Neora AI core status drops to ${apiHealth}% health. Anomalies detected.`
+                          )}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={handleQuickFixSystem}
+                      disabled={isSystemHealing}
+                      className={`px-4 py-2 rounded-xl text-xs font-mono font-bold uppercase transition-all duration-300 relative overflow-hidden shrink-0 ${
+                        isSystemHealing 
+                          ? "bg-slate-900 border border-slate-800 text-slate-500 cursor-not-allowed"
+                          : "bg-rose-500/10 hover:bg-rose-500/25 border border-rose-500/35 text-rose-300 hover:text-rose-100 hover:shadow-[0_0_12px_rgba(239,68,68,0.35)] cursor-pointer"
+                      }`}
+                    >
+                      <span className="relative z-10 flex items-center gap-1.5">
+                        <Zap className={`w-3.5 h-3.5 ${isSystemHealing ? "animate-spin" : ""}`} />
+                        <span>{isSystemHealing ? "HEALING..." : "QUICK FIX"}</span>
+                      </span>
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <CommandHistoryDrawer
+              isOpen={isHistoryOpen}
+              onClose={() => setIsHistoryOpen(false)}
+              lang={lang}
+              onReRunCommand={(cmd) => parseJarvisCommand(cmd)}
+            />
+
             {isDashboardAddTaskOpen && (
               <div data-neora-modal="open" className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-md">
                 <motion.div
@@ -3900,8 +5157,30 @@ export default function App() {
                     const fd = new FormData(e.currentTarget);
                     const title = fd.get('title') as string;
                     const priority = fd.get('priority') as any;
+                    const tagsRaw = fd.get('tags') as string;
+                    const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : ['quick-dashboard'];
+                    const remindAt = fd.get('remindAt') as string;
+                    const category = fd.get('category') as string || '';
+
                     if (title.trim()) {
-                      handleAddTask(title.trim(), priority, ['quick-dashboard']);
+                      handleAddTask(title.trim(), priority, tags, remindAt, category);
+                      
+                      // Seamlessly sync to memory via neoraPost('/api/memory') pipeline (Task 1)
+                      neoraPost('/api/memory', {
+                        id: "mem-" + Math.random().toString(),
+                        key: `Task Injection: ${title.trim()}`,
+                        value: JSON.stringify({ priority, tags, remindAt: remindAt || "No reminder", category }),
+                        category: "work",
+                        importance: 4
+                      }).catch((err) => {
+                        console.warn("Failed to sync quick task memory:", err);
+                      });
+
+                      // Set specific reminder if provided
+                      if (remindAt) {
+                        handleAddReminder(title.trim(), remindAt, "none");
+                      }
+
                       setIsDashboardAddTaskOpen(false);
                     }
                   }} className="space-y-4">
@@ -3918,17 +5197,82 @@ export default function App() {
                     </div>
 
                     <div className="space-y-1">
+                      <label className="block text-[10px] font-mono text-slate-400 uppercase">{lang === 'bn' ? 'ক্যাটাগরি (Category):' : 'Category (e.g. Work, Personal):'}</label>
+                      <input
+                        name="category"
+                        type="text"
+                        placeholder={lang === 'bn' ? 'যেমন: Work, Personal, Neora-Internal' : 'e.g., Work, Personal, Neora-Internal'}
+                        className="w-full bg-slate-900 border border-slate-800 focus:border-cyan-500/50 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-600 focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-mono text-slate-400 uppercase">{lang === 'bn' ? 'ট্যাগস (কমা দ্বারা আলাদা করুন):' : 'Tags (comma separated):'}</label>
+                      <input
+                        name="tags"
+                        type="text"
+                        placeholder={lang === 'bn' ? 'যেমন: vat, shukria, tax' : 'e.g., vat, shukria, tax'}
+                        className="w-full bg-slate-900 border border-slate-800 focus:border-cyan-500/50 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-600 focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-mono text-slate-400 uppercase">{lang === 'bn' ? 'রিমাইন্ডার সময়:' : 'Reminder Time:'}</label>
+                      <input
+                        name="remindAt"
+                        type="datetime-local"
+                        className="w-full bg-slate-900 border border-slate-800 focus:border-cyan-500/50 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
                       <label className="block text-[10px] font-mono text-slate-400 uppercase">{lang === 'bn' ? 'অগ্রাধিকার (Priority):' : 'Priority Level:'}</label>
-                      <select
-                        name="priority"
-                        defaultValue="medium"
-                        className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none"
-                      >
-                        <option value="low">Low Priority</option>
-                        <option value="medium">Medium Priority</option>
-                        <option value="high">High Priority</option>
-                        <option value="critical">Critical Priority</option>
-                      </select>
+                      <input type="hidden" name="priority" value={newTaskPriority} />
+                      <div className="grid grid-cols-4 gap-2">
+                        {(["low", "medium", "high", "critical"] as const).map((p) => {
+                          const isSelected = newTaskPriority === p;
+                          const styles = {
+                            low: {
+                              bg: "bg-slate-500/10 hover:bg-slate-500/20",
+                              activeBg: "bg-slate-500/30 text-slate-300 border-slate-500/65 shadow-[0_0_8px_rgba(100,116,139,0.3)]",
+                              border: "border-slate-600/20",
+                              dotColor: "bg-slate-400",
+                            },
+                            medium: {
+                              bg: "bg-cyan-500/10 hover:bg-cyan-500/20",
+                              activeBg: "bg-cyan-500/30 text-cyan-350 border-cyan-500/65 shadow-[0_0_8px_rgba(6,182,212,0.3)]",
+                              border: "border-cyan-500/20",
+                              dotColor: "bg-cyan-400",
+                            },
+                            high: {
+                              bg: "bg-amber-500/10 hover:bg-amber-500/20",
+                              activeBg: "bg-amber-500/30 text-amber-300 border-amber-500/65 shadow-[0_0_8px_rgba(245,158,11,0.3)]",
+                              border: "border-amber-500/20",
+                              dotColor: "bg-amber-400",
+                            },
+                            critical: {
+                              bg: "bg-rose-500/10 hover:bg-rose-500/20",
+                              activeBg: "bg-rose-500/30 text-rose-300 border-rose-500/65 shadow-[0_0_8px_rgba(244,63,94,0.3)]",
+                              border: "border-rose-500/20",
+                              dotColor: "bg-rose-400",
+                            },
+                          }[p];
+
+                          return (
+                            <button
+                              key={p}
+                              type="button"
+                              onClick={() => setNewTaskPriority(p)}
+                              className={`flex flex-col items-center justify-center p-2 rounded-lg border text-[10px] font-mono font-bold uppercase transition-all duration-250 cursor-pointer ${
+                                isSelected ? styles.activeBg : `${styles.bg} ${styles.border} text-slate-400`
+                              }`}
+                            >
+                              <span className={`w-2 h-2 rounded-full mb-1 ${styles.dotColor}`} />
+                              <span>{p}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
 
                     <div className="flex gap-2 pt-2">

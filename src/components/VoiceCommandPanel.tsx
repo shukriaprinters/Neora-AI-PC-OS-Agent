@@ -212,6 +212,26 @@ export function VoiceCommandPanel({ onAddTask, onAddNote, onAddReminder, onNavig
   const analyserRef = useRef<AnalyserNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
+  const [isContinuousMode, setIsContinuousMode] = useState<boolean>(() => {
+    return localStorage.getItem("neora_voice_continuous") === "true";
+  });
+
+  const isContinuousModeRef = useRef(isContinuousMode);
+  const mountedRef = useRef(true);
+  const manuallyStoppedRef = useRef(false);
+
+  useEffect(() => {
+    isContinuousModeRef.current = isContinuousMode;
+    localStorage.setItem("neora_voice_continuous", String(isContinuousMode));
+  }, [isContinuousMode]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   const speakFeedback = useCallback((text: string) => {
     const synth = window.speechSynthesis;
     if (!synth) return;
@@ -346,6 +366,21 @@ export function VoiceCommandPanel({ onAddTask, onAddNote, onAddReminder, onNavig
     recognition.onend = () => {
       setIsListening(false);
       stopVisualizer();
+      if (isContinuousModeRef.current && mountedRef.current && !manuallyStoppedRef.current) {
+        setTimeout(() => {
+          if (mountedRef.current && !manuallyStoppedRef.current) {
+            try {
+              setTranscript('');
+              setFeedback(null);
+              setIsListening(true);
+              startVisualizer();
+              recognition.start();
+            } catch (err) {
+              console.warn("Continuous listening restart failed:", err);
+            }
+          }
+        }, 1500);
+      }
     };
 
     recognition.onerror = () => {
@@ -376,6 +411,7 @@ export function VoiceCommandPanel({ onAddTask, onAddNote, onAddReminder, onNavig
 
   const startListening = useCallback(() => {
     if (!recognitionRef.current || isListening) return;
+    manuallyStoppedRef.current = false;
     setTranscript('');
     setFeedback(null);
     setIsListening(true);
@@ -385,6 +421,7 @@ export function VoiceCommandPanel({ onAddTask, onAddNote, onAddReminder, onNavig
 
   const stopListening = useCallback(() => {
     if (!recognitionRef.current) return;
+    manuallyStoppedRef.current = true;
     recognitionRef.current.stop();
     setIsListening(false);
     stopVisualizer();
@@ -543,6 +580,26 @@ export function VoiceCommandPanel({ onAddTask, onAddNote, onAddReminder, onNavig
           </div>
           <button onClick={onClose} className="p-1 rounded transition-colors hover:bg-white/5" style={{ color: 'rgba(148,163,184,0.6)' }}>
             <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Continuous mode sub-header */}
+        <div className="flex items-center justify-between px-5 py-2.5 bg-cyan-950/20 border-b border-cyan-500/10">
+          <div className="flex flex-col">
+            <span className="text-[10px] font-mono font-bold tracking-wider text-slate-300">
+              {lang === 'bn' ? 'টানা শুনুন মোড' : 'CONTINUOUS LISTENING'}
+            </span>
+            <span className="text-[8px] font-mono text-slate-500">
+              {lang === 'bn' ? 'একের পর এক ভয়েস কমান্ড দিন' : 'Keep mic active for consecutive actions'}
+            </span>
+          </div>
+          <button
+            onClick={() => setIsContinuousMode(!isContinuousMode)}
+            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${isContinuousMode ? 'bg-cyan-500' : 'bg-slate-800'}`}
+          >
+            <span
+              className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-slate-950 shadow ring-0 transition duration-200 ease-in-out ${isContinuousMode ? 'translate-x-4 bg-cyan-100' : 'translate-x-0 bg-slate-500'}`}
+            />
           </button>
         </div>
 

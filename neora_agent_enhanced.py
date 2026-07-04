@@ -4,7 +4,7 @@ Neora OS Agent - Enhanced Standalone Edition
 - Photoshop & Illustrator design automation
 - Independent voice control (no server required for basic ops)
 """
-import base64, io, json, os, re, signal, subprocess, sys, threading, time, webbrowser
+import base64, io, json, os, re, signal, subprocess, sys, threading, time, webbrowser, socket, platform, sqlite3
 from datetime import datetime
 from pathlib import Path
 import requests
@@ -16,7 +16,72 @@ PING_INTERVAL = max(5, int(os.environ.get("NEORA_PING_INTERVAL", "14")))
 HEADLESS_MODE = os.environ.get("NEORA_HEADLESS", "0").strip().lower() in {"1", "true", "yes", "on"}
 WORKSPACE_DIR = Path(os.environ.get("NEORA_WORKDIR", os.getcwd())).resolve()
 LOG_FILE = WORKSPACE_DIR / "logs" / "neora_agent.log"
+DB_PATH = WORKSPACE_DIR / "data" / "neora_local.db"
 STOP_REQUESTED = False
+
+try:
+    DEFAULT_DEVICE_ID = socket.gethostname()
+except Exception:
+    DEFAULT_DEVICE_ID = "Local-PC"
+DEVICE_ID = os.environ.get("NEORA_DEVICE_ID", DEFAULT_DEVICE_ID).strip()
+
+try:
+    SYSTEM_INFO = f"{platform.system()} {platform.release()} ({platform.machine()})"
+except Exception:
+    SYSTEM_INFO = "Windows Local Machine"
+
+LAST_SYNCED_CLIPBOARD = ""
+
+def init_sqlite():
+    try:
+        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(DB_PATH))
+        c = conn.cursor()
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS local_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT,
+                message TEXT
+            )
+        """)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS local_history (
+                id TEXT PRIMARY KEY,
+                prompt TEXT,
+                status TEXT,
+                timestamp TEXT,
+                result TEXT
+            )
+        """)
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        pass
+
+def save_sqlite_log(msg):
+    try:
+        conn = sqlite3.connect(str(DB_PATH))
+        c = conn.cursor()
+        c.execute("INSERT INTO local_logs (timestamp, message) VALUES (?, ?)", 
+                  (datetime.now().isoformat(), msg))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+def save_sqlite_command(cmd_id, prompt, status, result):
+    try:
+        conn = sqlite3.connect(str(DB_PATH))
+        c = conn.cursor()
+        c.execute("INSERT OR REPLACE INTO local_history (id, prompt, status, timestamp, result) VALUES (?, ?, ?, ?, ?)",
+                  (cmd_id, prompt, status, datetime.now().isoformat(), result))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+# Run database initializer
+init_sqlite()
 
 ALLOWED_EXECUTABLES = {
     "notepad", "calc", "mspaint", "explorer", "cmd", "powershell",
@@ -42,6 +107,10 @@ def log(msg):
         LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
         with LOG_FILE.open("a", encoding="utf-8") as f:
             f.write(line + "\n")
+    except Exception:
+        pass
+    try:
+        save_sqlite_log(msg)
     except Exception:
         pass
 
@@ -97,8 +166,11 @@ def capture_screenshot_base64():
 
 def set_clipboard(text):
     if PYPERCLIP:
-        pyperclip.copy(text)
-        return True
+        try:
+            pyperclip.copy(text)
+            return True
+        except Exception:
+            pass
     if sys.platform == "win32":
         import ctypes
         if ctypes.windll.user32.OpenClipboard(None):
@@ -109,12 +181,37 @@ def set_clipboard(text):
                 if h:
                     ptr = ctypes.windll.kernel32.GlobalLock(h)
                     if ptr:
+                        import ctypes.wintypes
+                        ctypes.memmove(ptr, data, len(data))
                         ctypes.windll.kernel32.GlobalUnlock(h)
                         ctypes.windll.user32.SetClipboardData(13, h)
                 return True
             finally:
                 ctypes.windll.user32.CloseClipboard()
     return False
+
+def get_clipboard():
+    if PYPERCLIP:
+        try:
+            return pyperclip.paste()
+        except Exception:
+            pass
+    if sys.platform == "win32":
+        import ctypes
+        if ctypes.windll.user32.OpenClipboard(None):
+            try:
+                h = ctypes.windll.user32.GetClipboardData(13) # CF_UNICODETEXT
+                if h:
+                    ptr = ctypes.windll.kernel32.GlobalLock(h)
+                    if ptr:
+                        try:
+                            val = ctypes.wstring_at(ptr)
+                            return val
+                        finally:
+                            ctypes.windll.kernel32.GlobalUnlock(h)
+            finally:
+                ctypes.windll.user32.CloseClipboard()
+    return ""
 
 def find_via_windows_shortcuts(name):
     if sys.platform != "win32":
@@ -488,6 +585,31 @@ def execute(action, param):
             if CURRENT_SCREENSHOT_DATA:
                 return ["Screenshot captured and queued for report"]
             return ["Screenshot captured failed (or headless mode)"]
+        if action == "vision_click":
+            if PYAUTOGUI:
+                screenshot = capture_screenshot_base64()
+                if not screenshot:
+                    return ["Vision Click failed: unable to take screenshot"]
+                try:
+                    r = session.post(f"{BROKER_URL}/api/os/vision", json={
+                        "token": AGENT_TOKEN,
+                        "screenshot": screenshot,
+                        "query": param,
+                    }, timeout=25)
+                    if r.status_code == 200:
+                        res_data = r.json()
+                        coords = res_data.get("coordinates", {})
+                        if coords.get("found"):
+                            x, y = int(coords["x"]), int(coords["y"])
+                            pyautogui.click(x, y)
+                            return [f"✓ Vision Clicked '{param}' at ({x}, {y}) [Confidence: {coords.get('confidence')}]"]
+                        else:
+                            return [f"Vision click failed: {coords.get('reason')}"]
+                    else:
+                        return [f"Vision API server error: {r.status_code}"]
+                except Exception as ex:
+                    return [f"Vision API network error: {ex}"]
+            return ["GUI unavailable for vision_click"]
         if action == "alert_msg":
             if PYAUTOGUI:
                 pyautogui.alert(text=param or "Neora", title="Neora Agent")
@@ -507,17 +629,44 @@ session = requests.Session()
 session.headers.update({"User-Agent": "NeoraAgent/2.0"})
 
 def ping():
+    global LAST_SYNCED_CLIPBOARD
     try:
-        session.post(f"{BROKER_URL}/api/os/ping",
-                     json={"token": AGENT_TOKEN, "client_time": datetime.now().isoformat()}, timeout=8)
+        local_clip = get_clipboard()
+        payload = {
+            "token": AGENT_TOKEN,
+            "client_time": datetime.now().isoformat(),
+            "deviceId": DEVICE_ID,
+            "systemInfo": SYSTEM_INFO
+        }
+        if local_clip and local_clip != LAST_SYNCED_CLIPBOARD:
+            payload["clipboardText"] = local_clip
+            LAST_SYNCED_CLIPBOARD = local_clip
+
+        r = session.post(f"{BROKER_URL}/api/os/ping", json=payload, timeout=8)
+        if r.status_code == 200:
+            res_data = r.json()
+            srv_clip = res_data.get("clipboardText")
+            if srv_clip and srv_clip != local_clip:
+                set_clipboard(srv_clip)
+                LAST_SYNCED_CLIPBOARD = srv_clip
+                log(f"📋 Sync: Clipboard updated from cloud: {srv_clip[:40]}...")
     except Exception:
         pass
 
 def poll():
+    global LAST_SYNCED_CLIPBOARD
     try:
-        r = session.get(f"{BROKER_URL}/api/os/poll", params={"token": AGENT_TOKEN}, timeout=8)
+        params = {"token": AGENT_TOKEN, "deviceId": DEVICE_ID}
+        r = session.get(f"{BROKER_URL}/api/os/poll", params=params, timeout=8)
         if r.status_code == 200:
-            return r.json()
+            res_data = r.json()
+            srv_clip = res_data.get("clipboardText")
+            local_clip = get_clipboard()
+            if srv_clip and srv_clip != local_clip:
+                set_clipboard(srv_clip)
+                LAST_SYNCED_CLIPBOARD = srv_clip
+                log(f"📋 Sync: Clipboard updated during poll: {srv_clip[:40]}...")
+            return res_data
     except Exception:
         pass
     return None
@@ -534,6 +683,10 @@ def report(cmd_id, status, logs, result, screenshot=None):
         if screenshot:
             payload["screenshot"] = screenshot
         session.post(f"{BROKER_URL}/api/os/report", json=payload, timeout=8)
+    except Exception:
+        pass
+    try:
+        save_sqlite_command(cmd_id, f"Executed command: {cmd_id}", status, result)
     except Exception:
         pass
 

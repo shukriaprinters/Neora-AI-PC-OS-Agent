@@ -8,10 +8,80 @@ import sys
 import threading
 import time
 import webbrowser
+import socket
+import platform
+import sqlite3
 from datetime import datetime
 from pathlib import Path
 
 import requests
+
+
+try:
+    DEFAULT_DEVICE_ID = socket.gethostname()
+except Exception:
+    DEFAULT_DEVICE_ID = "Local-PC"
+DEVICE_ID = os.environ.get("NEORA_DEVICE_ID", DEFAULT_DEVICE_ID).strip()
+
+try:
+    SYSTEM_INFO = f"{platform.system()} {platform.release()} ({platform.machine()})"
+except Exception:
+    SYSTEM_INFO = "Windows Local Machine"
+
+LAST_SYNCED_CLIPBOARD = ""
+DB_PATH = Path(os.environ.get("NEORA_WORKDIR", os.getcwd())).resolve() / "data" / "neora_local.db"
+
+def init_sqlite():
+    try:
+        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(DB_PATH))
+        c = conn.cursor()
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS local_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT,
+                message TEXT
+            )
+        """)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS local_history (
+                id TEXT PRIMARY KEY,
+                prompt TEXT,
+                status TEXT,
+                timestamp TEXT,
+                result TEXT
+            )
+        """)
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+def save_sqlite_log(msg):
+    try:
+        conn = sqlite3.connect(str(DB_PATH))
+        c = conn.cursor()
+        c.execute("INSERT INTO local_logs (timestamp, message) VALUES (?, ?)", 
+                  (datetime.now().isoformat(), msg))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+def save_sqlite_command(cmd_id, prompt, status, result):
+    try:
+        conn = sqlite3.connect(str(DB_PATH))
+        c = conn.cursor()
+        c.execute("INSERT OR REPLACE INTO local_history (id, prompt, status, timestamp, result) VALUES (?, ?, ?, ?, ?)",
+                  (cmd_id, prompt, status, datetime.now().isoformat(), result))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+# Run database initializer
+init_sqlite()
+
 
 
 def _safe_print(*args, **kwargs):
@@ -41,6 +111,10 @@ def log(message: str):
     line = f"[{timestamp}] {message}"
     _safe_print(line)
     _safe_write_line(line)
+    try:
+        save_sqlite_log(message)
+    except Exception:
+        pass
 
 
 def sanitize_text(value):
@@ -643,6 +717,47 @@ def set_clipboard_text(text: str) -> bool:
         return False
 
 
+def get_clipboard_text() -> str:
+    """
+    Reads unicode text from the local system clipboard without human intervention.
+    Supports Windows, macOS, and Linux out-of-the-box with fallback.
+    """
+    try:
+        import pyperclip
+        return pyperclip.paste()
+    except Exception:
+        pass
+
+    try:
+        if sys.platform == "win32":
+            import ctypes
+            if ctypes.windll.user32.OpenClipboard(None):
+                try:
+                    # 13 is CF_UNICODETEXT
+                    h = ctypes.windll.user32.GetClipboardData(13)
+                    if h:
+                        ptr = ctypes.windll.kernel32.GlobalLock(h)
+                        if ptr:
+                            try:
+                                return ctypes.wstring_at(ptr)
+                            finally:
+                                ctypes.windll.kernel32.GlobalUnlock(h)
+                finally:
+                    ctypes.windll.user32.CloseClipboard()
+        elif sys.platform == "darwin":
+            p = subprocess.Popen(['pbpaste'], stdout=subprocess.PIPE, text=True)
+            out, _ = p.communicate()
+            return out
+        else:
+            # Linux
+            p = subprocess.Popen(['xclip', '-selection', 'clipboard', '-o'], stdout=subprocess.PIPE, text=True)
+            out, _ = p.communicate()
+            return out
+    except Exception:
+        pass
+    return ""
+
+
 def execute_instruction(action, param):
     action = sanitize_text(action).strip().lower()
     param = sanitize_text(param)
@@ -1017,6 +1132,35 @@ def execute_instruction(action, param):
             else:
                 logs.append("Screenshot queued")
 
+        elif action == "vision_click":
+            if HEADLESS_MODE or not PYAUTOGUI_AVAILABLE:
+                logs.append("Skipped vision click in headless/no-gui mode")
+            else:
+                screenshot = capture_screenshot_base64()
+                if not screenshot:
+                    logs.append("Vision Click failed: unable to take screenshot")
+                else:
+                    try:
+                        # Make API request to the Vision helper on the Broker server
+                        r = SESSION.post(f"{BROKER_URL}/api/os/vision", json={
+                            "token": AGENT_TOKEN,
+                            "screenshot": screenshot,
+                            "query": param,
+                        }, timeout=25)
+                        if r.status_code == 200:
+                            res_data = r.json()
+                            coords = res_data.get("coordinates", {})
+                            if coords.get("found"):
+                                x, y = int(coords["x"]), int(coords["y"])
+                                pyautogui.click(x, y)
+                                logs.append(f"✓ Vision Clicked '{param}' at ({x}, {y}) [Confidence: {coords.get('confidence')}]")
+                            else:
+                                logs.append(f"Vision click failed: {coords.get('reason')}")
+                        else:
+                            logs.append(f"Vision API server error: {r.status_code}")
+                    except Exception as ex:
+                        logs.append(f"Vision API network error: {ex}")
+
         elif action == "alert_msg":
             if HEADLESS_MODE:
                 logs.append(f"Headless mode: skipped alert '{param}'")
@@ -1036,11 +1180,29 @@ def execute_instruction(action, param):
 
 
 def send_ping():
+    global LAST_SYNCED_CLIPBOARD
     try:
-        payload = {"token": AGENT_TOKEN, "client_time": datetime.now().isoformat()}
+        local_clip = get_clipboard_text()
+        payload = {
+            "token": AGENT_TOKEN,
+            "client_time": datetime.now().isoformat(),
+            "deviceId": DEVICE_ID,
+            "systemInfo": SYSTEM_INFO
+        }
+        if local_clip and local_clip != LAST_SYNCED_CLIPBOARD:
+            payload["clipboardText"] = local_clip
+            LAST_SYNCED_CLIPBOARD = local_clip
+
         response = SESSION.post(f"{BROKER_URL}/api/os/ping", json=payload, timeout=REQUEST_TIMEOUT)
         if response.status_code == 401:
             refresh_session_headers()
+        elif response.status_code == 200:
+            res_data = response.json()
+            srv_clip = res_data.get("clipboardText")
+            if srv_clip and srv_clip != local_clip:
+                set_clipboard_text(srv_clip)
+                LAST_SYNCED_CLIPBOARD = srv_clip
+                log(f"📋 Sync: Clipboard updated from cloud: {srv_clip[:40]}...")
     except Exception as exc:
         log(f"Ping failed: {exc}")
 
@@ -1054,6 +1216,12 @@ def report_command_result(command_id, status, logs, screenshot, result):
         "screenshot": screenshot,
         "result": result,
     }
+    try:
+        # Save to local SQLite database for persistent local history
+        log_summary = "\n".join(logs) if isinstance(logs, list) else str(logs)
+        save_sqlite_command(command_id, log_summary[:200], status, result)
+    except Exception:
+        pass
     response = SESSION.post(f"{BROKER_URL}/api/os/report", json=payload, timeout=REQUEST_TIMEOUT)
     if response.status_code == 401:
         refresh_session_headers()
@@ -1061,23 +1229,36 @@ def report_command_result(command_id, status, logs, screenshot, result):
 
 
 def poll_once():
-    response = SESSION.get(f"{BROKER_URL}/api/os/poll", params={"token": AGENT_TOKEN}, timeout=REQUEST_TIMEOUT)
-    if response.status_code == 401:
-        refresh_session_headers()
-        return None, "unauthorized"
-    if response.status_code != 200:
-        return None, f"http_{response.status_code}"
+    global LAST_SYNCED_CLIPBOARD
+    try:
+        params = {"token": AGENT_TOKEN, "deviceId": DEVICE_ID}
+        response = SESSION.get(f"{BROKER_URL}/api/os/poll", params=params, timeout=REQUEST_TIMEOUT)
+        if response.status_code == 401:
+            refresh_session_headers()
+            return None, "unauthorized"
+        if response.status_code != 200:
+            return None, f"http_{response.status_code}"
 
-    response_text = response.text.strip()
-    if (
-        "text/html" in response.headers.get("Content-Type", "")
-        or response_text.startswith("<!doctype")
-        or response_text.startswith("<html")
-    ):
-        refresh_session_headers()
-        return None, "session_expired"
+        response_text = response.text.strip()
+        if (
+            "text/html" in response.headers.get("Content-Type", "")
+            or response_text.startswith("<!doctype")
+            or response_text.startswith("<html")
+        ):
+            refresh_session_headers()
+            return None, "session_expired"
 
-    return response.json(), None
+        res_data = response.json()
+        srv_clip = res_data.get("clipboardText")
+        local_clip = get_clipboard_text()
+        if srv_clip and srv_clip != local_clip:
+            set_clipboard_text(srv_clip)
+            LAST_SYNCED_CLIPBOARD = srv_clip
+            log(f"📋 Sync: Clipboard updated during poll: {srv_clip[:40]}...")
+
+        return res_data, None
+    except Exception as e:
+        return None, str(e)
 
 
 def main():

@@ -1,5 +1,5 @@
 {
-  "exportedAt": "2026-06-13T12:50:19.299Z",
+  "exportedAt": "2026-07-02T18:06:57.546Z",
   "memory": [
     {
       "id": "mem-test",
@@ -7,38 +7,38 @@
       "value": "chrome",
       "category": "preference",
       "importance": 5,
-      "createdAt": "2026-06-10T21:22:13.707Z",
-      "updatedAt": "2026-06-10T21:22:13.707Z"
+      "createdAt": "2026-06-25T09:42:46.397Z",
+      "updatedAt": "2026-06-25T09:42:46.397Z"
     }
   ],
   "plans": [
     {
-      "id": "plan-84zfcgd",
+      "id": "plan-auru0mq",
       "goal": "open notepad and write a memo",
       "steps": [
         {
-          "id": "step-iu98rh8",
+          "id": "step-awf8t1i",
           "kind": "shell",
           "title": "Launch app / execute binary",
           "payload": "notepad",
           "status": "pending"
         },
         {
-          "id": "step-m7ki7bb",
+          "id": "step-v83ratn",
           "kind": "tool_call",
           "title": "Type text content",
           "payload": "Hello, boss! This note was automatically typed by Neora.",
           "status": "pending"
         },
         {
-          "id": "step-no54xsv",
+          "id": "step-t622rs5",
           "kind": "tool_call",
           "title": "Press keyboard shortcut",
           "payload": "enter",
           "status": "pending"
         },
         {
-          "id": "step-zd93plc",
+          "id": "step-kpsnupp",
           "kind": "verify",
           "title": "Verify outcome",
           "payload": "Confirm result and summarize",
@@ -46,21 +46,21 @@
         }
       ],
       "status": "pending",
-      "createdAt": "2026-06-10T21:22:13.737Z",
-      "updatedAt": "2026-06-10T21:22:13.737Z"
+      "createdAt": "2026-06-25T09:42:46.400Z",
+      "updatedAt": "2026-06-25T09:42:46.400Z"
     }
   ],
   "conversations": [
     {
-      "id": "sum-5jw5aqk",
+      "id": "sum-90ut3nj",
       "title": "Test session",
       "summary": "Neora can now persist context.",
-      "updatedAt": "2026-06-10T21:22:13.723Z"
+      "updatedAt": "2026-06-25T09:42:46.398Z"
     }
   ],
   "os": {
-    "status": "online",
-    "lastPing": "2026-06-13T18:50:11.832925",
+    "status": "offline",
+    "lastPing": null,
     "queue": [],
     "history": []
   }
