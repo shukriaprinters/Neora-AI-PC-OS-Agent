@@ -995,7 +995,8 @@ const handleUpdateMessage = async (id: string, newText: string) => {
         const ttsLang = isBn ? 'bn' : 'en';
         const ttsUrl = `/api/tts?lang=${ttsLang}&text=${encodeURIComponent(sentenceText)}`;
         const audio = new Audio(ttsUrl);
-        audio.playbackRate = voiceRate; // Apply custom user rate
+        const dynamicRate = Number(localStorage.getItem('neora_voice_rate') || '1.0');
+        audio.playbackRate = dynamicRate; // Apply custom user rate
         currentAudio = audio;
         
         audio.onended = () => {
@@ -1027,8 +1028,10 @@ const handleUpdateMessage = async (id: string, newText: string) => {
 
         const utterance = new SpeechSynthesisUtterance(sentenceText);
         utterance.lang = isBn ? 'bn-BD' : 'en-US';
-        utterance.rate = voiceRate; // Apply custom user rate
-        utterance.pitch = voicePitch; // Apply custom user pitch
+        const dynamicRate = Number(localStorage.getItem('neora_voice_rate') || '1.0');
+        const dynamicPitch = Number(localStorage.getItem('neora_voice_pitch') || '1.1');
+        utterance.rate = dynamicRate; // Apply custom user rate
+        utterance.pitch = dynamicPitch; // Apply custom user pitch
         
         const voices = synth.getVoices();
         
@@ -1725,7 +1728,8 @@ ${uniqueSkills.length > 0 ? uniqueSkills.map((sk, index) => `${index + 1}. ${sk}
           geminiKey: geminiKey || undefined,
           groqKey: groqKey || undefined,
           ollamaBaseUrl: ollamaBaseUrl,
-          activeSkills: activeSkillsList
+          activeSkills: activeSkillsList,
+          personalityMode: localStorage.getItem('neora_personality_mode') || 'companion'
         }),
         signal: controller.signal
       });

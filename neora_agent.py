@@ -198,7 +198,10 @@ ALLOWED_EXECUTABLES = {
     "git", "git.exe", "docker", "docker.exe", "npm", "npm.cmd", "yarn", "yarn.cmd",
     "python", "python.exe", "node", "node.exe", "figma", "figma.exe", "blender", "blender.exe",
     "slack", "slack.exe", "discord", "discord.exe", "zoom", "zoom.exe", "obs", "obs.exe",
-    "putty", "putty.exe", "winscp", "winscp.exe", "postman", "postman.exe"
+    "putty", "putty.exe", "winscp", "winscp.exe", "postman", "postman.exe",
+    "vlc", "vlc.exe", "spotify", "spotify.exe", "teams", "teams.exe", "skype", "skype.exe",
+    "firefox", "firefox.exe", "opera", "opera.exe", "brave", "brave.exe", "steam", "steam.exe",
+    "control", "taskmgr", "regedit", "cleanmgr", "bash", "wsl"
 }
 
 print = _safe_print  # noqa: A001

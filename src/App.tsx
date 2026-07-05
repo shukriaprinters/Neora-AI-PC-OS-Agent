@@ -173,11 +173,14 @@ import {
   Plus,
   CheckCircle,
   ChevronDown,
+  ChevronUp,
   Calendar,
   Edit,
   AlertTriangle,
   History,
-  Zap
+  Zap,
+  Trash,
+  Play
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -1141,6 +1144,20 @@ export default function App() {
     }
   });
 
+  const [completingTaskIds, setCompletingTaskIds] = useState<string[]>([]);
+  const [searchFrequencies, setSearchFrequencies] = useState<{ [query: string]: number }>(() => {
+    try {
+      const saved = localStorage.getItem("neora_search_frequencies");
+      return saved ? JSON.parse(saved) : { "Brochure proof": 5, "Tax calculations": 3, "Backup rule": 2 };
+    } catch {
+      return { "Brochure proof": 5, "Tax calculations": 3, "Backup rule": 2 };
+    }
+  });
+  const [selectedDashboardDateRange, setSelectedDashboardDateRange] = useState<"ALL" | "TODAY" | "WEEK" | "OVERDUE">("ALL");
+  const [expandedTaskIds, setExpandedTaskIds] = useState<string[]>([]);
+  const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
+  const [isCategorizing, setIsCategorizing] = useState(false);
+
   const addRecentSearch = (query: string) => {
     const qClean = query.trim();
     if (!qClean) return;
@@ -1151,6 +1168,11 @@ export default function App() {
       const next = [qClean, ...filtered].slice(0, 8); // Keep last 8 queries
       localStorage.setItem("neora_recent_searches", JSON.stringify(next));
       return next;
+    });
+    setSearchFrequencies((prev) => {
+      const nextFreq = { ...prev, [qClean]: (prev[qClean] || 0) + 1 };
+      localStorage.setItem("neora_search_frequencies", JSON.stringify(nextFreq));
+      return nextFreq;
     });
   };
 
@@ -1176,6 +1198,10 @@ export default function App() {
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editingTaskTitle, setEditingTaskTitle] = useState<string>("");
   const [newTaskPriority, setNewTaskPriority] = useState<"low" | "medium" | "high" | "critical">("medium");
+  const [quickTitle, setQuickTitle] = useState("");
+  const [quickCategory, setQuickCategory] = useState("");
+  const [quickTags, setQuickTags] = useState("");
+  const [quickNotes, setQuickNotes] = useState("");
   const [dashboardTaskTab, setDashboardTaskTab] = useState<"active" | "completed">("active");
   const [selectedCompletedTaskIds, setSelectedCompletedTaskIds] = useState<string[]>([]);
   const [showQuickHelp, setShowQuickHelp] = useState(false);
@@ -1203,6 +1229,25 @@ export default function App() {
       localStorage.setItem("neora_unlocked_features", JSON.stringify(next));
       return next;
     });
+  };
+
+  const handleAutoCategorize = async () => {
+    if (!quickTitle.trim()) return;
+    setIsCategorizing(true);
+    try {
+      const response: any = await neoraPost("/api/tasks/auto-categorize", {
+        title: quickTitle,
+        description: quickNotes
+      });
+      if (response && response.status === "success") {
+        setQuickCategory(response.category || "");
+        setQuickTags(response.tags || "");
+      }
+    } catch (err) {
+      console.error("Failed to auto-categorize task:", err);
+    } finally {
+      setIsCategorizing(false);
+    }
   };
 
   const {
@@ -1835,17 +1880,19 @@ export default function App() {
     tags?: string[],
     reminderAt?: string,
     category?: string,
+    notes?: string,
   ) => {
     const newTask: Task = {
       id: Math.random().toString(),
       title,
-      notes: "",
+      notes: notes || "",
       priority,
       dueAt: new Date().toISOString().substring(0, 10),
       completed: false,
       tags: tags || [],
       reminderAt: reminderAt || "",
       category: category || "",
+      createdAt: new Date().toISOString(),
     };
     setTasks((prev) => [newTask, ...prev]);
     triggerDbSyncAnimation();
@@ -2150,12 +2197,23 @@ export default function App() {
     );
     triggerDbSyncAnimation();
   };
-  const handleDeleteTask = (id: string) => {
+  const handleDeleteTask = (id: string, force: boolean = false) => {
     const item = tasks.find((x) => x.id === id);
-    if (item) {
-      triggerUndoOption("task", item);
+    if (!item) return;
+
+    if (item.priority === "critical" && !force) {
+      setTaskToDelete(item);
+      return;
     }
+
+    triggerUndoOption("task", item);
     setTasks((prev) => prev.filter((x) => x.id !== id));
+    triggerDbSyncAnimation();
+    setTaskToDelete(null);
+  };
+
+  const handleUpdateTask = (id: string, updates: Partial<Task>) => {
+    setTasks((prev) => prev.map((x) => x.id === id ? { ...x, ...updates } : x));
     triggerDbSyncAnimation();
   };
 
@@ -3067,15 +3125,37 @@ export default function App() {
                             )
                           );
 
-                          const visibleActiveTasks = tasks.filter(
-                            (tk) =>
-                              !tk.completed &&
-                              !tk.archived &&
-                              selectedDashboardPriorities.includes(tk.priority) &&
-                              (selectedDashboardTag === "ALL" ||
-                                (tk.tags && tk.tags.includes(selectedDashboardTag)) ||
-                                tk.category === selectedDashboardTag),
-                          );
+                          const todayStr = new Date().toISOString().slice(0, 10);
+                          const todayDate = new Date();
+                          todayDate.setHours(0, 0, 0, 0);
+
+                          const next7DaysDate = new Date();
+                          next7DaysDate.setDate(next7DaysDate.getDate() + 7);
+                          next7DaysDate.setHours(23, 59, 59, 999);
+
+                          const visibleActiveTasks = tasks.filter((tk) => {
+                            if (tk.completed || tk.archived) return false;
+
+                            const matchesPriority = selectedDashboardPriorities.includes(tk.priority);
+                            const matchesTag = selectedDashboardTag === "ALL" ||
+                              (tk.tags && tk.tags.includes(selectedDashboardTag)) ||
+                              tk.category === selectedDashboardTag;
+
+                            let matchesDate = true;
+                            if (selectedDashboardDateRange === "TODAY") {
+                              matchesDate = tk.dueAt === todayStr;
+                            } else if (selectedDashboardDateRange === "WEEK") {
+                              if (!tk.dueAt) matchesDate = false;
+                              else {
+                                const d = new Date(tk.dueAt);
+                                matchesDate = d >= todayDate && d <= next7DaysDate;
+                              }
+                            } else if (selectedDashboardDateRange === "OVERDUE") {
+                              matchesDate = isOverdue(tk.dueAt);
+                            }
+
+                            return matchesPriority && matchesTag && matchesDate;
+                          });
 
                           return (
                             <motion.div
@@ -3108,6 +3188,40 @@ export default function App() {
                                 <div className="flex justify-between items-center mb-1">
                                   <div className="flex items-center gap-1.5">
                                     <span className="jarvis-label">TASKS</span>
+                                    {(() => {
+                                      const totalTasksCount = tasks.length;
+                                      const completedTasksCount = tasks.filter(x => x.completed).length;
+                                      const completionPercent = totalTasksCount > 0 ? Math.round((completedTasksCount / totalTasksCount) * 100) : 0;
+                                      
+                                      const ringRadius = 6;
+                                      const ringCircumference = 2 * Math.PI * ringRadius;
+                                      const ringOffset = ringCircumference - (ringCircumference * completionPercent) / 100;
+                                      
+                                      return (
+                                        <div className="relative flex items-center justify-center w-5 h-5 shrink-0 ml-1 select-none" title={`${completionPercent}% Tasks Completed (${completedTasksCount}/${totalTasksCount})`}>
+                                          <svg className="w-5 h-5 -rotate-90" viewBox="0 0 16 16">
+                                            <circle
+                                              cx="8"
+                                              cy="8"
+                                              r={ringRadius}
+                                              className="stroke-cyan-950/40 fill-none"
+                                              strokeWidth="1.8"
+                                            />
+                                            <circle
+                                              cx="8"
+                                              cy="8"
+                                              r={ringRadius}
+                                              className="stroke-cyan-400 fill-none transition-all duration-500"
+                                              strokeWidth="1.8"
+                                              strokeDasharray={ringCircumference}
+                                              strokeDashoffset={ringOffset}
+                                              strokeLinecap="round"
+                                            />
+                                          </svg>
+                                          <span className="absolute text-[5.5px] font-mono font-bold text-cyan-400">{completionPercent}%</span>
+                                        </div>
+                                      );
+                                    })()}
                                     <div className="flex bg-slate-950/60 p-0.5 rounded border border-slate-900 ml-2 shrink-0">
                                       <button
                                         onClick={(e) => {
@@ -3262,6 +3376,23 @@ export default function App() {
                                       )}
                                     </div>
 
+                                    <div className="flex bg-slate-950/40 p-0.5 rounded border border-slate-900/60 mb-1.5 shrink-0 w-max">
+                                      {(["ALL", "TODAY", "WEEK", "OVERDUE"] as const).map((r) => (
+                                        <button
+                                          key={r}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedDashboardDateRange(r);
+                                          }}
+                                          className={`text-[7.5px] font-mono font-bold px-1.5 py-0.5 rounded transition-all cursor-pointer ${
+                                            selectedDashboardDateRange === r ? "bg-cyan-950 text-cyan-400 border border-cyan-800/30" : "text-slate-500 hover:text-slate-350"
+                                          }`}
+                                        >
+                                          {r === "WEEK" ? "7 DAYS" : r}
+                                        </button>
+                                      ))}
+                                    </div>
+
                                     <div className="overflow-y-auto max-h-[80px] space-y-1 pr-1 custom-scrollbar mb-2 text-left min-h-[40px]">
                                       <AnimatePresence mode="popLayout">
                                         {visibleActiveTasks
@@ -3279,7 +3410,7 @@ export default function App() {
                                                 {/* Swipe Action Indicator under the card */}
                                                 <div className="absolute inset-0 bg-gradient-to-l from-rose-600/20 via-rose-500/5 to-transparent flex items-center justify-end pr-3 pointer-events-none rounded border border-transparent">
                                                   <span className="text-[7px] font-mono text-rose-400 font-bold uppercase tracking-wider animate-pulse">
-                                                    SWIPE TO DELETE ←
+                                                    SWIPE TO COMPLETE ←
                                                   </span>
                                                 </div>
 
@@ -3290,19 +3421,23 @@ export default function App() {
                                                   dragElastic={{ left: 0.2, right: 0.1 }}
                                                   onDragEnd={(event, info) => {
                                                     if (info.offset.x < -60) {
-                                                      setTasks((prev) =>
-                                                        prev.map((t) =>
-                                                          t.id === tk.id
-                                                            ? {
-                                                                ...t,
-                                                                completed: true,
-                                                                completedAt: new Date().toISOString(),
-                                                              }
-                                                            : t,
-                                                        ),
-                                                      );
+                                                      setCompletingTaskIds((prev) => [...prev, tk.id]);
                                                       playSystemChirp("success");
-                                                      triggerDbSyncAnimation();
+                                                      setTimeout(() => {
+                                                        setTasks((prev) =>
+                                                          prev.map((t) =>
+                                                            t.id === tk.id
+                                                              ? {
+                                                                  ...t,
+                                                                  completed: true,
+                                                                  completedAt: new Date().toISOString(),
+                                                                }
+                                                              : t,
+                                                          ),
+                                                        );
+                                                        setCompletingTaskIds((prev) => prev.filter((id) => id !== tk.id));
+                                                        triggerDbSyncAnimation();
+                                                      }, 750);
                                                     }
                                                   }}
                                                   onContextMenu={(e) => {
@@ -3314,11 +3449,19 @@ export default function App() {
                                                       y: e.clientY,
                                                     });
                                                   }}
-                                                  className={`relative z-10 text-[10px] bg-slate-950 border px-2 py-1 rounded flex justify-between items-center gap-1.5 cursor-grab active:cursor-grabbing select-none ${
+                                                  className={`relative z-10 text-[10px] bg-slate-950 border px-2 py-1 rounded flex flex-col gap-1 select-none transition-all duration-300 ${
                                                     tk.priority === "critical"
-                                                      ? "border-rose-500/35"
+                                                      ? "border-rose-500/35 shadow-[0_0_8px_rgba(244,63,94,0.15)] bg-rose-950/5"
+                                                      : tk.priority === "high"
+                                                      ? "border-amber-500/30 shadow-[0_0_8px_rgba(245,158,11,0.12)] bg-amber-950/5"
+                                                      : tk.priority === "medium"
+                                                      ? "border-cyan-500/25 shadow-[0_0_6px_rgba(6,182,212,0.08)] bg-cyan-950/5"
                                                       : "border-slate-900/60"
                                                   }`}
+                                                  style={{
+                                                    opacity: completingTaskIds.includes(tk.id) ? 0.35 : 1,
+                                                    transition: "opacity 0.7s ease",
+                                                  }}
                                                   animate={
                                                     tk.priority === "critical"
                                                       ? {
@@ -3333,6 +3476,32 @@ export default function App() {
                                                             "rgba(244, 63, 94, 0.25)",
                                                           ],
                                                         }
+                                                      : tk.priority === "high"
+                                                      ? {
+                                                          boxShadow: [
+                                                            "0 0 4px rgba(245, 158, 11, 0.1)",
+                                                            "0 0 10px rgba(245, 158, 11, 0.4)",
+                                                            "0 0 4px rgba(245, 158, 11, 0.1)",
+                                                          ],
+                                                          borderColor: [
+                                                            "rgba(245, 158, 11, 0.2)",
+                                                            "rgba(245, 158, 11, 0.6)",
+                                                            "rgba(245, 158, 11, 0.2)",
+                                                          ],
+                                                        }
+                                                      : tk.priority === "medium"
+                                                      ? {
+                                                          boxShadow: [
+                                                            "0 0 2px rgba(6, 182, 212, 0.05)",
+                                                            "0 0 8px rgba(6, 182, 212, 0.3)",
+                                                            "0 0 2px rgba(6, 182, 212, 0.05)",
+                                                          ],
+                                                          borderColor: [
+                                                            "rgba(6, 182, 212, 0.15)",
+                                                            "rgba(6, 182, 212, 0.45)",
+                                                            "rgba(6, 182, 212, 0.15)",
+                                                          ],
+                                                        }
                                                       : {}
                                                   }
                                                   transition={
@@ -3342,57 +3511,103 @@ export default function App() {
                                                           repeat: Infinity,
                                                           ease: "easeInOut",
                                                         }
+                                                      : tk.priority === "high"
+                                                      ? {
+                                                          duration: 3,
+                                                          repeat: Infinity,
+                                                          ease: "easeInOut",
+                                                        }
+                                                      : tk.priority === "medium"
+                                                      ? {
+                                                          duration: 4,
+                                                          repeat: Infinity,
+                                                          ease: "easeInOut",
+                                                        }
                                                       : {}
                                                   }
                                                 >
-                                                  <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                                                    <input
-                                                      type="checkbox"
-                                                      checked={false}
-                                                      onChange={(e) => {
-                                                        e.stopPropagation();
-                                                        setTasks((prev) =>
-                                                          prev.map((t) =>
-                                                            t.id === tk.id
-                                                              ? {
-                                                                  ...t,
-                                                                  completed: true,
-                                                                  completedAt: new Date().toISOString(),
-                                                                }
-                                                              : t,
-                                                          ),
-                                                        );
-                                                        playSystemChirp("success");
-                                                        triggerDbSyncAnimation();
-                                                      }}
-                                                      className="w-3.5 h-3.5 rounded border border-slate-800 bg-slate-900 text-cyan-500 focus:ring-0 focus:ring-offset-0 cursor-pointer shrink-0"
-                                                    />
-                                                    
-                                                    {/* Colored priority badge */}
-                                                    <span className={`text-[7px] font-mono font-bold uppercase px-1 py-0.2 rounded border ${priorityBadges[tk.priority]} flex items-center gap-1 shrink-0`}>
-                                                      <span className={`w-1 h-1 rounded-full ${priorityColor}`} />
-                                                      {tk.priority}
-                                                    </span>
-
-                                                    {editingTaskId === tk.id ? (
+                                                  <div className="flex justify-between items-center gap-1.5 w-full">
+                                                    <div className="flex items-center gap-1.5 flex-1 min-w-0">
                                                       <input
-                                                        autoFocus
-                                                        type="text"
-                                                        value={editingTaskTitle}
-                                                        onChange={(e) => setEditingTaskTitle(e.target.value)}
-                                                        onBlur={() => {
-                                                          if (editingTaskTitle.trim()) {
+                                                        type="checkbox"
+                                                        checked={completingTaskIds.includes(tk.id)}
+                                                        onChange={(e) => {
+                                                          e.stopPropagation();
+                                                          setCompletingTaskIds((prev) => [...prev, tk.id]);
+                                                          playSystemChirp("success");
+                                                          setTimeout(() => {
                                                             setTasks((prev) =>
                                                               prev.map((t) =>
-                                                                t.id === tk.id ? { ...t, title: editingTaskTitle.trim() } : t
-                                                              )
+                                                                t.id === tk.id
+                                                                  ? {
+                                                                      ...t,
+                                                                      completed: true,
+                                                                      completedAt: new Date().toISOString(),
+                                                                    }
+                                                                  : t,
+                                                              ),
                                                             );
+                                                            setCompletingTaskIds((prev) => prev.filter((id) => id !== tk.id));
                                                             triggerDbSyncAnimation();
-                                                          }
-                                                          setEditingTaskId(null);
+                                                          }, 750);
                                                         }}
-                                                        onKeyDown={(e) => {
-                                                          if (e.key === "Enter") {
+                                                        className="w-3.5 h-3.5 rounded border border-slate-800 bg-slate-900 text-cyan-500 focus:ring-0 focus:ring-offset-0 cursor-pointer shrink-0"
+                                                      />
+
+                                                      {/* Visual Priority Gauge (Circular Progress Ring) */}
+                                                      {(() => {
+                                                        const prioDetails = {
+                                                          critical: { percent: 100, color: "stroke-rose-500", track: "stroke-rose-950/20" },
+                                                          high: { percent: 75, color: "stroke-amber-500", track: "stroke-amber-950/20" },
+                                                          medium: { percent: 50, color: "stroke-cyan-500", track: "stroke-cyan-950/20" },
+                                                          low: { percent: 25, color: "stroke-slate-500", track: "stroke-slate-900/20" },
+                                                        }[tk.priority] || { percent: 50, color: "stroke-cyan-500", track: "stroke-cyan-950/20" };
+
+                                                        const radius = 5;
+                                                        const circumference = 2 * Math.PI * radius;
+                                                        const strokeDashoffset = circumference - (circumference * prioDetails.percent) / 100;
+
+                                                        return (
+                                                          <div className="relative w-4 h-4 flex items-center justify-center shrink-0 cursor-help" title={`Priority: ${tk.priority.toUpperCase()} (${prioDetails.percent}% Urgency)`}>
+                                                            <svg className="w-4 h-4 -rotate-90" viewBox="0 0 14 14">
+                                                              <circle
+                                                                cx="7"
+                                                                cy="7"
+                                                                r={radius}
+                                                                className={`${prioDetails.track} fill-none`}
+                                                                strokeWidth="1.8"
+                                                              />
+                                                              <circle
+                                                                cx="7"
+                                                                cy="7"
+                                                                r={radius}
+                                                                className={`${prioDetails.color} fill-none`}
+                                                                strokeWidth="1.8"
+                                                                strokeDasharray={circumference}
+                                                                strokeDashoffset={strokeDashoffset}
+                                                                strokeLinecap="round"
+                                                              />
+                                                            </svg>
+                                                            <div className={`absolute w-1 h-1 rounded-full ${
+                                                              tk.priority === "critical" ? "bg-rose-500 animate-ping" : ""
+                                                            }`} />
+                                                          </div>
+                                                        );
+                                                      })()}
+                                                      
+                                                      {/* Colored priority badge */}
+                                                      <span className={`text-[7px] font-mono font-bold uppercase px-1 py-0.2 rounded border ${priorityBadges[tk.priority]} flex items-center gap-1 shrink-0`}>
+                                                        <span className={`w-1 h-1 rounded-full ${priorityColor}`} />
+                                                        {tk.priority}
+                                                      </span>
+
+                                                      {editingTaskId === tk.id ? (
+                                                        <input
+                                                          autoFocus
+                                                          type="text"
+                                                          value={editingTaskTitle}
+                                                          onChange={(e) => setEditingTaskTitle(e.target.value)}
+                                                          onBlur={() => {
                                                             if (editingTaskTitle.trim()) {
                                                               setTasks((prev) =>
                                                                 prev.map((t) =>
@@ -3402,37 +3617,96 @@ export default function App() {
                                                               triggerDbSyncAnimation();
                                                             }
                                                             setEditingTaskId(null);
-                                                          } else if (e.key === "Escape") {
-                                                            setEditingTaskId(null);
-                                                          }
-                                                        }}
-                                                        className="bg-slate-900 border border-cyan-500/50 rounded px-1.5 py-0.5 text-[10px] text-slate-100 focus:outline-none w-full font-sans"
-                                                        onClick={(e) => e.stopPropagation()}
-                                                      />
-                                                    ) : (
-                                                      <span className="truncate text-slate-300 flex-1 font-sans font-medium">
-                                                        {tk.title}
-                                                      </span>
-                                                    )}
+                                                          }}
+                                                          onKeyDown={(e) => {
+                                                            if (e.key === "Enter") {
+                                                              if (editingTaskTitle.trim()) {
+                                                                setTasks((prev) =>
+                                                                  prev.map((t) =>
+                                                                    t.id === tk.id ? { ...t, title: editingTaskTitle.trim() } : t
+                                                                  )
+                                                                );
+                                                                triggerDbSyncAnimation();
+                                                              }
+                                                              setEditingTaskId(null);
+                                                            } else if (e.key === "Escape") {
+                                                              setEditingTaskId(null);
+                                                            }
+                                                          }}
+                                                          className="bg-slate-900 border border-cyan-500/50 rounded px-1.5 py-0.5 text-[10px] text-slate-100 focus:outline-none w-full font-sans"
+                                                          onClick={(e) => e.stopPropagation()}
+                                                        />
+                                                      ) : (
+                                                        <span 
+                                                          className={`truncate flex-1 font-sans font-medium cursor-pointer hover:text-cyan-300 transition-colors flex items-center gap-1.5 ${
+                                                            completingTaskIds.includes(tk.id) ? "line-through text-slate-600 opacity-60" : "text-slate-300"
+                                                          }`}
+                                                          onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setExpandedTaskIds((prev) =>
+                                                              prev.includes(tk.id)
+                                                                ? prev.filter((id) => id !== tk.id)
+                                                                : [...prev, tk.id]
+                                                            );
+                                                          }}
+                                                        >
+                                                          <span>{tk.title}</span>
+                                                          <span className="text-[7.5px] text-slate-500 shrink-0">
+                                                            {expandedTaskIds.includes(tk.id) ? "▲" : "▼"}
+                                                          </span>
+                                                        </span>
+                                                      )}
+                                                    </div>
+                                                    
+                                                    <div className="flex items-center gap-1 shrink-0">
+                                                      {/* Optional Category tag */}
+                                                      {tk.category && (
+                                                        <span className="text-[7px] font-mono font-bold text-cyan-400 bg-cyan-950/40 px-1 py-0.2 rounded border border-cyan-500/20 shrink-0 uppercase tracking-wider">
+                                                          {tk.category}
+                                                        </span>
+                                                      )}
+                                                      {isTaskOverdue && (
+                                                        <span className="text-[7px] font-mono font-bold text-rose-400 bg-rose-950/40 px-1 py-0.2 rounded border border-rose-500/20 animate-pulse uppercase shrink-0">
+                                                          OVERDUE
+                                                        </span>
+                                                      )}
+                                                      {tk.dueAt && (
+                                                        <span className={`text-[8px] font-mono shrink-0 ${isTaskOverdue ? "text-rose-400" : "text-slate-500"}`}>
+                                                          {tk.dueAt}
+                                                        </span>
+                                                      )}
+                                                    </div>
                                                   </div>
-                                                  <div className="flex items-center gap-1 shrink-0">
-                                                    {/* Optional Category tag */}
-                                                    {tk.category && (
-                                                      <span className="text-[7px] font-mono font-bold text-cyan-400 bg-cyan-950/40 px-1 py-0.2 rounded border border-cyan-500/20 shrink-0 uppercase tracking-wider">
-                                                        {tk.category}
-                                                      </span>
-                                                    )}
-                                                    {isTaskOverdue && (
-                                                      <span className="text-[7px] font-mono font-bold text-rose-400 bg-rose-950/40 px-1 py-0.2 rounded border border-rose-500/20 animate-pulse uppercase shrink-0">
-                                                        OVERDUE
-                                                      </span>
-                                                    )}
-                                                    {tk.dueAt && (
-                                                      <span className={`text-[8px] font-mono shrink-0 ${isTaskOverdue ? "text-rose-400" : "text-slate-500"}`}>
-                                                        {tk.dueAt}
-                                                      </span>
-                                                    )}
-                                                  </div>
+
+                                                  {/* Inline Expandable Notes & Metadata Panel */}
+                                                  {expandedTaskIds.includes(tk.id) && (
+                                                    <motion.div
+                                                      initial={{ height: 0, opacity: 0 }}
+                                                      animate={{ height: "auto", opacity: 1 }}
+                                                      exit={{ height: 0, opacity: 0 }}
+                                                      transition={{ duration: 0.2 }}
+                                                      className="border-t border-slate-900/60 mt-1.5 pt-1.5 text-[8.5px] text-slate-450 space-y-1 bg-slate-950/60 p-1.5 rounded leading-normal font-sans"
+                                                    >
+                                                      {tk.notes ? (
+                                                        <div>
+                                                          <span className="font-mono text-[7px] text-cyan-500 uppercase tracking-wider block mb-0.5">Objective Details:</span>
+                                                          <p className="text-slate-300 font-sans">{tk.notes}</p>
+                                                        </div>
+                                                      ) : (
+                                                        <div className="italic text-slate-600">No additional details provided.</div>
+                                                      )}
+                                                      {tk.tags && tk.tags.length > 0 && (
+                                                        <div className="flex flex-wrap gap-1 items-center pt-1">
+                                                          <span className="font-mono text-[6.5px] text-slate-500 uppercase">Tags:</span>
+                                                          {tk.tags.map((tg) => (
+                                                            <span key={tg} className="bg-slate-900/40 text-slate-450 px-1 py-0.2 rounded border border-slate-850 text-[7px] font-mono">
+                                                              #{tg}
+                                                            </span>
+                                                          ))}
+                                                        </div>
+                                                      )}
+                                                    </motion.div>
+                                                  )}
                                                 </motion.div>
                                               </motion.div>
                                             );
@@ -4227,6 +4501,8 @@ export default function App() {
                         onDeleteReminder={handleDeleteReminder}
                         onDeleteNote={handleDeleteNote}
                         onDeleteMemory={handleDeleteMemory}
+                        onUpdateTask={handleUpdateTask}
+                        onUpdateTaskOrder={setTasks}
                       />
                     )}
 
@@ -5132,44 +5408,59 @@ export default function App() {
               onReRunCommand={(cmd) => parseJarvisCommand(cmd)}
             />
 
-            {isDashboardAddTaskOpen && (
-              <div data-neora-modal="open" className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-md">
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95, y: 15 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.95, y: 15 }}
-                  className="w-full max-w-md bg-slate-950 border border-cyan-500/35 rounded-2xl p-6 shadow-2xl relative overflow-hidden"
-                >
-                  {/* Corner decoration lines */}
-                  <div className="absolute top-0 left-0 w-8 h-px bg-cyan-400" />
-                  <div className="absolute top-0 left-0 w-px h-8 bg-cyan-400" />
+            <AnimatePresence>
+              {isDashboardAddTaskOpen && (
+                <div data-neora-modal="open" className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-md p-4">
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onClick={() => setIsDashboardAddTaskOpen(false)}
+                    className="absolute inset-0 bg-black/50"
+                  />
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95, y: 15 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: 15 }}
+                    transition={{ duration: 0.2 }}
+                    className="w-full max-w-md bg-slate-950 border border-cyan-500/35 rounded-2xl p-6 shadow-2xl relative overflow-hidden z-10"
+                  >
+                    {/* Corner decoration lines */}
+                    <div className="absolute top-0 left-0 w-8 h-px bg-cyan-400" />
+                    <div className="absolute top-0 left-0 w-px h-8 bg-cyan-400" />
 
-                  <h3 className="font-jarvis text-base font-bold text-cyan-400 mb-1 flex items-center gap-2">
-                    <Plus className="w-5 h-5 text-cyan-400 animate-pulse" />
-                    {lang === 'bn' ? 'নতুন কুয়িক টাস্ক যোগ করুন' : 'ADD NEW QUICK TASK'}
-                  </h3>
-                  <p className="text-[11px] text-slate-400 mb-4 font-mono">
-                    {lang === 'bn' ? 'সরাসরি ড্যাশবোর্ড থেকে টাস্ক শিডিউল করুন।' : 'Direct injection into Neora active memory backplane.'}
-                  </p>
+                    <h3 className="font-jarvis text-base font-bold text-cyan-400 mb-1 flex items-center gap-2">
+                      <Plus className="w-5 h-5 text-cyan-400 animate-pulse" />
+                      {lang === 'bn' ? 'নতুন কুয়িক টাস্ক যোগ করুন' : 'ADD NEW QUICK TASK'}
+                    </h3>
+                    <p className="text-[11px] text-slate-400 mb-4 font-mono">
+                      {lang === 'bn' ? 'সরাসরি ড্যাশবোর্ড থেকে টাস্ক শিডিউল করুন।' : 'Direct injection into Neora active memory backplane.'}
+                    </p>
 
-                  <form onSubmit={(e) => {
-                    e.preventDefault();
-                    const fd = new FormData(e.currentTarget);
-                    const title = fd.get('title') as string;
-                    const priority = fd.get('priority') as any;
-                    const tagsRaw = fd.get('tags') as string;
-                    const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : ['quick-dashboard'];
-                    const remindAt = fd.get('remindAt') as string;
-                    const category = fd.get('category') as string || '';
+                    <form onSubmit={(e) => {
+                      e.preventDefault();
+                      const title = quickTitle.trim();
+                      const priority = newTaskPriority;
+                      const tagsRaw = quickTags;
+                      const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : ['quick-dashboard'];
+                      const category = quickCategory.trim();
+                      const notesVal = quickNotes.trim();
 
-                    if (title.trim()) {
-                      handleAddTask(title.trim(), priority, tags, remindAt, category);
+                      const fd = new FormData(e.currentTarget);
+                      const remindAt = fd.get('remindAt') as string;
+
+                      if (!title) {
+                        alert(lang === 'bn' ? 'টাস্কের নাম খালি হতে পারে না!' : 'Task title cannot be empty!');
+                        return;
+                      }
+
+                      handleAddTask(title, priority, tags, remindAt, category, notesVal);
                       
                       // Seamlessly sync to memory via neoraPost('/api/memory') pipeline (Task 1)
                       neoraPost('/api/memory', {
                         id: "mem-" + Math.random().toString(),
-                        key: `Task Injection: ${title.trim()}`,
-                        value: JSON.stringify({ priority, tags, remindAt: remindAt || "No reminder", category }),
+                        key: `Task Injection: ${title}`,
+                        value: JSON.stringify({ priority, tags, remindAt: remindAt || "No reminder", category, description: notesVal }),
                         category: "work",
                         importance: 4
                       }).catch((err) => {
@@ -5178,122 +5469,280 @@ export default function App() {
 
                       // Set specific reminder if provided
                       if (remindAt) {
-                        handleAddReminder(title.trim(), remindAt, "none");
+                        handleAddReminder(title, remindAt, "none");
                       }
 
+                      // Clear states on success
+                      setQuickTitle('');
+                      setQuickCategory('');
+                      setQuickTags('');
+                      setQuickNotes('');
                       setIsDashboardAddTaskOpen(false);
-                    }
-                  }} className="space-y-4">
-                    <div className="space-y-1">
-                      <label className="block text-[10px] font-mono text-slate-400 uppercase">{lang === 'bn' ? 'টাস্কের বিবরণ:' : 'Task Objective:'}</label>
-                      <input
-                        autoFocus
-                        required
-                        name="title"
-                        type="text"
-                        placeholder={lang === 'bn' ? 'যেমন: শুকরিয়া প্রিন্টার্স এর ভ্যাট মার্জিন হিসেব করো...' : 'e.g., calculate VAT margin for Shukria printers...'}
-                        className="w-full bg-slate-900 border border-slate-800 focus:border-cyan-500/50 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-600 focus:outline-none"
-                      />
-                    </div>
+                    }} className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
+                      
+                      {/* Template Selector dropdown */}
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-mono text-slate-400 uppercase">
+                          {lang === 'bn' ? 'টাস্ক টেমপ্লেট:' : 'Task Template / Quick Fill:'}
+                        </label>
+                        <select
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === 'dev_audit') {
+                              setQuickTitle(lang === 'bn' ? 'সিস্টেম ডেভেলপমেন্ট অডিট' : 'System Development Audit');
+                              setQuickCategory('Work');
+                              setQuickTags('Dev, Audit');
+                              setNewTaskPriority('high');
+                              setQuickNotes('Review latest telemetry logs, analyze system errors, and verify core bundle builds.');
+                            } else if (val === 'db_maint') {
+                              setQuickTitle(lang === 'bn' ? 'ডাটাবেস সিনক্রোনাইজেশন চেক' : 'Database Synchronization Check');
+                              setQuickCategory('Neora-Internal');
+                              setQuickTags('Db-Sync, Admin');
+                              setNewTaskPriority('critical');
+                              setQuickNotes('Perform key-value synchronization check and run manual healing procedure on memory registry.');
+                            } else if (val === 'prod_plan') {
+                              setQuickTitle(lang === 'bn' ? 'ব্যক্তিগত প্ল্যানিং আপডেট' : 'Personal Productivity Review');
+                              setQuickCategory('Personal');
+                              setQuickTags('Planning, Personal');
+                              setNewTaskPriority('medium');
+                              setQuickNotes('Draft tomorrow\'s active sprint, extract key notes, and update personal task backplane.');
+                            } else {
+                              setQuickTitle('');
+                              setQuickCategory('');
+                              setQuickTags('');
+                              setQuickNotes('');
+                            }
+                          }}
+                          className="w-full bg-slate-900 border border-slate-800 focus:border-cyan-500/50 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none cursor-pointer font-sans"
+                        >
+                          <option value="custom">-- Custom / Clear --</option>
+                          <option value="dev_audit">{lang === 'bn' ? 'ডেভেলপমেন্ট অডিট' : 'Development Audit'}</option>
+                          <option value="db_maint">{lang === 'bn' ? 'ডাটাবেস রক্ষণাবেক্ষণ' : 'Database Maintenance'}</option>
+                          <option value="prod_plan">{lang === 'bn' ? 'উৎপাদনশীলতা পরিকল্পনা' : 'Productivity Planner'}</option>
+                        </select>
+                      </div>
 
-                    <div className="space-y-1">
-                      <label className="block text-[10px] font-mono text-slate-400 uppercase">{lang === 'bn' ? 'ক্যাটাগরি (Category):' : 'Category (e.g. Work, Personal):'}</label>
-                      <input
-                        name="category"
-                        type="text"
-                        placeholder={lang === 'bn' ? 'যেমন: Work, Personal, Neora-Internal' : 'e.g., Work, Personal, Neora-Internal'}
-                        className="w-full bg-slate-900 border border-slate-800 focus:border-cyan-500/50 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-600 focus:outline-none"
-                      />
-                    </div>
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-mono text-slate-400 uppercase">{lang === 'bn' ? 'টাস্কের বিবরণ:' : 'Task Objective:'}</label>
+                        <input
+                          autoFocus
+                          required
+                          name="title"
+                          type="text"
+                          value={quickTitle}
+                          onChange={(e) => setQuickTitle(e.target.value)}
+                          placeholder={lang === 'bn' ? 'যেমন: শুকরিয়া প্রিন্টার্স এর ভ্যাট মার্জিন হিসেব করো...' : 'e.g., calculate VAT margin for Shukria printers...'}
+                          className="w-full bg-slate-900 border border-slate-800 focus:border-cyan-500/50 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-600 focus:outline-none"
+                        />
+                      </div>
 
-                    <div className="space-y-1">
-                      <label className="block text-[10px] font-mono text-slate-400 uppercase">{lang === 'bn' ? 'ট্যাগস (কমা দ্বারা আলাদা করুন):' : 'Tags (comma separated):'}</label>
-                      <input
-                        name="tags"
-                        type="text"
-                        placeholder={lang === 'bn' ? 'যেমন: vat, shukria, tax' : 'e.g., vat, shukria, tax'}
-                        className="w-full bg-slate-900 border border-slate-800 focus:border-cyan-500/50 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-600 focus:outline-none"
-                      />
-                    </div>
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-mono text-slate-400 uppercase">{lang === 'bn' ? 'ক্যাটাগরি (Category):' : 'Category (e.g. Work, Personal):'}</label>
+                        <input
+                          name="category"
+                          type="text"
+                          value={quickCategory}
+                          onChange={(e) => setQuickCategory(e.target.value)}
+                          placeholder={lang === 'bn' ? 'যেমন: Work, Personal, Neora-Internal' : 'e.g., Work, Personal, Neora-Internal'}
+                          className="w-full bg-slate-900 border border-slate-800 focus:border-cyan-500/50 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-600 focus:outline-none"
+                        />
+                      </div>
 
-                    <div className="space-y-1">
-                      <label className="block text-[10px] font-mono text-slate-400 uppercase">{lang === 'bn' ? 'রিমাইন্ডার সময়:' : 'Reminder Time:'}</label>
-                      <input
-                        name="remindAt"
-                        type="datetime-local"
-                        className="w-full bg-slate-900 border border-slate-800 focus:border-cyan-500/50 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none"
-                      />
-                    </div>
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-mono text-slate-400 uppercase">{lang === 'bn' ? 'ট্যাগস (কমা দ্বারা আলাদা করুন):' : 'Tags (comma separated):'}</label>
+                        <input
+                          name="tags"
+                          type="text"
+                          value={quickTags}
+                          onChange={(e) => setQuickTags(e.target.value)}
+                          placeholder={lang === 'bn' ? 'যেমন: vat, shukria, tax' : 'e.g., vat, shukria, tax'}
+                          className="w-full bg-slate-900 border border-slate-800 focus:border-cyan-500/50 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-600 focus:outline-none"
+                        />
+                      </div>
 
-                    <div className="space-y-1.5">
-                      <label className="block text-[10px] font-mono text-slate-400 uppercase">{lang === 'bn' ? 'অগ্রাধিকার (Priority):' : 'Priority Level:'}</label>
-                      <input type="hidden" name="priority" value={newTaskPriority} />
-                      <div className="grid grid-cols-4 gap-2">
-                        {(["low", "medium", "high", "critical"] as const).map((p) => {
-                          const isSelected = newTaskPriority === p;
-                          const styles = {
-                            low: {
-                              bg: "bg-slate-500/10 hover:bg-slate-500/20",
-                              activeBg: "bg-slate-500/30 text-slate-300 border-slate-500/65 shadow-[0_0_8px_rgba(100,116,139,0.3)]",
-                              border: "border-slate-600/20",
-                              dotColor: "bg-slate-400",
-                            },
-                            medium: {
-                              bg: "bg-cyan-500/10 hover:bg-cyan-500/20",
-                              activeBg: "bg-cyan-500/30 text-cyan-350 border-cyan-500/65 shadow-[0_0_8px_rgba(6,182,212,0.3)]",
-                              border: "border-cyan-500/20",
-                              dotColor: "bg-cyan-400",
-                            },
-                            high: {
-                              bg: "bg-amber-500/10 hover:bg-amber-500/20",
-                              activeBg: "bg-amber-500/30 text-amber-300 border-amber-500/65 shadow-[0_0_8px_rgba(245,158,11,0.3)]",
-                              border: "border-amber-500/20",
-                              dotColor: "bg-amber-400",
-                            },
-                            critical: {
-                              bg: "bg-rose-500/10 hover:bg-rose-500/20",
-                              activeBg: "bg-rose-500/30 text-rose-300 border-rose-500/65 shadow-[0_0_8px_rgba(244,63,94,0.3)]",
-                              border: "border-rose-500/20",
-                              dotColor: "bg-rose-400",
-                            },
-                          }[p];
+                      {/* Custom detailed description / notes field */}
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-mono text-slate-400 uppercase">{lang === 'bn' ? 'বিস্তারিত নোট / ডেসক্রিপশন:' : 'Detailed Description / Notes:'}</label>
+                        <textarea
+                          name="notes"
+                          rows={3}
+                          value={quickNotes}
+                          onChange={(e) => setQuickNotes(e.target.value)}
+                          placeholder={lang === 'bn' ? 'এখানে অতিরিক্ত তথ্য বা কাজের বিস্তারিত লিখুন...' : 'Write auxiliary context or criteria for this task...'}
+                          className="w-full bg-slate-900 border border-slate-800 focus:border-cyan-500/50 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-600 focus:outline-none font-sans resize-none"
+                        />
+                        <div className="flex justify-end pt-1">
+                          <button
+                            type="button"
+                            onClick={handleAutoCategorize}
+                            disabled={isCategorizing || !quickTitle.trim()}
+                            className="flex items-center gap-1.5 px-2.5 py-1 bg-cyan-950/40 hover:bg-cyan-500/15 border border-cyan-500/30 rounded-md text-[9px] font-mono font-bold text-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                          >
+                            <Sparkles className={`w-3 h-3 ${isCategorizing ? "animate-pulse" : ""}`} />
+                            <span>{isCategorizing ? (lang === 'bn' ? "শ্রেণীবদ্ধ করা হচ্ছে..." : "CATEGORIZING...") : (lang === 'bn' ? "এআই অটো-ক্যাটাগরি" : "AI AUTO-CATEGORIZE")}</span>
+                          </button>
+                        </div>
+                      </div>
 
-                          return (
-                            <button
-                              key={p}
-                              type="button"
-                              onClick={() => setNewTaskPriority(p)}
-                              className={`flex flex-col items-center justify-center p-2 rounded-lg border text-[10px] font-mono font-bold uppercase transition-all duration-250 cursor-pointer ${
-                                isSelected ? styles.activeBg : `${styles.bg} ${styles.border} text-slate-400`
-                              }`}
-                            >
-                              <span className={`w-2 h-2 rounded-full mb-1 ${styles.dotColor}`} />
-                              <span>{p}</span>
-                            </button>
-                          );
-                        })}
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-mono text-slate-400 uppercase">{lang === 'bn' ? 'রিমাইন্ডার সময়:' : 'Reminder Time:'}</label>
+                        <input
+                          name="remindAt"
+                          type="datetime-local"
+                          className="w-full bg-slate-900 border border-slate-800 focus:border-cyan-500/50 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="block text-[10px] font-mono text-slate-400 uppercase">{lang === 'bn' ? 'অগ্রাধিকার (Priority):' : 'Priority Level:'}</label>
+                        <input type="hidden" name="priority" value={newTaskPriority} />
+                        <div className="grid grid-cols-4 gap-2">
+                          {(["low", "medium", "high", "critical"] as const).map((p) => {
+                            const isSelected = newTaskPriority === p;
+                            const styles = {
+                              low: {
+                                bg: "bg-slate-500/10 hover:bg-slate-500/20",
+                                activeBg: "bg-slate-500/30 text-slate-300 border-slate-500/65 shadow-[0_0_8px_rgba(100,116,139,0.3)]",
+                                border: "border-slate-600/20",
+                                dotColor: "bg-slate-400",
+                              },
+                              medium: {
+                                bg: "bg-cyan-500/10 hover:bg-cyan-500/20",
+                                activeBg: "bg-cyan-500/30 text-cyan-350 border-cyan-500/65 shadow-[0_0_8px_rgba(6,182,212,0.3)]",
+                                border: "border-cyan-500/20",
+                                dotColor: "bg-cyan-400",
+                              },
+                              high: {
+                                bg: "bg-amber-500/10 hover:bg-amber-500/20",
+                                activeBg: "bg-amber-500/30 text-amber-300 border-amber-500/65 shadow-[0_0_8px_rgba(245,158,11,0.3)]",
+                                border: "border-amber-500/20",
+                                dotColor: "bg-amber-400",
+                              },
+                              critical: {
+                                bg: "bg-rose-500/10 hover:bg-rose-500/20",
+                                activeBg: "bg-rose-500/30 text-rose-300 border-rose-500/65 shadow-[0_0_8px_rgba(244,63,94,0.3)]",
+                                border: "border-rose-500/20",
+                                dotColor: "bg-rose-400",
+                              },
+                            }[p];
+
+                            return (
+                              <button
+                                key={p}
+                                type="button"
+                                onClick={() => setNewTaskPriority(p)}
+                                className={`flex flex-col items-center justify-center p-2 rounded-lg border text-[10px] font-mono font-bold uppercase transition-all duration-250 cursor-pointer ${
+                                  isSelected ? styles.activeBg : `${styles.bg} ${styles.border} text-slate-400`
+                                }`}
+                              >
+                                <span className={`w-2 h-2 rounded-full mb-1 ${styles.dotColor}`} />
+                                <span>{p}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setQuickTitle('');
+                            setQuickCategory('');
+                            setQuickTags('');
+                            setQuickNotes('');
+                            setIsDashboardAddTaskOpen(false);
+                          }}
+                          className="flex-1 py-2 bg-slate-900 hover:bg-slate-850 border border-slate-800 rounded-lg text-xs font-mono font-bold text-slate-400 transition-all animate-none"
+                        >
+                          {lang === 'bn' ? 'বাতিল' : 'CANCEL'}
+                        </button>
+                        <button
+                          type="submit"
+                          className="flex-1 py-2 bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/35 text-cyan-300 rounded-lg text-xs font-mono font-bold transition-all animate-none"
+                        >
+                          {lang === 'bn' ? 'টাস্ক যোগ করুন' : 'INJECT TASK'}
+                        </button>
+                      </div>
+                    </form>
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+              {taskToDelete && (
+                <div data-neora-modal="open" className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onClick={() => setTaskToDelete(null)}
+                    className="absolute inset-0 bg-black/65"
+                  />
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95, y: 15 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: 15 }}
+                    transition={{ type: "spring", duration: 0.4 }}
+                    className="relative w-full max-w-sm bg-slate-950/90 border border-rose-500/40 rounded-xl shadow-[0_0_30px_rgba(244,63,94,0.18)] p-5 z-10 text-slate-100 flex flex-col gap-4"
+                  >
+                    <div className="flex items-center gap-2.5 text-rose-400">
+                      <div className="p-1.5 bg-rose-500/10 border border-rose-500/30 rounded-lg animate-pulse">
+                        <AlertTriangle className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-mono font-bold uppercase tracking-wider">
+                          {lang === 'bn' ? 'গুরুত্বপূর্ণ সতর্কতা!' : 'CRITICAL TASK PROTECTION'}
+                        </h4>
+                        <p className="text-[10px] text-rose-400/80 font-mono">
+                          {lang === 'bn' ? 'অনাকাঙ্ক্ষিত ক্ষতি এড়াতে নিশ্চিত হোন' : 'Accidental loss prevention active'}
+                        </p>
                       </div>
                     </div>
 
-                    <div className="flex gap-2 pt-2">
+                    <div className="bg-rose-950/10 border border-rose-500/15 rounded-lg p-3 space-y-1.5">
+                      <div className="text-[10px] text-slate-400 font-mono uppercase">
+                        {lang === 'bn' ? 'টাস্ক শিরোনাম:' : 'Task Objective:'}
+                      </div>
+                      <div className="text-xs font-sans font-semibold text-rose-200 line-clamp-2">
+                        {taskToDelete.title}
+                      </div>
+                      {taskToDelete.category && (
+                        <div className="flex gap-1.5 pt-1">
+                          <span className="text-[8px] font-mono font-bold text-rose-400 bg-rose-950/40 px-1.5 py-0.5 rounded border border-rose-500/20 uppercase tracking-wider">
+                            {taskToDelete.category}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    <p className="text-[10px] text-slate-400 leading-relaxed font-sans">
+                      {lang === 'bn' 
+                        ? 'আপনি কি নিশ্চিতভাবে এই সর্বোচ্চ অগ্রাধিকারপ্রাপ্ত (Critical) টাস্কটি মুছে ফেলতে চান? এটি পুনরায় ফিরিয়ে আনা যাবে না।'
+                        : 'Are you absolutely sure you want to delete this CRITICAL priority task? High-priority actions cannot be undone easily once purged.'}
+                    </p>
+
+                    <div className="flex gap-2 pt-1">
                       <button
                         type="button"
-                        onClick={() => setIsDashboardAddTaskOpen(false)}
-                        className="flex-1 py-2 bg-slate-900 hover:bg-slate-850 border border-slate-800 rounded-lg text-xs font-mono font-bold text-slate-400 transition-all animate-none"
+                        onClick={() => setTaskToDelete(null)}
+                        className="flex-1 py-1.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 rounded-lg text-xs font-mono font-bold text-slate-400 transition-all"
                       >
-                        {lang === 'bn' ? 'বাতিল' : 'CANCEL'}
+                        {lang === 'bn' ? 'বাতিল করুন' : 'ABORT'}
                       </button>
                       <button
-                        type="submit"
-                        className="flex-1 py-2 bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/35 text-cyan-300 rounded-lg text-xs font-mono font-bold transition-all animate-none"
+                        type="button"
+                        onClick={() => handleDeleteTask(taskToDelete.id, true)}
+                        className="flex-1 py-1.5 bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/35 text-rose-400 rounded-lg text-xs font-mono font-bold transition-all shadow-[0_0_12px_rgba(244,63,94,0.1)]"
                       >
-                        {lang === 'bn' ? 'টাস্ক যোগ করুন' : 'INJECT TASK'}
+                        {lang === 'bn' ? 'মুছে ফেলুন' : 'CONFIRM PURGE'}
                       </button>
                     </div>
-                  </form>
-                </motion.div>
-              </div>
-            )}
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
           </Suspense>
         </div>
       </AppShell>

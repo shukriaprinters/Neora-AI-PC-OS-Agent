@@ -193,6 +193,7 @@ export async function neoraChatWithFallback(
       const requestPayload: any = {
         messages: payload.messages,
         lang: payload.lang,
+        personalityMode: typeof window !== 'undefined' ? (localStorage.getItem('neora_personality_mode') || 'companion') : 'companion',
       };
 
       if (model === 'gemini') {

@@ -27,6 +27,7 @@ export interface Task {
   archived?: boolean;
   reminderAt?: string;
   category?: string;
+  createdAt?: string;
 }
 
 export interface Reminder {

@@ -1179,7 +1179,7 @@ const genCategories = [
 const generatedSkills: AISkill[] = [];
 
 genCategories.forEach((cat) => {
-  for (let i = 0; i < 150; i++) {
+  for (let i = 0; i < 1500; i++) {
     const adj = cat.adjs[i % cat.adjs.length];
     const noun = cat.nouns[(Math.floor(i / cat.adjs.length) + 1) % cat.nouns.length];
     const suf = cat.sufs[(Math.floor(i / (cat.adjs.length * cat.nouns.length)) + 2) % cat.sufs.length];

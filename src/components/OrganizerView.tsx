@@ -14,7 +14,7 @@ interface OrganizerViewProps {
   reminders: Reminder[];
   notes: Note[];
   memories: Memory[];
-  onAddTask: (title: string, priority: 'low' | 'medium' | 'high' | 'critical', tags?: string[], reminderAt?: string, category?: string) => void;
+  onAddTask: (title: string, priority: 'low' | 'medium' | 'high' | 'critical', tags?: string[], reminderAt?: string, category?: string, notes?: string) => void;
   onAddReminder: (title: string, remindAt: string, repeat: 'none' | 'daily' | 'weekly' | 'monthly') => void;
   onAddNote: (title: string, content: string) => void;
   onAddMemory: (key: string, value: string, category: 'personal' | 'work' | 'preference' | 'skill', importance: number) => void;
@@ -24,6 +24,8 @@ interface OrganizerViewProps {
   onDeleteReminder: (id: string) => void;
   onDeleteNote: (id: string) => void;
   onDeleteMemory: (id: string) => void;
+  onUpdateTask?: (id: string, updates: Partial<Task>) => void;
+  onUpdateTaskOrder?: (tasks: Task[]) => void;
 }
 
 export function OrganizerView({
@@ -41,7 +43,9 @@ export function OrganizerView({
   onToggleReminder,
   onDeleteReminder,
   onDeleteNote,
-  onDeleteMemory
+  onDeleteMemory,
+  onUpdateTask,
+  onUpdateTaskOrder
 }: OrganizerViewProps) {
   const t = TRANSLATIONS[lang];
   const [activeSubTab, setActiveSubTab] = useState<'briefing' | 'tasks' | 'reminders' | 'notes' | 'memories'>('briefing');
@@ -64,18 +68,83 @@ export function OrganizerView({
 
   // Search & Sorting state controllers
   const [organizerSearch, setOrganizerSearch] = useState('');
-  const [taskSort, setTaskSort] = useState<'default' | 'priority' | 'dueDate'>('default');
+  const [taskSort, setTaskSort] = useState<'default' | 'priority' | 'dueDate' | 'createdDate' | 'title'>('default');
 
   // Confirmation Overlay state
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; type: 'task' | 'reminder' | 'note' | 'memory'; title: string } | null>(null);
 
+  // Custom task context options & edit mode states
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; taskId: string } | null>(null);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editTitleVal, setEditTitleVal] = useState('');
+
   // Tagging system states
   const [selectedTagsForNewTask, setSelectedTagsForNewTask] = useState<string[]>([]);
+  const [quickTagsInput, setQuickTagsInput] = useState('');
+  const [taskNotesInput, setTaskNotesInput] = useState('');
   const [activeTagFilter, setActiveTagFilter] = useState<string>('all');
   const [customTagInput, setCustomTagInput] = useState('');
+  const [selectedCompletedHistoryIds, setSelectedCompletedHistoryIds] = useState<string[]>([]);
+  const [expandedTaskIds, setExpandedTaskIds] = useState<string[]>([]);
+
+  const playTaskSound = (type: 'ping' | 'delete' | 'success') => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      
+      if (type === 'ping') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        gain.gain.setValueAtTime(0.06, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.15);
+      } else if (type === 'delete') {
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(440, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(110, ctx.currentTime + 0.2);
+        gain.gain.setValueAtTime(0.06, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.2);
+      } else if (type === 'success') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(523.25, ctx.currentTime);
+        osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.08);
+        osc.frequency.setValueAtTime(783.99, ctx.currentTime + 0.16);
+        gain.gain.setValueAtTime(0.06, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.35);
+      }
+    } catch (e) {
+      console.warn("AudioContext playback blocked or failed:", e);
+    }
+  };
+
+  // Drag and drop ordering states
+  const [dragReorderedIds, setDragReorderedIds] = useState<string[]>([]);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+
+  // Bulk Selection States
+  const [checkedTaskIds, setCheckedTaskIds] = useState<string[]>([]);
+
+  // Unique tags currently in use across the task list
+  const uniqueTagsInUse = useMemo(() => {
+    const activeTasks = tasks.filter(tk => !tk.completed);
+    const tags = activeTasks.flatMap(tk => tk.tags || []);
+    return Array.from(new Set(tags));
+  }, [tasks]);
 
   const allActiveTags = useMemo(() => {
-    const defaultTags = ['Dev', 'Admin', 'Research', 'Personal', 'Design'];
+    const defaultTags = ['Dev', 'Admin', 'Research', 'Personal', 'Design', 'Urgent', 'Work'];
     const taskTags = tasks.flatMap(tk => tk.tags || []);
     const union = new Set([...defaultTags, ...taskTags]);
     return Array.from(union);
@@ -85,12 +154,106 @@ export function OrganizerView({
     'Dev': { bg: 'bg-indigo-500/10', text: 'text-indigo-400', border: 'border-indigo-500/20' },
     'Admin': { bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/20' },
     'Research': { bg: 'bg-pink-500/10', text: 'text-pink-400', border: 'border-pink-500/20' },
-    'Personal': { bg: 'bg-rose-500/10', text: 'text-rose-400', border: 'border-rose-500/20' },
+    'Personal': { bg: 'bg-teal-500/10', text: 'text-teal-400', border: 'border-teal-500/20' },
     'Design': { bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'border-amber-500/20' },
+    'Urgent': { bg: 'bg-rose-500/10 text-rose-450 border-rose-500/35 shadow-[0_0_8px_rgba(239,68,68,0.15)] font-bold', text: 'text-rose-400', border: 'border-rose-500/20' },
+    'Work': { bg: 'bg-cyan-500/10', text: 'text-cyan-400', border: 'border-cyan-500/20' },
   };
 
   const getTagColors = (tag: string) => {
     return TAG_COLORS[tag] || { bg: 'bg-cyan-500/10', text: 'text-cyan-400', border: 'border-cyan-500/20' };
+  };
+
+  // --- CUSTOM FILTERING AND SORTING ENGINE WITH DRAG & DROP SUPPORT ---
+  const activeTasksListFiltered = useMemo(() => {
+    return tasks.filter(tk => {
+      const matchesSearch = tk.title.toLowerCase().includes(organizerSearch.toLowerCase());
+      const matchesTag = activeTagFilter === 'all' || (tk.tags && tk.tags.includes(activeTagFilter));
+      return !tk.completed && matchesSearch && matchesTag;
+    });
+  }, [tasks, organizerSearch, activeTagFilter]);
+
+  const sortedActiveTasks = useMemo(() => {
+    const list = [...activeTasksListFiltered];
+    if (taskSort === 'priority') {
+      const orderMap = { critical: 4, high: 3, medium: 2, low: 1 };
+      return list.sort((a, b) => (orderMap[b.priority] || 0) - (orderMap[a.priority] || 0));
+    }
+    if (taskSort === 'dueDate') {
+      return list.sort((a, b) => (a.dueAt || '').localeCompare(b.dueAt || ''));
+    }
+    if (taskSort === 'createdDate') {
+      return list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    }
+    if (taskSort === 'title') {
+      return list.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+    }
+    
+    // Default order + custom drag reordering!
+    if (dragReorderedIds.length > 0) {
+      return list.sort((a, b) => {
+        const idxA = dragReorderedIds.indexOf(a.id);
+        const idxB = dragReorderedIds.indexOf(b.id);
+        if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+        if (idxA !== -1) return -1;
+        if (idxB !== -1) return 1;
+        return 0;
+      });
+    }
+    return list;
+  }, [activeTasksListFiltered, taskSort, dragReorderedIds]);
+
+  const allFilteredTaskIds = useMemo(() => {
+    return sortedActiveTasks.map(t => t.id);
+  }, [sortedActiveTasks]);
+
+  const isAllSelected = allFilteredTaskIds.length > 0 && allFilteredTaskIds.every(id => checkedTaskIds.includes(id));
+
+  const handleSelectAllToggle = () => {
+    if (isAllSelected) {
+      setCheckedTaskIds([]);
+    } else {
+      setCheckedTaskIds(allFilteredTaskIds);
+    }
+  };
+
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    setDraggingId(id);
+    e.dataTransfer.setData('text/plain', id);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    const sourceId = e.dataTransfer.getData('text/plain') || draggingId;
+    if (!sourceId || sourceId === targetId) return;
+
+    const currentOrderIds = sortedActiveTasks.map(t => t.id);
+    const sourceIdx = currentOrderIds.indexOf(sourceId);
+    const targetIdx = currentOrderIds.indexOf(targetId);
+    if (sourceIdx !== -1 && targetIdx !== -1) {
+      const newOrder = [...currentOrderIds];
+      newOrder.splice(sourceIdx, 1);
+      newOrder.splice(targetIdx, 0, sourceId);
+      setDragReorderedIds(newOrder);
+
+      const reorderedTasks = [...tasks];
+      const origSourceIdx = reorderedTasks.findIndex(t => t.id === sourceId);
+      if (origSourceIdx !== -1) {
+        const [movedTask] = reorderedTasks.splice(origSourceIdx, 1);
+        const origTargetIdx = reorderedTasks.findIndex(t => t.id === targetId);
+        if (origTargetIdx !== -1) {
+          reorderedTasks.splice(origTargetIdx, 0, movedTask);
+          if (onUpdateTaskOrder) {
+            onUpdateTaskOrder(reorderedTasks);
+          }
+        }
+      }
+    }
+    setDraggingId(null);
   };
 
   // --- 7-DAY TASK COMPLETION RATE ANALYTICS DATA FOR RECHARTS ---
@@ -346,9 +509,16 @@ export function OrganizerView({
                   className="flex-1 bg-slate-950 border border-slate-800 rounded py-2 px-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 font-sans"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && taskVal.trim()) {
-                      onAddTask(taskVal.trim(), taskPriority, selectedTagsForNewTask);
+                      const parsedQuickTags = quickTagsInput
+                        .split(',')
+                        .map(t => t.trim())
+                        .filter(Boolean);
+                      const finalTags = Array.from(new Set([...selectedTagsForNewTask, ...parsedQuickTags]));
+                      onAddTask(taskVal.trim(), taskPriority, finalTags, undefined, undefined, taskNotesInput.trim());
                       setTaskVal('');
                       setSelectedTagsForNewTask([]);
+                      setQuickTagsInput('');
+                      setTaskNotesInput('');
                     }
                   }}
                 />
@@ -365,9 +535,16 @@ export function OrganizerView({
                 <button
                   onClick={() => {
                     if (taskVal.trim()) {
-                      onAddTask(taskVal.trim(), taskPriority, selectedTagsForNewTask);
+                      const parsedQuickTags = quickTagsInput
+                        .split(',')
+                        .map(t => t.trim())
+                        .filter(Boolean);
+                      const finalTags = Array.from(new Set([...selectedTagsForNewTask, ...parsedQuickTags]));
+                      onAddTask(taskVal.trim(), taskPriority, finalTags, undefined, undefined, taskNotesInput.trim());
                       setTaskVal('');
                       setSelectedTagsForNewTask([]);
+                      setQuickTagsInput('');
+                      setTaskNotesInput('');
                     }
                   }}
                   className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 p-2 rounded shrink-0 cursor-pointer font-bold transition-colors"
@@ -380,7 +557,7 @@ export function OrganizerView({
               <div className="space-y-1.5 mt-1">
                 <div className="text-[10px] uppercase font-mono text-slate-400 font-bold">Select Categories / Tags:</div>
                 <div className="flex flex-wrap gap-1.5 items-center">
-                  {['Dev', 'Admin', 'Research', 'Personal', 'Design'].map(tg => {
+                  {['Dev', 'Admin', 'Research', 'Personal', 'Design', 'Urgent', 'Work'].map(tg => {
                     const isSelected = selectedTagsForNewTask.includes(tg);
                     const colors = getTagColors(tg);
                     return (
@@ -438,38 +615,79 @@ export function OrganizerView({
                   </div>
                 </div>
               </div>
+
+              {/* Quick Tag Comma-Separated Input Field */}
+              <div className="space-y-1 mt-2">
+                <div className="text-[10px] uppercase font-mono text-slate-400 font-bold">Quick Tag (comma-separated):</div>
+                <input
+                  type="text"
+                  placeholder="e.g., frontend, bug, critical-path"
+                  value={quickTagsInput}
+                  onChange={(e) => setQuickTagsInput(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded py-1.5 px-3 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500/50 font-mono"
+                />
+              </div>
+
+              {/* Optional task notes */}
+              <div className="space-y-1 mt-2">
+                <div className="text-[10px] uppercase font-mono text-slate-400 font-bold">Task Notes (Optional):</div>
+                <textarea
+                  placeholder="Enter details, description or links for this task..."
+                  value={taskNotesInput}
+                  onChange={(e) => setTaskNotesInput(e.target.value)}
+                  rows={2}
+                  className="w-full bg-slate-950 border border-slate-800 rounded py-1.5 px-3 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500/50 font-sans resize-none"
+                />
+              </div>
             </div>
 
             {/* Tag Filter List Toolbar */}
-            <div className="bg-slate-900 border border-slate-850 p-2.5 rounded-lg flex flex-wrap gap-1.5 items-center shadow-sm">
-              <span className="text-[10px] font-mono font-bold text-slate-400 uppercase mr-1">Filter Tag:</span>
-              <button
-                onClick={() => setActiveTagFilter('all')}
-                className={`text-[9px] font-mono px-2 py-0.5 rounded cursor-pointer transition-all ${
-                  activeTagFilter === 'all'
-                    ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-bold'
-                    : 'bg-slate-950 text-slate-500 border border-slate-900 hover:text-slate-300'
-                }`}
-              >
-                [ALL]
-              </button>
-              {allActiveTags.map(tg => {
-                const isSelected = activeTagFilter === tg;
-                const colors = getTagColors(tg);
-                return (
-                  <button
-                    key={tg}
-                    onClick={() => setActiveTagFilter(tg)}
-                    className={`text-[9px] font-mono px-2 py-0.5 rounded border cursor-pointer transition-all ${
-                      isSelected 
-                        ? `${colors.bg} ${colors.text} ${colors.border} ring-1 ring-cyan-500/20 font-bold`
-                        : 'bg-slate-950 text-slate-500 border-slate-900 hover:text-slate-350'
-                    }`}
-                  >
-                    #{tg}
-                  </button>
-                );
-              })}
+            <div className="bg-slate-900 border border-slate-850 p-2.5 rounded-lg flex flex-wrap gap-1.5 items-center shadow-sm w-full">
+              <div className="flex flex-wrap gap-1.5 items-center flex-1">
+                <span className="text-[10px] font-mono font-bold text-slate-400 uppercase mr-1">Filter Tag:</span>
+                <button
+                  onClick={() => setActiveTagFilter('all')}
+                  className={`text-[9px] font-mono px-2 py-0.5 rounded cursor-pointer transition-all ${
+                    activeTagFilter === 'all'
+                      ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-bold'
+                      : 'bg-slate-950 text-slate-500 border border-slate-900 hover:text-slate-300'
+                  }`}
+                >
+                  [ALL]
+                </button>
+                {allActiveTags.map(tg => {
+                  const isSelected = activeTagFilter === tg;
+                  const colors = getTagColors(tg);
+                  return (
+                    <button
+                      key={tg}
+                      onClick={() => setActiveTagFilter(tg)}
+                      className={`text-[9px] font-mono px-2 py-0.5 rounded border cursor-pointer transition-all ${
+                        isSelected 
+                          ? `${colors.bg} ${colors.text} ${colors.border} ring-1 ring-cyan-500/20 font-bold`
+                          : 'bg-slate-950 text-slate-500 border-slate-900 hover:text-slate-350'
+                      }`}
+                    >
+                      #{tg}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Dropdown Menu displaying unique tags currently in use */}
+              <div className="flex items-center gap-1 shrink-0 ml-auto border-l border-slate-800 pl-2.5">
+                <span className="text-[9px] font-mono text-slate-500 uppercase">In Use:</span>
+                <select
+                  value={activeTagFilter}
+                  onChange={(e) => setActiveTagFilter(e.target.value)}
+                  className="bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-[9px] font-mono text-cyan-400 focus:outline-none cursor-pointer"
+                >
+                  <option value="all">-- All Tags --</option>
+                  {uniqueTagsInUse.map(tg => (
+                    <option key={tg} value={tg}>#{tg}</option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             {/* Search and Sort Toolbar */}
@@ -497,49 +715,165 @@ export function OrganizerView({
                   <option value="default">{lang === 'bn' ? 'স্বাভাবিক ক্রম' : 'Default'}</option>
                   <option value="priority">{lang === 'bn' ? 'অগ্রাধিকার ক্রম (উচ্চতম)' : 'By Priority'}</option>
                   <option value="dueDate">{lang === 'bn' ? 'তারিখের ক্রম' : 'By Due Date'}</option>
+                  <option value="createdDate">{lang === 'bn' ? 'তৈরির তারিখ' : 'By Created Date'}</option>
+                  <option value="title">{lang === 'bn' ? 'শিরোনাম অনুসারে' : 'By Title'}</option>
                 </select>
               </div>
             </div>
 
+            {/* Bulk Actions Toolbar */}
+            {checkedTaskIds.length > 0 && (
+              <div className="bg-slate-900 border border-indigo-500/30 p-3 rounded-lg flex items-center justify-between shadow-md select-none">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono bg-indigo-500/15 text-indigo-400 border border-indigo-500/20 px-2 py-0.5 rounded font-bold">
+                    {checkedTaskIds.length} SELECTED
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleSelectAllToggle}
+                    className="text-[10px] font-mono text-cyan-400 hover:text-cyan-300 font-bold ml-1 cursor-pointer"
+                  >
+                    {isAllSelected ? "Deselect All" : "Select All"}
+                  </button>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playTaskSound('success');
+                      checkedTaskIds.forEach(id => {
+                        onToggleTask(id);
+                      });
+                      setCheckedTaskIds([]);
+                    }}
+                    className="px-2.5 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 rounded text-[9.5px] font-mono font-bold uppercase cursor-pointer transition-colors"
+                  >
+                    Bulk Complete
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playTaskSound('delete');
+                      checkedTaskIds.forEach(id => {
+                        onDeleteTask(id);
+                      });
+                      setCheckedTaskIds([]);
+                    }}
+                    className="px-2.5 py-1 bg-rose-500/10 text-rose-400 border border-rose-500/20 hover:bg-rose-500/20 rounded text-[9.5px] font-mono font-bold uppercase cursor-pointer transition-colors"
+                  >
+                    Bulk Delete
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Active Task Lists stream (excluding completed ones which show up in history logs) */}
             <div className="space-y-2">
-              {tasks.filter(t => !t.completed && t.title.toLowerCase().includes(organizerSearch.toLowerCase()) && (activeTagFilter === 'all' || (t.tags && t.tags.includes(activeTagFilter)))).length > 0 ? (
-                [...tasks]
-                  .filter(tk => !tk.completed && tk.title.toLowerCase().includes(organizerSearch.toLowerCase()) && (activeTagFilter === 'all' || (tk.tags && tk.tags.includes(activeTagFilter))))
-                  .sort((a, b) => {
-                    const orderMap = { critical: 4, high: 3, medium: 2, low: 1 };
-                    if (taskSort === 'priority') {
-                      return (orderMap[b.priority] || 0) - (orderMap[a.priority] || 0);
-                    }
-                    if (taskSort === 'dueDate') {
-                      return (a.dueAt || '').localeCompare(b.dueAt || '');
-                    }
-                    return 0; // default order
-                  })
-                  .map(tk => (
-                    <motion.div
-                      layout
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, x: -10 }}
-                      key={tk.id}
-                      className="p-3 bg-slate-900 border border-slate-850 rounded-lg flex items-center justify-between gap-3 hover:border-slate-800 transition-colors"
-                    >
+              {sortedActiveTasks.length > 0 ? (
+                sortedActiveTasks.map(tk => (
+                  <motion.div
+                    layout
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, x: -10 }}
+                    key={tk.id}
+                    draggable
+                    onDragStart={(e: any) => handleDragStart(e, tk.id)}
+                    onDragOver={(e: any) => handleDragOver(e)}
+                    onDrop={(e: any) => handleDrop(e, tk.id)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setContextMenu({
+                        x: e.clientX,
+                        y: e.clientY,
+                        taskId: tk.id
+                      });
+                    }}
+                    className={`p-3 rounded-lg flex flex-col gap-1 hover:border-slate-800 transition-all cursor-grab active:cursor-grabbing ${
+                      tk.priority === 'critical'
+                        ? 'bg-slate-900 border border-red-500/50 shadow-[0_0_12px_rgba(239,68,68,0.25)] animate-pulse'
+                        : 'bg-slate-900 border border-slate-855'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
                       <div className="flex flex-col gap-1 flex-1">
                         <div className="flex items-center gap-2.5">
+                          {/* Bulk Select Checkbox */}
+                          <input
+                            type="checkbox"
+                            checked={checkedTaskIds.includes(tk.id)}
+                            onChange={() => {
+                              setCheckedTaskIds(prev =>
+                                prev.includes(tk.id) ? prev.filter(x => x !== tk.id) : [...prev, tk.id]
+                              );
+                            }}
+                            className="accent-indigo-500 rounded cursor-pointer scale-90 border-slate-800 shrink-0"
+                            title="Select for bulk action"
+                          />
+
                           <input
                             type="checkbox"
                             checked={tk.completed}
-                            onChange={() => onToggleTask(tk.id)}
-                            className="accent-cyan-500 rounded cursor-pointer scale-105"
+                            onChange={() => {
+                              if (!tk.completed) {
+                                playTaskSound('success');
+                              } else {
+                                playTaskSound('ping');
+                              }
+                              onToggleTask(tk.id);
+                            }}
+                            className="accent-cyan-500 rounded cursor-pointer scale-105 shrink-0"
                           />
-                          <span className={`text-xs ${tk.completed ? 'line-through text-slate-500' : 'text-slate-200'}`}>
-                            {tk.title}
-                          </span>
+                          {editingTaskId === tk.id ? (
+                            <input
+                              type="text"
+                              value={editTitleVal}
+                              onChange={(e) => setEditTitleVal(e.target.value)}
+                              onBlur={() => {
+                                if (editTitleVal.trim() && onUpdateTask) {
+                                  onUpdateTask(tk.id, { title: editTitleVal.trim() });
+                                }
+                                setEditingTaskId(null);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    if (editTitleVal.trim() && onUpdateTask) {
+                                      onUpdateTask(tk.id, { title: editTitleVal.trim() });
+                                    }
+                                    setEditingTaskId(null);
+                                } else if (e.key === 'Escape') {
+                                  setEditingTaskId(null);
+                                }
+                              }}
+                              className="bg-slate-950 border border-cyan-500 text-xs text-white px-2 py-0.5 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500 font-sans"
+                              autoFocus
+                            />
+                          ) : (
+                            <div className="flex items-center gap-1.5 flex-1">
+                              <span 
+                                className={`text-xs ${tk.completed ? 'line-through text-slate-500' : 'text-slate-200'} cursor-pointer hover:text-cyan-400 select-none flex-1`}
+                                onClick={() => {
+                                  setExpandedTaskIds(prev =>
+                                    prev.includes(tk.id) ? prev.filter(x => x !== tk.id) : [...prev, tk.id]
+                                  );
+                                }}
+                                onDoubleClick={() => {
+                                  setEditingTaskId(tk.id);
+                                  setEditTitleVal(tk.title);
+                                }}
+                                title="Click to expand details, double-click to edit title"
+                              >
+                                {tk.title}
+                                <span className="text-[7.5px] text-slate-500 shrink-0 ml-1.5 font-mono">
+                                  {expandedTaskIds.includes(tk.id) ? "▲" : "▼"}
+                                </span>
+                              </span>
+                            </div>
+                          )}
                         </div>
                         {/* Display task's categories/tags */}
                         {tk.tags && tk.tags.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-1 pl-6">
+                          <div className="flex flex-wrap gap-1 mt-1 pl-12">
                             {tk.tags.map(tg => {
                               const colors = getTagColors(tg);
                               return (
@@ -556,21 +890,45 @@ export function OrganizerView({
                       </div>
                       <div className="flex items-center gap-2 font-mono shrink-0">
                         <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase ${
-                          tk.priority === 'critical' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
+                          tk.priority === 'critical' ? 'bg-red-500/10 text-red-400 border border-red-500/20 animate-pulse' :
                           tk.priority === 'high' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
                           'bg-slate-955 text-slate-400 border border-slate-900'
                         }`}>
                           {tk.priority}
                         </span>
                         <button
-                          onClick={() => setDeleteConfirm({ id: tk.id, type: 'task', title: tk.title })}
+                          onClick={() => {
+                            playTaskSound('delete');
+                            setDeleteConfirm({ id: tk.id, type: 'task', title: tk.title });
+                          }}
                           className="p-1 text-slate-500 hover:text-rose-450 rounded transition-colors cursor-pointer"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
-                    </motion.div>
-                  ))
+                    </div>
+
+                    {/* Animated expandable task notes */}
+                    <AnimatePresence initial={false}>
+                      {expandedTaskIds.includes(tk.id) && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.18, ease: "easeInOut" }}
+                          className="overflow-hidden"
+                        >
+                          <div 
+                            className="pl-12 pr-4 py-1.5 mt-1.5 text-[10px] text-slate-350 bg-slate-950/45 border-l-2 border-cyan-500/30 rounded font-sans whitespace-pre-wrap select-text cursor-text"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {tk.notes || (lang === 'bn' ? 'কোনো বিবরণ বা নোট নেই।' : 'No additional description notes.')}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </motion.div>
+                ))
               ) : (
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
@@ -597,6 +955,76 @@ export function OrganizerView({
                 </span>
               </div>
 
+              {/* Batch selection and CSV Export controls */}
+              {(() => {
+                const completedTasks = tasks.filter(tk => tk.completed && (activeTagFilter === 'all' || (tk.tags && tk.tags.includes(activeTagFilter))));
+                
+                const handleCSVExport = () => {
+                  if (selectedCompletedHistoryIds.length === 0) return;
+                  const selectedTasks = tasks.filter(tk => selectedCompletedHistoryIds.includes(tk.id));
+                  const headers = ['ID', 'Task Title', 'Priority', 'Category', 'Due Date', 'Completed At', 'Tags', 'Notes'];
+                  const csvRows = [
+                    headers,
+                    ...selectedTasks.map(t => [
+                      t.id,
+                      t.title.replace(/"/g, '""'),
+                      t.priority,
+                      t.category || '',
+                      t.dueAt || '',
+                      t.completedAt || '',
+                      (t.tags || []).join('; '),
+                      (t.notes || '').replace(/"/g, '""')
+                    ])
+                  ];
+                  
+                  const csvContent = "data:text/csv;charset=utf-8," 
+                    + csvRows.map(e => e.map(val => `"${val}"`).join(",")).join("\n");
+                  
+                  const encodedUri = encodeURI(csvContent);
+                  const link = document.createElement("a");
+                  link.setAttribute("href", encodedUri);
+                  link.setAttribute("download", `neora_completed_tasks_${new Date().toISOString().substring(0, 10)}.csv`);
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                };
+
+                if (completedTasks.length === 0) return null;
+
+                return (
+                  <div className="flex items-center justify-between bg-slate-950/45 p-2 rounded-lg border border-slate-850/60 gap-2 flex-wrap">
+                    <label className="flex items-center gap-2 cursor-pointer select-none text-[10px] text-slate-400 font-mono">
+                      <input
+                        type="checkbox"
+                        checked={completedTasks.length > 0 && completedTasks.every(tk => selectedCompletedHistoryIds.includes(tk.id))}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedCompletedHistoryIds(completedTasks.map(tk => tk.id));
+                          } else {
+                            setSelectedCompletedHistoryIds([]);
+                          }
+                        }}
+                        className="w-3.5 h-3.5 rounded border border-slate-800 bg-slate-900 text-emerald-500 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                      />
+                      <span>{lang === 'bn' ? 'সব নির্বাচন' : 'SELECT ALL'}</span>
+                    </label>
+                    
+                    <button
+                      onClick={handleCSVExport}
+                      disabled={selectedCompletedHistoryIds.length === 0}
+                      className={`px-3 py-1 rounded text-[9px] font-mono font-bold uppercase transition-all flex items-center gap-1.5 border ${
+                        selectedCompletedHistoryIds.length > 0
+                          ? "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/30 cursor-pointer shadow-[0_0_8px_rgba(16,185,129,0.15)]"
+                          : "bg-slate-900/40 text-slate-600 border-transparent opacity-40 cursor-not-allowed"
+                      }`}
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      <span>{lang === 'bn' ? `এক্সপোর্ট CSV (${selectedCompletedHistoryIds.length})` : `EXPORT CSV (${selectedCompletedHistoryIds.length})`}</span>
+                    </button>
+                  </div>
+                );
+              })()}
+
               <div className="space-y-2 max-h-[250px] overflow-y-auto pr-1">
                 {tasks.filter(t => t.completed && (activeTagFilter === 'all' || (t.tags && t.tags.includes(activeTagFilter)))).length > 0 ? (
                   [...tasks]
@@ -614,15 +1042,25 @@ export function OrganizerView({
                       return (
                         <div key={tk.id} className="p-2.5 bg-slate-950/60 border border-slate-900 rounded flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                           <div className="flex-1">
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-emerald-500 text-xs font-bold">✓</span>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={selectedCompletedHistoryIds.includes(tk.id)}
+                                onChange={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedCompletedHistoryIds(prev =>
+                                    prev.includes(tk.id) ? prev.filter(id => id !== tk.id) : [...prev, tk.id]
+                                  );
+                                }}
+                                className="w-3.5 h-3.5 rounded border border-slate-850 bg-slate-900 text-emerald-500 focus:ring-0 focus:ring-offset-0 cursor-pointer shrink-0"
+                              />
                               <span className="text-xs text-slate-400 line-through font-sans">
                                 {tk.title}
                               </span>
                             </div>
                             {/* Color-coded tags for completed task */}
                             {tk.tags && tk.tags.length > 0 && (
-                              <div className="flex flex-wrap gap-1 mt-1 pl-4">
+                              <div className="flex flex-wrap gap-1 mt-1 pl-5">
                                 {tk.tags.map(tg => {
                                   const colors = getTagColors(tg);
                                   return (
@@ -637,7 +1075,7 @@ export function OrganizerView({
                               </div>
                             )}
                           </div>
-                          <div className="flex items-center gap-2 pl-4 sm:pl-0">
+                          <div className="flex items-center gap-2 pl-5 sm:pl-0">
                             <span className="text-[9px] font-mono text-emerald-400/80 whitespace-nowrap bg-emerald-950/20 px-1.5 py-0.5 rounded border border-emerald-900/30">
                               ⏱ {dateStr}
                             </span>
@@ -1081,6 +1519,108 @@ export function OrganizerView({
           </div>
         )}
       </AnimatePresence>
+
+      {/* Custom Right-Click Context Menu */}
+      {contextMenu && (
+        <>
+          <div 
+            className="fixed inset-0 z-[10000]" 
+            onClick={() => setContextMenu(null)}
+            onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }}
+          />
+          <div 
+            style={{ top: contextMenu.y, left: contextMenu.x }}
+            className="fixed z-[10001] bg-slate-950 border border-slate-800 rounded-lg shadow-2xl py-1.5 w-44 font-mono text-[10px] text-slate-350"
+          >
+            <div className="px-2.5 py-1 text-[8px] text-slate-500 uppercase font-bold border-b border-slate-900 mb-1">
+              Task Options
+            </div>
+            <button
+              onClick={() => {
+                const tk = tasks.find(t => t.id === contextMenu.taskId);
+                if (tk) {
+                  setEditingTaskId(tk.id);
+                  setEditTitleVal(tk.title);
+                }
+                setContextMenu(null);
+              }}
+              className="w-full text-left px-2.5 py-1.5 hover:bg-slate-900 hover:text-white flex items-center gap-1.5 cursor-pointer"
+            >
+              <FileText className="w-3 h-3 text-cyan-400" />
+              <span>Edit Title</span>
+            </button>
+            
+            <div className="border-t border-slate-900 my-1" />
+            <div className="px-2.5 py-1 text-[8px] text-slate-500 uppercase font-bold">
+              Set Priority
+            </div>
+            {(['low', 'medium', 'high', 'critical'] as const).map(p => (
+              <button
+                key={p}
+                onClick={() => {
+                  if (onUpdateTask) {
+                    onUpdateTask(contextMenu.taskId, { priority: p });
+                  }
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-4 py-1 hover:bg-slate-900 hover:text-white flex items-center gap-2 capitalize cursor-pointer font-sans"
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${
+                  p === 'critical' ? 'bg-red-500' :
+                  p === 'high' ? 'bg-amber-500' :
+                  p === 'medium' ? 'bg-cyan-400' : 'bg-slate-400'
+                }`} />
+                <span>{p}</span>
+              </button>
+            ))}
+
+            <div className="border-t border-slate-900 my-1" />
+            <div className="px-2.5 py-1 text-[8px] text-slate-500 uppercase font-bold">
+              Reschedule
+            </div>
+            <button
+              onClick={() => {
+                if (onUpdateTask) {
+                  const today = new Date().toISOString().substring(0, 10);
+                  onUpdateTask(contextMenu.taskId, { dueAt: today });
+                }
+                setContextMenu(null);
+              }}
+              className="w-full text-left px-4 py-1 hover:bg-slate-900 hover:text-white flex items-center gap-1.5 cursor-pointer font-sans"
+            >
+              <Calendar className="w-2.5 h-2.5 text-emerald-400" />
+              <span>Today</span>
+            </button>
+            <button
+              onClick={() => {
+                if (onUpdateTask) {
+                  const tomorrow = new Date();
+                  tomorrow.setDate(tomorrow.getDate() + 1);
+                  onUpdateTask(contextMenu.taskId, { dueAt: tomorrow.toISOString().substring(0, 10) });
+                }
+                setContextMenu(null);
+              }}
+              className="w-full text-left px-4 py-1 hover:bg-slate-900 hover:text-white flex items-center gap-1.5 cursor-pointer font-sans"
+            >
+              <Calendar className="w-2.5 h-2.5 text-amber-400" />
+              <span>Tomorrow</span>
+            </button>
+            <button
+              onClick={() => {
+                const val = prompt("Enter new due date (YYYY-MM-DD):");
+                if (val && onUpdateTask) {
+                  onUpdateTask(contextMenu.taskId, { dueAt: val });
+                }
+                setContextMenu(null);
+              }}
+              className="w-full text-left px-4 py-1 hover:bg-slate-900 hover:text-white flex items-center gap-1.5 cursor-pointer font-sans"
+            >
+              <Calendar className="w-2.5 h-2.5 text-[#00d4ff]" />
+              <span>Custom Date...</span>
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

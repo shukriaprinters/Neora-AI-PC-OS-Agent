@@ -238,8 +238,11 @@ export function VoiceCommandPanel({ onAddTask, onAddNote, onAddReminder, onNavig
     synth.cancel();
     const utterance = new SpeechSynthesisUtterance(text.slice(0, 1500));
     utterance.lang = lang === 'bn' ? 'bn-BD' : 'en-US';
-    utterance.rate = 0.98;
-    utterance.pitch = 1.08; // gorgeous, soft female voice pitch
+    
+    const dynamicRate = Number(localStorage.getItem('neora_voice_rate') || '1.0');
+    const dynamicPitch = Number(localStorage.getItem('neora_voice_pitch') || '1.1');
+    utterance.rate = dynamicRate;
+    utterance.pitch = dynamicPitch; // custom configured or default gorgeous pitch
     
     const voices = synth.getVoices();
     const preferred = voices.find(v => {

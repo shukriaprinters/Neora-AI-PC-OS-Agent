@@ -29,6 +29,16 @@ const appLaunchers: Array<{ terms: string[]; command: string }> = [
   { terms: ["word", "ওয়ার্ড", "ms word", "microsoft word", "winword"], command: "winword" },
   { terms: ["excel", "এক্সেল", "ms excel", "microsoft excel"], command: "excel" },
   { terms: ["powerpoint", "পাওয়ার পয়েন্ট", "powerpnt", "ms powerpoint"], command: "powerpnt" },
+  { terms: ["vlc", "ভিএলসি"], command: "vlc" },
+  { terms: ["spotify", "স্পটিফাই"], command: "spotify" },
+  { terms: ["discord", "ডিসকর্ড"], command: "discord" },
+  { terms: ["slack", "স্ল্যাক"], command: "slack" },
+  { terms: ["zoom", "জুম"], command: "zoom" },
+  { terms: ["obs", "ওবিএস"], command: "obs" },
+  { terms: ["task manager", "taskmgr", "টাস্ক ম্যানেজার"], command: "taskmgr" },
+  { terms: ["teams", "টিমস"], command: "teams" },
+  { terms: ["firefox", "ফায়ারফক্স"], command: "firefox" },
+  { terms: ["brave", "ব্রেভ"], command: "brave" },
 ];
 
 const allowedExecutables = new Set([
@@ -46,6 +56,30 @@ const allowedExecutables = new Set([
   "winword",
   "excel",
   "powerpnt",
+  "vlc",
+  "spotify",
+  "discord",
+  "slack",
+  "zoom",
+  "obs",
+  "taskmgr",
+  "teams",
+  "firefox",
+  "brave",
+  "git",
+  "docker",
+  "npm",
+  "python",
+  "node",
+  "gimp",
+  "audacity",
+  "premiere",
+  "aftereffects",
+  "control",
+  "regedit",
+  "cleanmgr",
+  "bash",
+  "wsl",
 ]);
 
 function includesAny(text: string, terms: string[]) {
@@ -165,6 +199,34 @@ export function buildNeoraActions(prompt: string): NeoraCommandAction[] {
     const sMatch = normalized.match(/(\d+(?:\.\d+)?)\s*(?:seconds|sec|সেকেব্ড)/i) || normalized.match(/(\d+(?:\.\d+)?)/);
     const sValue = sMatch ? sMatch[1] : "3.0";
     actions.push({ action: "wait", param: sValue });
+  }
+
+  if (normalized.includes("sound up") || normalized.includes("volume up") || includesAny(normalized, ["sound barao", "volume barao", "সাউন্ড বাড়াও", "আওয়াজ বাড়াও"])) {
+    actions.push({ action: "press_key", param: "volumeup" });
+    actions.push({ action: "press_key", param: "volumeup" });
+    actions.push({ action: "press_key", param: "volumeup" });
+  } else if (normalized.includes("sound down") || normalized.includes("volume down") || includesAny(normalized, ["sound kamao", "volume kamao", "সাউন্ড কমাও", "আওয়াজ কমাও"])) {
+    actions.push({ action: "press_key", param: "volumedown" });
+    actions.push({ action: "press_key", param: "volumedown" });
+    actions.push({ action: "press_key", param: "volumedown" });
+  } else if (includesAny(normalized, ["mute", "unmute", "silent", "মিউট", "সাইলেন্ট"])) {
+    actions.push({ action: "press_key", param: "volumemute" });
+  }
+
+  if (includesAny(normalized, ["close active window", "close app", "close window", "shut window", "উইন্ডো বন্ধ", "অ্যাপ বন্ধ", "বন্ধ করো"])) {
+    actions.push({ action: "press_key", param: "alt+f4" });
+  } else if (includesAny(normalized, ["show desktop", "desktop show", "desktop koro", "ডেস্কটপ"])) {
+    actions.push({ action: "press_key", param: "win+d" });
+  } else if (includesAny(normalized, ["minimize all", "minimize window", "মিনিমাইজ করো", "সব মিনিমাইজ"])) {
+    actions.push({ action: "press_key", param: "win+m" });
+  }
+
+  if (includesAny(normalized, ["lock pc", "lock computer", "pc lock", "লক করো", "পিসি লক"])) {
+    actions.push({ action: "press_key", param: "win+l" });
+  }
+
+  if (includesAny(normalized, ["task manager", "open taskmgr", "টাস্ক ম্যানেজার"])) {
+    actions.push({ action: "press_key", param: "ctrl+shift+esc" });
   }
 
   if (normalized.includes("notepad") || normalized.includes("নোটপ্যাড") || normalized.includes("write note") || normalized.includes("note")) {
