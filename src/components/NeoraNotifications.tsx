@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { X, CheckCircle2, AlertTriangle, Info, Zap, Bell } from 'lucide-react';
+import { X, CheckCircle2, AlertTriangle, Info, Zap, Bell, Clock, Search } from 'lucide-react';
 import { neoraGet } from '../lib/neoraApi';
-import { Reminder } from '../types';
+import { Reminder, Task } from '../types';
 
 export type NotiType = 'info' | 'success' | 'warn' | 'critical';
 
@@ -12,13 +12,17 @@ interface Notification {
   title: string;
   body: string;
   ts: number;
+  itemId?: string;
+  itemType?: 'task' | 'reminder';
 }
 
 interface Props {
   reminders: Reminder[];
+  tasks?: Task[];
   apiHealth: number;
-  tasks?: { length: number };
   lang?: 'en' | 'bn';
+  onSnoozeReminder?: (id: string, snoozeMinutes: number) => void;
+  onSnoozeTask?: (id: string, snoozeMinutes: number) => void;
 }
 
 const TYPE_STYLES: Record<NotiType, { border: string; bg: string; glow: string; color: string; barColor: string }> = {
@@ -37,7 +41,21 @@ const TYPE_ICONS: Record<NotiType, React.ReactNode> = {
 
 const AUTO_DISMISS_MS = 6000;
 
-function ToastItem({ n, onDismiss }: { n: Notification; onDismiss: (id: string) => void }) {
+function ToastItem({
+  n,
+  onDismiss,
+  lang,
+  onSnoozeReminder,
+  onSnoozeTask,
+  firedReminderIds
+}: {
+  n: Notification;
+  onDismiss: (id: string) => void;
+  lang: 'en' | 'bn';
+  onSnoozeReminder?: (id: string, mins: number) => void;
+  onSnoozeTask?: (id: string, mins: number) => void;
+  firedReminderIds: React.MutableRefObject<Set<string>>;
+}) {
   const [progress, setProgress] = useState(100);
   const s = TYPE_STYLES[n.type];
 
@@ -86,6 +104,63 @@ function ToastItem({ n, onDismiss }: { n: Notification; onDismiss: (id: string) 
           <div className="text-[11px] font-mono leading-snug" style={{ color: 'rgba(186,217,240,0.75)' }}>
             {n.body}
           </div>
+
+          {/* Snooze Options */}
+          {n.itemId && (
+            <div className="mt-2.5 flex gap-1.5 flex-wrap">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (n.itemType === 'reminder') {
+                    firedReminderIds.current.delete(n.itemId!);
+                    if (onSnoozeReminder) onSnoozeReminder(n.itemId!, 15);
+                  } else if (n.itemType === 'task') {
+                    firedReminderIds.current.delete(`task-${n.itemId!}`);
+                    if (onSnoozeTask) onSnoozeTask(n.itemId!, 15);
+                  }
+                  onDismiss(n.id);
+                }}
+                className="px-2 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 hover:bg-amber-500/25 text-amber-400 font-mono text-[9px] font-bold uppercase transition-all cursor-pointer flex items-center gap-1"
+              >
+                <Clock className="w-2.5 h-2.5" />
+                <span>{lang === 'bn' ? '১৫ মি. স্নুজ' : 'Snooze 15m'}</span>
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (n.itemType === 'reminder') {
+                    firedReminderIds.current.delete(n.itemId!);
+                    if (onSnoozeReminder) onSnoozeReminder(n.itemId!, 30);
+                  } else if (n.itemType === 'task') {
+                    firedReminderIds.current.delete(`task-${n.itemId!}`);
+                    if (onSnoozeTask) onSnoozeTask(n.itemId!, 30);
+                  }
+                  onDismiss(n.id);
+                }}
+                className="px-2 py-0.5 rounded bg-cyan-500/15 border border-cyan-500/30 hover:bg-cyan-500/25 text-cyan-400 font-mono text-[9px] font-bold uppercase transition-all cursor-pointer flex items-center gap-1"
+              >
+                <Clock className="w-2.5 h-2.5" />
+                <span>{lang === 'bn' ? '৩০ মি. স্নুজ' : 'Snooze 30m'}</span>
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (n.itemType === 'reminder') {
+                    firedReminderIds.current.delete(n.itemId!);
+                    if (onSnoozeReminder) onSnoozeReminder(n.itemId!, 60);
+                  } else if (n.itemType === 'task') {
+                    firedReminderIds.current.delete(`task-${n.itemId!}`);
+                    if (onSnoozeTask) onSnoozeTask(n.itemId!, 60);
+                  }
+                  onDismiss(n.id);
+                }}
+                className="px-2 py-0.5 rounded bg-purple-500/15 border border-purple-500/30 hover:bg-purple-500/25 text-purple-400 font-mono text-[9px] font-bold uppercase transition-all cursor-pointer flex items-center gap-1"
+              >
+                <Clock className="w-2.5 h-2.5" />
+                <span>{lang === 'bn' ? '৬০ মি. স্নুজ' : 'Snooze 60m'}</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -113,7 +188,14 @@ function ToastItem({ n, onDismiss }: { n: Notification; onDismiss: (id: string) 
   );
 }
 
-export function NeoraNotifications({ reminders, apiHealth, lang = 'en' }: Props) {
+export function NeoraNotifications({
+  reminders,
+  tasks,
+  apiHealth,
+  lang = 'en',
+  onSnoozeReminder,
+  onSnoozeTask
+}: Props) {
   const [notes, setNotes] = useState<Notification[]>([]);
   const prevHistoryLen = useRef<number>(-1);
   const prevHealth = useRef<number>(apiHealth);
@@ -211,23 +293,49 @@ export function NeoraNotifications({ reminders, apiHealth, lang = 'en' }: Props)
     prevHealth.current = apiHealth;
   }, [apiHealth, push]);
 
-  // Check reminder due times
+  // Check reminder and task due times
   useEffect(() => {
     const check = () => {
       const now = Date.now();
+      
+      // 1. Check reminders
       reminders.forEach(r => {
         if (r.completed || firedReminderIds.current.has(r.id)) return;
         const due = new Date(r.remindAt).getTime();
         if (due > 0 && Math.abs(now - due) < 60000) {
           firedReminderIds.current.add(r.id);
-          push({ type: 'warn', title: 'REMINDER DUE', body: r.title });
+          push({
+            type: 'warn',
+            title: lang === 'bn' ? 'অনুস্মারক সময় হয়েছে' : 'REMINDER DUE',
+            body: r.title,
+            itemId: r.id,
+            itemType: 'reminder'
+          });
         }
       });
+
+      // 2. Check tasks with reminderAt
+      if (tasks && tasks.length > 0) {
+        tasks.forEach(t => {
+          if (t.completed || !t.reminderAt || firedReminderIds.current.has(`task-${t.id}`)) return;
+          const due = new Date(t.reminderAt).getTime();
+          if (due > 0 && Math.abs(now - due) < 60000) {
+            firedReminderIds.current.add(`task-${t.id}`);
+            push({
+              type: 'critical',
+              title: lang === 'bn' ? 'টাস্ক অ্যালার্ট' : 'TASK REMINDER DUE',
+              body: `${t.title} (${lang === 'bn' ? 'অগ্রাধিকার' : 'Priority'}: ${t.priority.toUpperCase()})`,
+              itemId: t.id,
+              itemType: 'task'
+            });
+          }
+        });
+      }
     };
     check();
     const t = setInterval(check, 30000);
     return () => clearInterval(t);
-  }, [reminders, push]);
+  }, [reminders, tasks, lang, push]);
 
   // Startup ping
   useEffect(() => {
@@ -244,7 +352,14 @@ export function NeoraNotifications({ reminders, apiHealth, lang = 'en' }: Props)
       <AnimatePresence mode="sync">
         {notes.map(n => (
           <div key={n.id} className="pointer-events-auto">
-            <ToastItem n={n} onDismiss={dismiss} />
+            <ToastItem
+              n={n}
+              onDismiss={dismiss}
+              lang={lang}
+              onSnoozeReminder={onSnoozeReminder}
+              onSnoozeTask={onSnoozeTask}
+              firedReminderIds={firedReminderIds}
+            />
           </div>
         ))}
       </AnimatePresence>

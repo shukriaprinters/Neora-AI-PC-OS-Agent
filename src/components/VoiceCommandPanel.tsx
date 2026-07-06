@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Mic, MicOff, X, Zap, CheckCircle2, Clock, Volume2, Laptop, Play } from 'lucide-react';
+import { Mic, MicOff, X, Zap, CheckCircle2, Clock, Volume2, Laptop, Play, Search } from 'lucide-react';
 import { classifyNeoraInput } from '../lib/neoraCommand';
 import { neoraPost } from '../lib/neoraApi';
 
@@ -203,7 +203,15 @@ export function VoiceCommandPanel({ onAddTask, onAddNote, onAddReminder, onNavig
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [feedback, setFeedback] = useState<{ msg: string; ok: boolean } | null>(null);
-  const [recent, setRecent] = useState<RecentCmd[]>([]);
+  const [recent, setRecent] = useState<RecentCmd[]>(() => {
+    try {
+      const stored = localStorage.getItem("neora_audio_command_history");
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [audioSearchQuery, setAudioSearchQuery] = useState('');
   const [bars, setBars] = useState<number[]>(new Array(32).fill(0.12));
   const [supported, setSupported] = useState(true);
   const recognitionRef = useRef<any>(null);
@@ -430,118 +438,200 @@ export function VoiceCommandPanel({ onAddTask, onAddNote, onAddReminder, onNavig
     stopVisualizer();
   }, [stopVisualizer]);
 
-  useEffect(() => {
-    if (!isListening && transcript.trim()) {
-      const cmd = parseCommand(transcript);
-      if (cmd) {
-        let actionLabel = '';
-        let ok = true;
-        try {
-          if (cmd.type === 'task') {
-            onAddTask(cmd.payload.title, cmd.payload.priority);
-            actionLabel = `Task created: "${cmd.payload.title}"`;
-          } else if (cmd.type === 'note') {
-            onAddNote(cmd.payload.title, cmd.payload.content);
-            actionLabel = `Note saved: "${cmd.payload.title}"`;
-          } else if (cmd.type === 'reminder') {
-            onAddReminder(cmd.payload.title, cmd.payload.remindAt, cmd.payload.repeat);
-            actionLabel = `Reminder set: "${cmd.payload.title}"`;
-          } else if (cmd.type === 'navigate') {
-            onNavigate(cmd.payload.tab);
-            actionLabel = `Navigated to ${cmd.payload.dest}`;
-          } else if (cmd.type === 'self-evolution') {
-            onNavigate('evolution');
-            if (onSelfEvolution) {
-              onSelfEvolution(cmd.payload.action);
-            }
-            actionLabel = lang === 'bn' 
-              ? 'সেলফ-ইভোলিউশন শুরু করেছি, সোনামণি! অপ্টিমাইজ করছি! 🤖🧬✨' 
-              : 'Autonomous layout optimization and self-evolution executed, sweetheart! 🤖🧬✨';
+  const executeAudioCommand = useCallback((text: string) => {
+    if (!text.trim()) return;
+    const cmd = parseCommand(text);
+    if (cmd) {
+      let actionLabel = '';
+      let ok = true;
+      try {
+        if (cmd.type === 'task') {
+          onAddTask(cmd.payload.title, cmd.payload.priority);
+          actionLabel = `Task created: "${cmd.payload.title}"`;
+        } else if (cmd.type === 'note') {
+          onAddNote(cmd.payload.title, cmd.payload.content);
+          actionLabel = `Note saved: "${cmd.payload.title}"`;
+        } else if (cmd.type === 'reminder') {
+          onAddReminder(cmd.payload.title, cmd.payload.remindAt, cmd.payload.repeat);
+          actionLabel = `Reminder set: "${cmd.payload.title}"`;
+        } else if (cmd.type === 'navigate') {
+          onNavigate(cmd.payload.tab);
+          actionLabel = `Navigated to ${cmd.payload.dest}`;
+        } else if (cmd.type === 'self-evolution') {
+          onNavigate('evolution');
+          if (onSelfEvolution) {
+            onSelfEvolution(cmd.payload.action);
           }
-        } catch {
-          ok = false;
-          actionLabel = 'Command failed';
+          actionLabel = lang === 'bn' 
+            ? 'সেলফ-ইভোলিউশন শুরু করেছি, সোনামণি! অপ্টিমাইজ করছি! 🤖🧬✨' 
+            : 'Autonomous layout optimization and self-evolution executed, sweetheart! 🤖🧬✨';
         }
-        setFeedback({ msg: actionLabel, ok });
-        if (ok) speakFeedback(actionLabel);
-        else speakFeedback(lang === 'bn' ? 'কমান্ড ব্যর্থ হয়েছে' : 'Command failed');
-        setRecent(prev => [{
+      } catch {
+        ok = false;
+        actionLabel = 'Command failed';
+      }
+      setFeedback({ msg: actionLabel, ok });
+      if (ok) speakFeedback(actionLabel);
+      else speakFeedback(lang === 'bn' ? 'কমান্ড ব্যর্থ হয়েছে' : 'Command failed');
+      
+      const newLog: RecentCmd = {
+        id: Date.now().toString(),
+        transcript: text,
+        action: actionLabel,
+        time: new Date().toLocaleTimeString('en-US', { hour12: false }),
+        success: ok,
+      };
+
+      setRecent(prev => {
+        const updated = [newLog, ...prev.filter(x => x.transcript.toLowerCase() !== text.toLowerCase())].slice(0, 50);
+        try {
+          localStorage.setItem("neora_audio_command_history", JSON.stringify(updated));
+        } catch {}
+        return updated;
+      });
+
+      // Sync with the general command history drawer
+      try {
+        const genHistory = JSON.parse(localStorage.getItem("neora_command_history") || "[]");
+        const newGenItem = {
           id: Date.now().toString(),
-          transcript,
-          action: actionLabel,
-          time: new Date().toLocaleTimeString('en-US', { hour12: false }),
+          command: text,
+          timestamp: new Date().toLocaleTimeString(),
+          date: new Date().toLocaleDateString(),
           success: ok,
-        }, ...prev.slice(0, 4)]);
-        setTranscript('');
-        setTimeout(() => setFeedback(null), 3500);
-      } else {
-        // Fallback: Smart Cognitive OS Agent Voice Command Router
-        const osRoute = classifyNeoraInput(transcript);
-        if (osRoute.classification === 'os-command') {
-          let actionLabel = '';
-          const dispatchingMsg = lang === 'bn' 
-            ? `অনুমোদিত! পিসিতে ওএস কমান্ড পাঠানো হচ্ছেঃ "${transcript}"` 
-            : `Authorizing: Dispatching OS Command: => "${transcript}"`;
-          setFeedback({ msg: dispatchingMsg, ok: true });
-          
-          const speakWaitingMsg = lang === 'bn'
-            ? `অনুমোদিত, বস্! আপনার পিসিতে অপারেশন রান করা হচ্ছে।`
-            : `Access granted, boss! Launching command sequence on your computer.`;
-          speakFeedback(speakWaitingMsg);
-          
-          const token = localStorage.getItem('neora_token') || 'NEORA-X7-AGENT';
-          const geminiKey = localStorage.getItem('neora_gemini_key') || '';
-          
-          neoraPost('/api/os/command', { prompt: osRoute.normalized, token, geminiKey })
-            .then((resData: any) => {
-              if (resData && resData.status === 'success') {
-                actionLabel = lang === 'bn'
-                  ? `নিওরা পিসি অপারেটরঃ "${transcript}" সফলভাবে পাঠানো হয়েছে!`
-                  : `Neora PC Operator: Actioned "${transcript}" successfully!`;
-                
-                const finalSuccessMsg = lang === 'bn'
-                  ? `অপারেশন সচল করা হয়েছে, বস্!`
-                  : `Command executed successfully, boss!`;
-                speakFeedback(finalSuccessMsg);
-                
-                setFeedback({ msg: actionLabel, ok: true });
-                setRecent(prev => [{
-                  id: Date.now().toString(),
-                  transcript,
-                  action: actionLabel,
-                  time: new Date().toLocaleTimeString('en-US', { hour12: false }),
-                  success: true,
-                }, ...prev.slice(0, 4)]);
-              } else {
-                throw new Error("Rejected");
-              }
-            })
-            .catch(() => {
-              const errMsg = lang === 'bn'
-                ? `পিসির সাথে সংযোগ করা যায়নি। স্ক্রিপ্টটি চালু আছে কিনা নিশ্চিত করুন।`
-                : `PC connection failed. Ensure the Neora Python script is running.`;
-              setFeedback({ msg: errMsg, ok: false });
-              speakFeedback(lang === 'bn' ? 'কনেকশন ব্যর্থ হয়েছে' : 'Connection failed');
-              setRecent(prev => [{
+          isVoice: true
+        };
+        localStorage.setItem("neora_command_history", JSON.stringify([newGenItem, ...genHistory].slice(0, 50)));
+        window.dispatchEvent(new CustomEvent("neora-command-history-update"));
+      } catch (e) {
+        console.error(e);
+      }
+
+      setTimeout(() => setFeedback(null), 3500);
+    } else {
+      // Fallback: Smart Cognitive OS Agent Voice Command Router
+      const osRoute = classifyNeoraInput(text);
+      if (osRoute.classification === 'os-command') {
+        let actionLabel = '';
+        const dispatchingMsg = lang === 'bn' 
+          ? `অনুমোদিত! পিসিতে ওএস কমান্ড পাঠানো হচ্ছেঃ "${text}"` 
+          : `Authorizing: Dispatching OS Command: => "${text}"`;
+        setFeedback({ msg: dispatchingMsg, ok: true });
+        
+        const speakWaitingMsg = lang === 'bn'
+          ? `অনুমোদিত, বস্! আপনার পিসিতে অপারেশন রান করা হচ্ছে।`
+          : `Access granted, boss! Launching command sequence on your computer.`;
+        speakFeedback(speakWaitingMsg);
+        
+        const token = localStorage.getItem('neora_token') || 'NEORA-X7-AGENT';
+        const geminiKey = localStorage.getItem('neora_gemini_key') || '';
+        
+        neoraPost('/api/os/command', { prompt: osRoute.normalized, token, geminiKey })
+          .then((resData: any) => {
+            if (resData && resData.status === 'success') {
+              actionLabel = lang === 'bn'
+                ? `নিওরা পিসি অপারেটরঃ "${text}" সফলভাবে পাঠানো হয়েছে!`
+                : `Neora PC Operator: Actioned "${text}" successfully!`;
+              
+              const finalSuccessMsg = lang === 'bn'
+                ? `অপারেশন সচল করা হয়েছে, বস্!`
+                : `Command executed successfully, boss!`;
+              speakFeedback(finalSuccessMsg);
+              
+              setFeedback({ msg: actionLabel, ok: true });
+              const newLog: RecentCmd = {
                 id: Date.now().toString(),
-                transcript,
-                action: 'OS Command Failed',
+                transcript: text,
+                action: actionLabel,
                 time: new Date().toLocaleTimeString('en-US', { hour12: false }),
-                success: false,
-              }, ...prev.slice(0, 4)]);
-            });
+                success: true,
+              };
+
+              setRecent(prev => {
+                const updated = [newLog, ...prev.filter(x => x.transcript.toLowerCase() !== text.toLowerCase())].slice(0, 50);
+                try {
+                  localStorage.setItem("neora_audio_command_history", JSON.stringify(updated));
+                } catch {}
+                return updated;
+              });
+
+              // Sync with the general command history drawer
+              try {
+                const genHistory = JSON.parse(localStorage.getItem("neora_command_history") || "[]");
+                const newGenItem = {
+                  id: Date.now().toString(),
+                  command: text,
+                  timestamp: new Date().toLocaleTimeString(),
+                  date: new Date().toLocaleDateString(),
+                  success: true,
+                  isVoice: true
+                };
+                localStorage.setItem("neora_command_history", JSON.stringify([newGenItem, ...genHistory].slice(0, 50)));
+                window.dispatchEvent(new CustomEvent("neora-command-history-update"));
+              } catch (e) {
+                console.error(e);
+              }
+            } else {
+              throw new Error("Rejected");
+            }
+          })
+          .catch(() => {
+            const errMsg = lang === 'bn'
+              ? `পিসির সাথে সংযোগ করা যায়নি। স্ক্রিপ্টটি চালু আছে কিনা নিশ্চিত করুন।`
+              : `PC connection failed. Ensure the Neora Python script is running.`;
+            setFeedback({ msg: errMsg, ok: false });
+            speakFeedback(lang === 'bn' ? 'কনেকশন ব্যর্থ হয়েছে' : 'Connection failed');
             
-          setTranscript('');
-          setTimeout(() => setFeedback(null), 6000);
-        } else {
-          const unknownMsg = lang === 'bn' ? `কমান্ড বোঝা যায়নি: "${transcript}"` : `Unknown command: "${transcript}"`;
-          setFeedback({ msg: unknownMsg, ok: false });
-          speakFeedback(lang === 'bn' ? 'কমান্ড বোঝা যায়নি' : 'Command not recognized. Try saying task, note, or remind me to.');
-          setTimeout(() => setFeedback(null), 3000);
-        }
+            const newLog: RecentCmd = {
+              id: Date.now().toString(),
+              transcript: text,
+              action: 'OS Command Failed',
+              time: new Date().toLocaleTimeString('en-US', { hour12: false }),
+              success: false,
+            };
+
+            setRecent(prev => {
+              const updated = [newLog, ...prev.filter(x => x.transcript.toLowerCase() !== text.toLowerCase())].slice(0, 50);
+              try {
+                localStorage.setItem("neora_audio_command_history", JSON.stringify(updated));
+              } catch {}
+              return updated;
+            });
+
+            // Sync with the general command history drawer
+            try {
+              const genHistory = JSON.parse(localStorage.getItem("neora_command_history") || "[]");
+              const newGenItem = {
+                id: Date.now().toString(),
+                command: text,
+                timestamp: new Date().toLocaleTimeString(),
+                date: new Date().toLocaleDateString(),
+                success: false,
+                isVoice: true
+              };
+              localStorage.setItem("neora_command_history", JSON.stringify([newGenItem, ...genHistory].slice(0, 50)));
+              window.dispatchEvent(new CustomEvent("neora-command-history-update"));
+            } catch (e) {
+              console.error(e);
+            }
+          });
+          
+        setTimeout(() => setFeedback(null), 6000);
+      } else {
+        const unknownMsg = lang === 'bn' ? `কমান্ড বোঝা যায়নি: "${text}"` : `Unknown command: "${text}"`;
+        setFeedback({ msg: unknownMsg, ok: false });
+        speakFeedback(lang === 'bn' ? 'কমান্ড বোঝা যায়নি' : 'Command not recognized. Try saying task, note, or remind me to.');
+        setTimeout(() => setFeedback(null), 3000);
       }
     }
-  }, [isListening, transcript, onAddTask, onAddNote, onAddReminder, onNavigate, onSelfEvolution]);
+  }, [lang, onAddTask, onAddNote, onAddReminder, onNavigate, onSelfEvolution, speakFeedback]);
+
+  useEffect(() => {
+    if (!isListening && transcript.trim()) {
+      executeAudioCommand(transcript);
+      setTranscript('');
+    }
+  }, [isListening, transcript, executeAudioCommand]);
 
   const BAR_COLOR = isListening ? '#00d4ff' : 'rgba(0,212,255,0.25)';
 
@@ -722,24 +812,86 @@ export function VoiceCommandPanel({ onAddTask, onAddNote, onAddReminder, onNavig
             ))}
           </div>
 
-          {/* Recent commands */}
-          {recent.length > 0 && (
-            <div>
-              <div className="jarvis-label mb-2">RECENT</div>
-              <div className="space-y-1">
-                {recent.map(r => (
-                  <div key={r.id} className="flex items-center gap-2 px-2 py-1.5 rounded" style={{ background: 'rgba(0,212,255,0.03)', border: '1px solid rgba(0,212,255,0.06)' }}>
-                    <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: r.success ? '#00ff88' : '#ff4466' }} />
-                    <span className="flex-1 text-[10px] font-mono truncate" style={{ color: 'rgba(186,217,240,0.7)' }}>{r.transcript}</span>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <Clock className="w-2.5 h-2.5" style={{ color: 'rgba(100,116,139,0.5)' }} />
-                      <span className="text-[9px] font-mono" style={{ color: 'rgba(100,116,139,0.5)' }}>{r.time}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+          {/* Audio Command History Section */}
+          <div className="pt-3 border-t border-cyan-500/10">
+            <div className="flex items-center justify-between mb-3">
+              <span className="jarvis-label text-cyan-400 font-mono text-[10px] uppercase tracking-wider">
+                {lang === 'bn' ? 'অডিও কমান্ডের ইতিহাস' : 'AUDIO COMMAND HISTORY'}
+              </span>
+              <span className="text-[9px] font-mono text-slate-500 bg-cyan-500/5 px-1.5 py-0.5 rounded border border-cyan-500/10">
+                {recent.length} {lang === 'bn' ? 'টি মোট' : 'total'}
+              </span>
             </div>
-          )}
+
+            {/* Search History Bar */}
+            <div className="relative mb-3.5">
+              <input
+                type="text"
+                value={audioSearchQuery}
+                onChange={(e) => setAudioSearchQuery(e.target.value)}
+                placeholder={lang === 'bn' ? 'আগের কমান্ড খুঁজুন...' : 'Search past voice commands...'}
+                className="w-full bg-slate-950/80 border border-cyan-500/20 rounded-lg py-1.5 pl-8 pr-3 text-[11px] font-mono text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all"
+              />
+              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+              {audioSearchQuery && (
+                <button
+                  onClick={() => setAudioSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-[10px] font-mono"
+                >
+                  CLEAR
+                </button>
+              )}
+            </div>
+
+            {/* Scrollable Command List */}
+            <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
+              {recent.filter(r => 
+                r.transcript.toLowerCase().includes(audioSearchQuery.toLowerCase()) ||
+                r.action.toLowerCase().includes(audioSearchQuery.toLowerCase())
+              ).map(r => (
+                <button
+                  key={r.id}
+                  onClick={() => executeAudioCommand(r.transcript)}
+                  className="w-full text-left flex items-start gap-2.5 p-2 rounded-lg bg-slate-950/40 border border-cyan-500/5 hover:border-cyan-500/35 hover:bg-cyan-500/5 group transition-all duration-150 cursor-pointer"
+                >
+                  <div className="mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 animate-pulse" style={{ background: r.success ? '#00ff88' : '#ff4466' }} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11px] font-mono text-slate-200 group-hover:text-cyan-300 transition-colors font-semibold truncate">
+                      "{r.transcript}"
+                    </p>
+                    <p className="text-[9px] font-mono text-slate-400 group-hover:text-slate-300 truncate mt-0.5">
+                      {r.action}
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-end justify-between shrink-0 h-7 text-right">
+                    <span className="text-[8px] font-mono text-slate-500">{r.time}</span>
+                    <span className="text-[8px] font-mono font-bold text-cyan-400 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
+                      <Play className="w-2 h-2 fill-cyan-400" /> RE-RUN
+                    </span>
+                  </div>
+                </button>
+              ))}
+
+              {recent.length === 0 && (
+                <div className="text-center py-6 border border-dashed border-cyan-500/10 rounded-lg">
+                  <p className="text-[10px] font-mono text-slate-500">
+                    {lang === 'bn' ? 'কোনো অডিও কমান্ডের রেকর্ড নেই' : 'No audio commands executed yet'}
+                  </p>
+                </div>
+              )}
+
+              {recent.length > 0 && recent.filter(r => 
+                r.transcript.toLowerCase().includes(audioSearchQuery.toLowerCase()) ||
+                r.action.toLowerCase().includes(audioSearchQuery.toLowerCase())
+              ).length === 0 && (
+                <div className="text-center py-4">
+                  <p className="text-[10px] font-mono text-slate-500">
+                    {lang === 'bn' ? 'কোনো কমান্ড মিলছে না' : 'No matching commands found'}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>

@@ -190,6 +190,9 @@ import {
   XAxis,
   YAxis,
   Tooltip,
+  PieChart,
+  Pie,
+  Cell,
 } from "recharts";
 
 class AmbientHumManager {
@@ -1898,6 +1901,32 @@ export default function App() {
     triggerDbSyncAnimation();
   };
 
+  const handleSnoozeReminder = (id: string, snoozeMinutes: number) => {
+    setReminders((prev) =>
+      prev.map((r) => {
+        if (r.id === id) {
+          const newTime = new Date(Date.now() + snoozeMinutes * 60 * 1000).toISOString().slice(0, 16);
+          return { ...r, remindAt: newTime };
+        }
+        return r;
+      })
+    );
+    triggerDbSyncAnimation();
+  };
+
+  const handleSnoozeTask = (id: string, snoozeMinutes: number) => {
+    setTasks((prev) =>
+      prev.map((t) => {
+        if (t.id === id) {
+          const newTime = new Date(Date.now() + snoozeMinutes * 60 * 1000).toISOString();
+          return { ...t, reminderAt: newTime };
+        }
+        return t;
+      })
+    );
+    triggerDbSyncAnimation();
+  };
+
   const handleAddReminder = (
     title: string,
     remindAt: string,
@@ -1923,7 +1952,7 @@ export default function App() {
     setNotes((prev) => [newNote, ...prev]);
   };
 
-  const parseJarvisCommand = (command: string) => {
+  const parseJarvisCommand = (command: string, isVoice = false) => {
     const cmd = command.trim();
     if (!cmd) return;
 
@@ -1934,7 +1963,8 @@ export default function App() {
       command: cmd,
       timestamp: new Date().toLocaleTimeString(),
       date: new Date().toLocaleDateString(),
-      success: true
+      success: true,
+      isVoice: isVoice
     };
     localStorage.setItem("neora_command_history", JSON.stringify([newHistoryItem, ...prevHistory].slice(0, 50)));
 
@@ -3596,10 +3626,42 @@ export default function App() {
                                                       })()}
                                                       
                                                       {/* Colored priority badge */}
-                                                      <span className={`text-[7px] font-mono font-bold uppercase px-1 py-0.2 rounded border ${priorityBadges[tk.priority]} flex items-center gap-1 shrink-0`}>
-                                                        <span className={`w-1 h-1 rounded-full ${priorityColor}`} />
-                                                        {tk.priority}
-                                                      </span>
+                                                      {tk.priority === "critical" || tk.priority === "high" ? (
+                                                        <motion.span
+                                                          animate={{
+                                                            boxShadow: tk.priority === "critical"
+                                                              ? [
+                                                                  "0 0 3px rgba(244, 63, 94, 0.2)",
+                                                                  "0 0 9px rgba(244, 63, 94, 0.6)",
+                                                                  "0 0 3px rgba(244, 63, 94, 0.2)",
+                                                                ]
+                                                              : [
+                                                                  "0 0 3px rgba(245, 158, 11, 0.2)",
+                                                                  "0 0 8px rgba(245, 158, 11, 0.5)",
+                                                                  "0 0 3px rgba(245, 158, 11, 0.2)",
+                                                                ],
+                                                          }}
+                                                          transition={{
+                                                            duration: tk.priority === "critical" ? 1.5 : 2,
+                                                            repeat: Infinity,
+                                                            ease: "easeInOut"
+                                                          }}
+                                                          className={`text-[6.5px] font-mono font-extrabold uppercase px-1 py-0.2 rounded border flex items-center gap-1 shrink-0 ${
+                                                            tk.priority === "critical"
+                                                              ? "bg-rose-950/40 text-rose-300 border-rose-500/50"
+                                                              : "bg-amber-950/40 text-amber-300 border-amber-500/50"
+                                                          }`}
+                                                        >
+                                                          <span className={`w-1 h-1 rounded-full ${priorityColor} animate-ping`} />
+                                                          <Zap className="w-2 h-2 shrink-0 text-cyan-400" />
+                                                          {tk.priority}
+                                                        </motion.span>
+                                                      ) : (
+                                                        <span className={`text-[7px] font-mono font-bold uppercase px-1 py-0.2 rounded border ${priorityBadges[tk.priority]} flex items-center gap-1 shrink-0`}>
+                                                          <span className={`w-1 h-1 rounded-full ${priorityColor}`} />
+                                                          {tk.priority}
+                                                        </span>
+                                                      )}
 
                                                       {editingTaskId === tk.id ? (
                                                         <input
@@ -3951,6 +4013,170 @@ export default function App() {
                               <div className="text-[8px] font-mono text-purple-400/80 text-left pt-1 flex justify-between border-t border-purple-950/20">
                                 <span>EFFICIENCY LEDGER</span>
                                 <span>{chartData[6]?.rate}% NOW</span>
+                              </div>
+                            </motion.div>
+                          );
+                        }
+
+                        if (widget.id === "task_efficiency") {
+                          const getCategoryData = () => {
+                            const categoryMap: Record<string, { total: number; completed: number }> = {};
+                            
+                            tasks.forEach(t => {
+                              let cat = t.category || "";
+                              if (!cat) {
+                                const title = t.title.toLowerCase();
+                                if (title.includes("printers") || title.includes("brochure") || title.includes("tax") || title.includes("billing") || title.includes("invoice") || title.includes("client")) {
+                                  cat = lang === "bn" ? "কাজ" : "Work";
+                                } else if (title.includes("updates") || title.includes("typechecking") || title.includes("validation") || title.includes("code") || title.includes("system") || title.includes("script")) {
+                                  cat = lang === "bn" ? "সিস্টেম" : "System";
+                                } else if (title.includes("backup") || title.includes("checkpoint") || title.includes("sync")) {
+                                  cat = lang === "bn" ? "অবকাঠামো" : "Infrastructure";
+                                } else {
+                                  cat = lang === "bn" ? "ব্যক্তিগত" : "Personal";
+                                }
+                              }
+                              
+                              if (typeof cat === 'string' && cat.length > 0) {
+                                  cat = cat.charAt(0).toUpperCase() + cat.slice(1);
+                              }
+                              
+                              if (!categoryMap[cat]) {
+                                categoryMap[cat] = { total: 0, completed: 0 };
+                              }
+                              categoryMap[cat].total += 1;
+                              if (t.completed) {
+                                categoryMap[cat].completed += 1;
+                              }
+                            });
+                            
+                            const data = Object.entries(categoryMap).map(([name, stats]) => {
+                              const rate = stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0;
+                              return {
+                                name,
+                                value: rate > 0 ? rate : 1, // Slices represent percentage of completed tasks relative to total, with minimum 1 to avoid invisible slices
+                                rate,
+                                completed: stats.completed,
+                                total: stats.total
+                              };
+                            });
+                            
+                            if (data.length === 0) {
+                              return [{ name: lang === "bn" ? "কোনো টাস্ক নেই" : "No Tasks", value: 100, rate: 0, completed: 0, total: 0 }];
+                            }
+                            return data;
+                          };
+
+                          const efficiencyData = getCategoryData();
+                          const COLORS = ["#00d4ff", "#a855f7", "#10b981", "#f5a623", "#ec4899", "#3b82f6"];
+                          
+                          const totalTasksCount = tasks.length;
+                          const completedTasksCount = tasks.filter(t => t.completed).length;
+                          const overallEfficiencyRate = totalTasksCount > 0 ? Math.round((completedTasksCount / totalTasksCount) * 100) : 0;
+
+                          return (
+                            <motion.div
+                              layoutId="task_efficiency"
+                              key="task_efficiency"
+                              draggable
+                              onDragStart={(e) => handleDragStart(e, "task_efficiency")}
+                              onDragOver={handleDragOver}
+                              onDrop={(e) => handleDrop(e, "task_efficiency")}
+                              className="col-span-1 md:col-span-1 xl:col-span-1 relative rounded-xl overflow-hidden p-3 flex flex-col justify-between cursor-grab active:cursor-grabbing transition-all duration-300"
+                              onClick={() => trackWidgetInteraction("task_efficiency")}
+                              style={{
+                                background:
+                                  "linear-gradient(135deg, rgba(0,18,35,0.92), rgba(0,8,20,0.85))",
+                                border: "1px solid rgba(0,212,255,0.15)",
+                                boxShadow: "inset 0 0 20px rgba(0,212,255,0.03)",
+                                backdropFilter: "blur(20px)",
+                                minHeight: "140px",
+                              }}
+                              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                            >
+                              <div
+                                className="absolute top-0 left-0 right-0 h-px"
+                                style={{
+                                  background:
+                                    "linear-gradient(90deg, transparent, rgba(0,212,255,0.4), transparent)",
+                                }}
+                              />
+                              <div>
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className="jarvis-label" style={{ color: "#00d4ff" }}>
+                                    {lang === "bn" ? "টাস্ক দক্ষতা" : "TASK EFFICIENCY"}
+                                  </span>
+                                  <span className="text-[8px] text-cyan-400 font-mono font-bold bg-cyan-950/30 px-1.5 py-0.5 rounded border border-cyan-500/10 shrink-0">
+                                    {lang === "bn" ? "ডোনাট চার্ট" : "DONUT BREAKDOWN"}
+                                  </span>
+                                </div>
+                                
+                                <p className="text-[9px] text-slate-400 text-left mb-1 font-sans font-medium">
+                                  {lang === "bn" ? "ক্যাটেগরি অনুযায়ী টাস্ক সম্পূর্ণতার হার" : "Task completion rates by category"}
+                                </p>
+
+                                <div className="flex items-center justify-between w-full h-[85px]">
+                                  <div className="w-[55%] h-full relative flex items-center justify-center">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                      <PieChart>
+                                        <Pie
+                                          data={efficiencyData}
+                                          cx="50%"
+                                          cy="50%"
+                                          innerRadius={22}
+                                          outerRadius={35}
+                                          paddingAngle={3}
+                                          dataKey="value"
+                                        >
+                                          {efficiencyData.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                          ))}
+                                        </Pie>
+                                        <Tooltip
+                                          content={({ active, payload }) => {
+                                            if (active && payload && payload.length) {
+                                              const data = payload[0].payload;
+                                              return (
+                                                <div className="bg-slate-950/95 border border-slate-800 rounded-lg p-2 font-mono text-[9px] shadow-xl text-left select-none">
+                                                  <p className="font-bold text-slate-200 uppercase">{data.name}</p>
+                                                  <p className="text-cyan-400 font-semibold mt-0.5">
+                                                    {lang === "bn" ? "দক্ষতা:" : "Efficiency:"} {data.rate}%
+                                                  </p>
+                                                  <p className="text-slate-500 text-[8px] mt-0.5">
+                                                    {data.completed}/{data.total} {lang === "bn" ? "সম্পন্ন" : "completed"}
+                                                  </p>
+                                                </div>
+                                              );
+                                            }
+                                            return null;
+                                          }}
+                                        />
+                                      </PieChart>
+                                    </ResponsiveContainer>
+
+                                    {/* Centered overall completion overlay */}
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none">
+                                      <span className="text-[11px] font-mono font-black text-cyan-400 leading-none">{overallEfficiencyRate}%</span>
+                                      <span className="text-[5.5px] font-mono text-slate-500 uppercase tracking-tighter scale-90 mt-0.5">{lang === 'bn' ? 'দক্ষতা' : 'EFF'}</span>
+                                    </div>
+                                  </div>
+
+                                  {/* Small Legend */}
+                                  <div className="w-[45%] text-left font-mono text-[8px] leading-relaxed max-h-full overflow-y-auto pr-1">
+                                    {efficiencyData.map((item, idx) => (
+                                      <div key={idx} className="flex items-center gap-1 mt-0.5 truncate">
+                                        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: COLORS[idx % COLORS.length] }} />
+                                        <span className="text-slate-400 font-bold truncate max-w-[40px] uppercase">{item.name}</span>
+                                        <span className="text-slate-200 font-bold ml-auto shrink-0">{item.rate}%</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="text-[8px] font-mono text-cyan-400/80 text-left pt-1 flex justify-between border-t border-cyan-950/20">
+                                <span>{lang === "bn" ? "ক্যাটেগরি ট্র্যাকার" : "CATEGORY TRACKER"}</span>
+                                <span>{tasks.filter(t => t.completed).length}/{tasks.length} {lang === "bn" ? "সম্পন্ন" : "TOTAL"}</span>
                               </div>
                             </motion.div>
                           );
@@ -5093,7 +5319,14 @@ export default function App() {
             </AnimatePresence>
 
             {/* ===== HOLOGRAPHIC NOTIFICATION SYSTEM ===== */}
-            <NeoraNotifications reminders={reminders} apiHealth={apiHealth} lang={lang} />
+            <NeoraNotifications
+              reminders={reminders}
+              tasks={tasks}
+              apiHealth={apiHealth}
+              lang={lang}
+              onSnoozeReminder={handleSnoozeReminder}
+              onSnoozeTask={handleSnoozeTask}
+            />
 
             {/* ===== TASK CONTEXT MENU ===== */}
             <AnimatePresence>

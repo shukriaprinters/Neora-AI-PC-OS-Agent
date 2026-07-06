@@ -4,9 +4,10 @@ import {
   Cpu, Zap, Play, CheckCircle, RefreshCw, Layers, Terminal,
   HelpCircle, Eye, ChevronRight, FileCode, Sliders, AlertTriangle,
   Sparkles, Globe, Clipboard, Printer, DollarSign, Download, Plus, Trash,
-  Volume2, Activity, Search
+  Volume2, Activity, Search, Shield
 } from 'lucide-react';
 import { aiSkillsList, AISkill } from './skillsData';
+import SelfEvaluationCoreView from './SelfEvaluationCoreView';
 
 interface SelfEvolutionViewProps {
   lang: 'en' | 'bn';
@@ -26,7 +27,7 @@ interface UpdateItem {
 }
 
 export default function SelfEvolutionView({ lang }: SelfEvolutionViewProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'identity' | 'analysis' | 'protocol' | 'evolved' | 'autonomous' | 'explorer'>('autonomous');
+  const [activeSubTab, setActiveSubTab] = useState<'identity' | 'analysis' | 'protocol' | 'evolved' | 'autonomous' | 'explorer' | 'evaluation'>('evaluation');
   
   // --- NEORA 100X SELF-USE AUTOPILOT STATES ---
   const [isSelfUsingRun, setIsSelfUsingRun] = useState(false);
@@ -1904,6 +1905,14 @@ PARAMETERS:
 
         {/* --- MAIN TAB SELECTION --- */}
         <div className="flex bg-slate-900/60 p-1 rounded-xl border border-slate-800">
+          <button
+            onClick={() => setActiveSubTab('evaluation')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-mono transition-all cursor-pointer flex items-center gap-1.5 relative ${activeSubTab === 'evaluation' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-slate-400 hover:text-slate-200'}`}
+          >
+            <Shield className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
+            <span>{lang === 'bn' ? 'সেলফ-ইভ্যালুয়েশন' : 'Self-Evaluation'}</span>
+            <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-rose-400 animate-pulse" />
+          </button>
           <button
             onClick={() => setActiveSubTab('identity')}
             className={`px-3 py-1.5 rounded-lg text-xs font-mono transition-all cursor-pointer flex items-center gap-1.5 ${activeSubTab === 'identity' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-slate-400 hover:text-slate-200'}`}
@@ -3905,6 +3914,10 @@ PARAMETERS:
             </div>
 
           </div>
+        )}
+
+        {activeSubTab === 'evaluation' && (
+          <SelfEvaluationCoreView lang={lang} />
         )}
 
         {activeSubTab === 'explorer' && (

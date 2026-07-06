@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { History, X, Play, Clock, CheckCircle, Trash2, Zap, Plus, Layers, ArrowRight } from "lucide-react";
+import { History, X, Play, Clock, CheckCircle, Trash2, Zap, Plus, Layers, ArrowRight, Mic, Search } from "lucide-react";
 
 interface CommandHistoryDrawerProps {
   isOpen: boolean;
@@ -15,6 +15,7 @@ interface HistoryItem {
   timestamp: string;
   date: string;
   success: boolean;
+  isVoice?: boolean;
 }
 
 interface CommandMacro {
@@ -40,6 +41,8 @@ export function CommandHistoryDrawer({ isOpen, onClose, lang, onReRunCommand }: 
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [activeTab, setActiveTab] = useState<"history" | "macros">("history");
   const [macros, setMacros] = useState<CommandMacro[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [voiceOnly, setVoiceOnly] = useState(false);
   
   // Create Macro Form States
   const [newMacroName, setNewMacroName] = useState("");
@@ -250,10 +253,60 @@ export function CommandHistoryDrawer({ isOpen, onClose, lang, onReRunCommand }: 
               {activeTab === "history" ? (
                 /* HISTORY VIEW PANEL */
                 <>
+                  {/* Search and Voice Filtering Gate */}
+                  <div className="space-y-2.5 mb-3.5">
+                    {/* Search Field */}
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder={lang === "bn" ? "কমান্ড হিস্ট্রি খুঁজুন..." : "Search command history..."}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg py-1.5 pl-8 pr-3 text-[11px] font-mono text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all text-left"
+                      />
+                      <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                      {searchQuery && (
+                        <button
+                          onClick={() => setSearchQuery("")}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-[9px] font-mono"
+                        >
+                          CLEAR
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Filter Pills */}
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setVoiceOnly(false)}
+                        className={`px-2.5 py-1 rounded text-[9px] font-mono font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                          !voiceOnly ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30" : "bg-slate-950/60 text-slate-500 border border-slate-800"
+                        }`}
+                      >
+                        {lang === "bn" ? "সব কমান্ড" : "ALL COMMANDS"}
+                      </button>
+                      <button
+                        onClick={() => setVoiceOnly(true)}
+                        className={`px-2.5 py-1 rounded text-[9px] font-mono font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                          voiceOnly ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30" : "bg-slate-950/60 text-slate-500 border border-slate-800"
+                        }`}
+                      >
+                        <Mic className="w-2.5 h-2.5 text-cyan-400" />
+                        <span>{lang === "bn" ? "ভয়েস কমান্ড" : "VOICE COMMANDS"}</span>
+                      </button>
+                    </div>
+                  </div>
+
                   {/* Sub-header actions */}
                   <div className="flex justify-between items-center mb-3 text-[11px] font-mono">
                     <span className="text-slate-400 font-bold">
-                      {history.length} {lang === "bn" ? "টি পূর্ববর্তী কমান্ড" : "operations logged"}
+                      {
+                        history.filter(item => {
+                          const matchesSearch = item.command.toLowerCase().includes(searchQuery.toLowerCase());
+                          const matchesVoice = voiceOnly ? !!item.isVoice : true;
+                          return matchesSearch && matchesVoice;
+                        }).length
+                      } {lang === "bn" ? "টি পূর্ববর্তী কমান্ড" : "operations logged"}
                     </span>
                     {history.length > 0 && (
                       <button
@@ -267,17 +320,25 @@ export function CommandHistoryDrawer({ isOpen, onClose, lang, onReRunCommand }: 
                   </div>
 
                   {/* List */}
-                  <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1 scrollbar-thin">
-                    {history.length === 0 ? (
+                  <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-1 scrollbar-thin">
+                    {history.filter(item => {
+                      const matchesSearch = item.command.toLowerCase().includes(searchQuery.toLowerCase());
+                      const matchesVoice = voiceOnly ? !!item.isVoice : true;
+                      return matchesSearch && matchesVoice;
+                    }).length === 0 ? (
                       <div className="text-center py-12 text-slate-500 font-mono text-xs">
                         <History className="w-8 h-8 mx-auto text-slate-700 mb-2" />
-                        <p>{lang === "bn" ? "কোনো হিস্ট্রি পাওয়া যায়নি" : "No commands executed yet"}</p>
+                        <p>{lang === "bn" ? "কোনো হিস্ট্রি পাওয়া যায়নি" : "No commands found"}</p>
                         <p className="text-[10px] text-slate-600 mt-1">
-                          {lang === "bn" ? "কমান্ড সেন্টার থেকে কমান্ড দিন" : "Submit natural commands on the main dashboard"}
+                          {lang === "bn" ? "সার্চ বা ফিল্টার পরিবর্তন করুন" : "Refine your search or filter options"}
                         </p>
                       </div>
                     ) : (
-                      history.map((item) => (
+                      history.filter(item => {
+                        const matchesSearch = item.command.toLowerCase().includes(searchQuery.toLowerCase());
+                        const matchesVoice = voiceOnly ? !!item.isVoice : true;
+                        return matchesSearch && matchesVoice;
+                      }).map((item) => (
                         <div
                           key={item.id}
                           className="group bg-slate-950/60 border border-slate-800/80 rounded-xl p-3 hover:border-cyan-500/30 transition-all flex flex-col justify-between gap-2.5 relative overflow-hidden"
@@ -303,6 +364,11 @@ export function CommandHistoryDrawer({ isOpen, onClose, lang, onReRunCommand }: 
                             <span className="flex items-center gap-1">
                               <Clock className="w-3 h-3 text-slate-500" />
                               <span>{item.timestamp}</span>
+                              {item.isVoice && (
+                                <span className="flex items-center gap-0.5 text-cyan-400 bg-cyan-950/40 border border-cyan-900/40 px-1 rounded text-[8px] ml-1 font-bold">
+                                  <Mic className="w-2.5 h-2.5 text-cyan-400" /> VOICE
+                                </span>
+                              )}
                             </span>
                             <span className="flex items-center gap-1 text-emerald-400">
                               <CheckCircle className="w-3 h-3" />

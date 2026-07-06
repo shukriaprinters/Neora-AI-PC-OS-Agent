@@ -16,6 +16,7 @@ const DEFAULT_WIDGETS: WidgetInfo[] = [
   { id: "agent_intelligence", name: "Agent Intelligence Suite", nameBn: "এজেন্ট ইন্টেলিজেন্স সুইট", clicks: 42, visible: true, colSpanClass: "col-span-1 md:col-span-2" },
   { id: "tasks", name: "Tasks Ledger", nameBn: "টাস্ক লেজার", clicks: 35, visible: true, colSpanClass: "col-span-1" },
   { id: "task_chart", name: "Task Performance Chart", nameBn: "টাস্ক পারফরম্যান্স চার্ট", clicks: 32, visible: true, colSpanClass: "col-span-1" },
+  { id: "task_efficiency", name: "Task Efficiency (Donut Chart)", nameBn: "টাস্ক ইফিসিয়েন্সি (ডোনাট চার্ট)", clicks: 30, visible: true, colSpanClass: "col-span-1" },
   { id: "memory", name: "Memory Engine", nameBn: "মেমরি ইঞ্জিন", clicks: 20, visible: true, colSpanClass: "col-span-1" },
   { id: "agent", name: "Agent Controller", nameBn: "এজেন্ট কন্ট্রোলার", clicks: 45, visible: true, colSpanClass: "col-span-1" },
   { id: "scratchpad", name: "System Scratchpad", nameBn: "সিস্টেম স্ক্র্যাচপ্যাড", clicks: 15, visible: true, colSpanClass: "col-span-1" },
