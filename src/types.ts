@@ -15,6 +15,12 @@ export interface MetricItem {
   iconName: string;
 }
 
+export interface SubTask {
+  id: string;
+  title: string;
+  completed: boolean;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -28,6 +34,9 @@ export interface Task {
   reminderAt?: string;
   category?: string;
   createdAt?: string;
+  attachment?: string;
+  subTasks?: SubTask[];
+  recurring?: 'none' | 'daily' | 'weekly' | 'monthly';
 }
 
 export interface Reminder {

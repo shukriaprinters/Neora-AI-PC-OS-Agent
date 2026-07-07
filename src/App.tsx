@@ -137,7 +137,7 @@ import { CommandHistoryDrawer } from "./components/CommandHistoryDrawer";
 import { useSkillNotification } from "./hooks/useSkillNotification";
 import { MetaAgent } from "./components/MetaAgent";
 import { SECTIONS, RAW_MASTER_PROMPT } from "./masterPromptText";
-import { Task, Reminder, Note, Memory } from "./types";
+import { Task, Reminder, Note, Memory, SubTask } from "./types";
 import { TRANSLATIONS } from "./translations";
 import { neoraDelete, neoraGet, neoraPost } from "./lib/neoraApi";
 import {
@@ -180,7 +180,9 @@ import {
   History,
   Zap,
   Trash,
-  Play
+  Play,
+  SlidersHorizontal,
+  Camera
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -1180,6 +1182,129 @@ export default function App() {
   };
 
   // --- CONNECTION LATENCY / PERFORMANCE METRICS ---
+  // --- CUSTOM STATE FOR NEW TASK & DESIGN FEATURES ---
+  const [visualTheme, setVisualTheme] = useState<'cyber' | 'retro' | 'matrix' | 'sunset' | 'solarized'>(() => (localStorage.getItem('neora_visual_theme') as any) || 'cyber');
+  const [autoArchiveCompleted, setAutoArchiveCompleted] = useState(() => localStorage.getItem("neora_auto_archive_completed") !== "false");
+  const [archivePeriodHours, setArchivePeriodHours] = useState(() => Number(localStorage.getItem("neora_archive_period_hours") || "24"));
+  const [isTaskSettingsOpen, setIsTaskSettingsOpen] = useState(false);
+  
+  const [selectedActiveTaskIds, setSelectedActiveTaskIds] = useState<string[]>([]);
+  const [isBulkSelectMode, setIsBulkSelectMode] = useState<boolean>(false);
+  const [bulkTagInput, setBulkTagInput] = useState("");
+  const [showBulkTagInput, setShowBulkTagInput] = useState(false);
+  
+  const [dragOverWidgetId, setDragOverWidgetId] = useState<string | null>(null);
+
+  const [taskPhoto, setTaskPhoto] = useState<string | null>(null);
+  const [cameraActive, setCameraActive] = useState(false);
+  const videoRef = React.useRef<HTMLVideoElement | null>(null);
+  const mediaStreamRef = React.useRef<MediaStream | null>(null);
+
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+      mediaStreamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+      }
+      setCameraActive(true);
+    } catch (err) {
+      console.warn("Camera start failed:", err);
+      alert("Could not access camera. Please check permissions.");
+    }
+  };
+
+  const capturePhoto = () => {
+    if (videoRef.current) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 640;
+      canvas.height = 480;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg');
+        setTaskPhoto(dataUrl);
+      }
+      stopCamera();
+    }
+  };
+
+  const stopCamera = () => {
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach(track => track.stop());
+      mediaStreamRef.current = null;
+    }
+    setCameraActive(false);
+  };
+
+  const handlePhotoUploadChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setTaskPhoto(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const calculateNextDueDate = (currentDue: string, period: "none" | "daily" | "weekly" | "monthly"): string => {
+    const date = new Date(currentDue);
+    if (isNaN(date.getTime())) return new Date().toISOString().slice(0, 10);
+    if (period === "daily") {
+      date.setDate(date.getDate() + 1);
+    } else if (period === "weekly") {
+      date.setDate(date.getDate() + 7);
+    } else if (period === "monthly") {
+      date.setMonth(date.getMonth() + 1);
+    }
+    return date.toISOString().slice(0, 10);
+  };
+
+  const completeTask = (id: string) => {
+    setTasks((prev) => {
+      const updated = prev.map((t) => {
+        if (t.id === id) {
+          return {
+            ...t,
+            completed: true,
+            completedAt: new Date().toISOString(),
+          };
+        }
+        return t;
+      });
+
+      const completedTask = prev.find((t) => t.id === id);
+      if (completedTask && completedTask.recurring && completedTask.recurring !== "none") {
+        const baseDue = completedTask.dueAt || new Date().toISOString().slice(0, 10);
+        const nextDue = calculateNextDueDate(baseDue, completedTask.recurring);
+        const recurringCopy: Task = {
+          id: Math.random().toString(),
+          title: completedTask.title,
+          notes: completedTask.notes,
+          priority: completedTask.priority,
+          dueAt: nextDue,
+          completed: false,
+          createdAt: new Date().toISOString(),
+          tags: completedTask.tags,
+          category: completedTask.category,
+          recurring: completedTask.recurring,
+          subTasks: (completedTask.subTasks || []).map(st => ({ ...st, id: Math.random().toString(), completed: false })),
+          attachment: completedTask.attachment
+        };
+        return [recurringCopy, ...updated];
+      }
+      return updated;
+    });
+  };
+
+  const handleThemeChange = (theme: 'cyber' | 'retro' | 'matrix' | 'sunset' | 'solarized') => {
+    setVisualTheme(theme);
+    localStorage.setItem('neora_visual_theme', theme);
+    playSystemChirp("success");
+  };
+
   const [latency, setLatency] = useState(14);
   const [apiHealth, setApiHealth] = useState(100);
   const recoveryImportRef = React.useRef<HTMLInputElement | null>(null);
@@ -1205,6 +1330,9 @@ export default function App() {
   const [quickCategory, setQuickCategory] = useState("");
   const [quickTags, setQuickTags] = useState("");
   const [quickNotes, setQuickNotes] = useState("");
+  const [quickRecurring, setQuickRecurring] = useState<'none' | 'daily' | 'weekly' | 'monthly'>('none');
+  const [quickSubTasks, setQuickSubTasks] = useState<SubTask[]>([]);
+  const [quickSubTaskInput, setQuickSubTaskInput] = useState("");
   const [dashboardTaskTab, setDashboardTaskTab] = useState<"active" | "completed">("active");
   const [selectedCompletedTaskIds, setSelectedCompletedTaskIds] = useState<string[]>([]);
   const [showQuickHelp, setShowQuickHelp] = useState(false);
@@ -1288,17 +1416,29 @@ export default function App() {
   }, [predictiveWidgets]);
 
   React.useEffect(() => {
-    // Automatically archive completed tasks older than 7 days
-    const archiveCompletedTasksOlderThan7Days = () => {
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    // Automatically archive completed tasks based on user preferences and archive inactive tasks > 14 days old
+    const runAutoArchive = () => {
+      const thresholdDate = new Date();
+      thresholdDate.setHours(thresholdDate.getHours() - archivePeriodHours);
       
+      const fourteenDaysAgo = new Date();
+      fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+
       setTasks(prevTasks => {
         let changed = false;
         const updated = prevTasks.map(task => {
-          if (task.completed && !task.archived) {
-            const dateToCompare = task.completedAt ? new Date(task.completedAt) : new Date(task.dueAt);
-            if (dateToCompare < sevenDaysAgo) {
+          // Rule 1: Move completed tasks to 'Archive' after a configurable period (e.g. 24 hours)
+          if (autoArchiveCompleted && task.completed && !task.archived) {
+            const dateToCompare = task.completedAt ? new Date(task.completedAt) : new Date(task.dueAt || task.createdAt || Date.now());
+            if (dateToCompare < thresholdDate) {
+              changed = true;
+              return { ...task, archived: true };
+            }
+          }
+          // Rule 2: Move completed or stale tasks to 'Archive' repository after 14 days of inactivity
+          if (!task.archived) {
+            const dateCreated = new Date(task.createdAt || Date.now());
+            if (dateCreated < fourteenDaysAgo) {
               changed = true;
               return { ...task, archived: true };
             }
@@ -1309,11 +1449,11 @@ export default function App() {
       });
     };
     
-    archiveCompletedTasksOlderThan7Days();
+    runAutoArchive();
     // Periodically run every 5 minutes
-    const interval = setInterval(archiveCompletedTasksOlderThan7Days, 5 * 60 * 1000);
+    const interval = setInterval(runAutoArchive, 5 * 60 * 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [autoArchiveCompleted, archivePeriodHours]);
 
   const playSystemChirp = (type: "beep" | "click" | "success" = "beep") => {
     try {
@@ -1367,8 +1507,23 @@ export default function App() {
     e.preventDefault();
   };
 
+  const handleDragEnter = (e: any, widgetId: string) => {
+    e.preventDefault();
+    if (draggedWidgetId && draggedWidgetId !== widgetId) {
+      setDragOverWidgetId(widgetId);
+    }
+  };
+
+  const handleDragLeave = (e: any, widgetId: string) => {
+    e.preventDefault();
+    if (dragOverWidgetId === widgetId) {
+      setDragOverWidgetId(null);
+    }
+  };
+
   const handleDrop = (e: any, targetWidgetId: string) => {
     e.preventDefault();
+    setDragOverWidgetId(null);
     if (!draggedWidgetId || draggedWidgetId === targetWidgetId) return;
 
     const currentIndex = predictiveWidgets.findIndex(w => w.id === draggedWidgetId);
@@ -1884,6 +2039,9 @@ export default function App() {
     reminderAt?: string,
     category?: string,
     notes?: string,
+    attachment?: string,
+    recurring?: 'none' | 'daily' | 'weekly' | 'monthly',
+    subTasks?: SubTask[]
   ) => {
     const newTask: Task = {
       id: Math.random().toString(),
@@ -1896,6 +2054,9 @@ export default function App() {
       reminderAt: reminderAt || "",
       category: category || "",
       createdAt: new Date().toISOString(),
+      attachment,
+      recurring,
+      subTasks: subTasks || []
     };
     setTasks((prev) => [newTask, ...prev]);
     triggerDbSyncAnimation();
@@ -2302,7 +2463,22 @@ export default function App() {
         <div
           id="app-wrapper"
           className={`flex-1 flex flex-col h-full min-h-0 w-full font-sans overflow-hidden print:bg-white print:text-black relative ${clickInspectorMode ? "cursor-crosshair" : ""}`}
-          style={{ background: "#000814", color: "#cce8ff" }}
+          style={{
+            background: {
+              cyber: "#000814",
+              retro: "#120a00",
+              matrix: "#001000",
+              sunset: "#150015",
+              solarized: "#fdf6e3"
+            }[visualTheme] || "#000814",
+            color: {
+              cyber: "#cce8ff",
+              retro: "#f59e0b",
+              matrix: "#10b981",
+              sunset: "#f43f5e",
+              solarized: "#073642"
+            }[visualTheme] || "#cce8ff"
+          }}
         >
           {diagnosticWarnings.length > 0 && (
             <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-1.5 flex items-center gap-2 text-amber-400 font-mono text-[10px] z-50">
@@ -3117,6 +3293,7 @@ export default function App() {
                         }
 
                         if (widget.id === "tasks") {
+                          const activeCriticalCount = tasks.filter(t => !t.completed && !t.archived && t.priority === "critical").length;
                           const dotColors = {
                             critical: "bg-rose-500 shadow-[0_0_6px_#f43f5e]",
                             high: "bg-amber-500 shadow-[0_0_6px_#f59e0b]",
@@ -3188,20 +3365,42 @@ export default function App() {
                           });
 
                           return (
-                            <motion.div
+                             <motion.div
                               layoutId="tasks"
                               key="tasks"
                               draggable
                               onDragStart={(e) => handleDragStart(e, "tasks")}
                               onDragOver={handleDragOver}
+                              onDragEnter={(e) => handleDragEnter(e, "tasks")}
+                              onDragLeave={(e) => handleDragLeave(e, "tasks")}
                               onDrop={(e) => handleDrop(e, "tasks")}
                               className="col-span-1 md:col-span-1 xl:col-span-1 relative rounded-xl overflow-hidden p-3 flex flex-col justify-between cursor-grab active:cursor-grabbing transition-all duration-300"
                               onClick={() => trackWidgetInteraction("tasks")}
                               style={{
                                 background:
+                                  visualTheme === 'retro' ? "linear-gradient(135deg, rgba(30,15,0,0.92), rgba(15,8,0,0.85))" :
+                                  visualTheme === 'matrix' ? "linear-gradient(135deg, rgba(0,25,0,0.92), rgba(0,10,0,0.85))" :
+                                  visualTheme === 'sunset' ? "linear-gradient(135deg, rgba(35,0,35,0.92), rgba(15,0,20,0.85))" :
+                                  visualTheme === 'solarized' ? "linear-gradient(135deg, rgba(238,232,213,0.95), rgba(253,246,227,0.9))" :
                                   "linear-gradient(135deg, rgba(0,15,35,0.92), rgba(0,8,20,0.85))",
-                                border: "1px solid rgba(0,212,255,0.15)",
-                                boxShadow: "inset 0 0 20px rgba(0,212,255,0.03)",
+                                border: dragOverWidgetId === "tasks"
+                                  ? "2px dashed #06b6d4"
+                                  : activeCriticalCount > 0
+                                  ? "1.5px solid rgba(244,63,94,0.5)"
+                                  : visualTheme === 'retro' ? "1px solid rgba(245,158,11,0.25)" :
+                                    visualTheme === 'matrix' ? "1px solid rgba(16,185,129,0.25)" :
+                                    visualTheme === 'sunset' ? "1px solid rgba(217,70,239,0.25)" :
+                                    visualTheme === 'solarized' ? "1px solid rgba(100,116,139,0.3)" :
+                                    "1px solid rgba(0,212,255,0.15)",
+                                boxShadow: dragOverWidgetId === "tasks"
+                                  ? "0 0 15px rgba(6,182,212,0.5)"
+                                  : activeCriticalCount > 0
+                                  ? "0 0 12px rgba(244,63,94,0.3)"
+                                  : visualTheme === 'retro' ? "inset 0 0 20px rgba(245,158,11,0.03)" :
+                                    visualTheme === 'matrix' ? "inset 0 0 20px rgba(16,185,129,0.03)" :
+                                    visualTheme === 'sunset' ? "inset 0 0 20px rgba(217,70,239,0.03)" :
+                                    visualTheme === 'solarized' ? "0 4px 6px -1px rgba(0,0,0,0.05)" :
+                                    "inset 0 0 20px rgba(0,212,255,0.03)",
                                 backdropFilter: "blur(20px)",
                                 minHeight: "140px",
                               }}
@@ -3252,6 +3451,37 @@ export default function App() {
                                         </div>
                                       );
                                     })()}
+
+                                    {/* Task settings button */}
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setIsTaskSettingsOpen(!isTaskSettingsOpen);
+                                      }}
+                                      className={`text-slate-500 hover:text-cyan-400 p-0.5 rounded transition-all cursor-pointer shrink-0 ml-1 ${
+                                        isTaskSettingsOpen ? "text-cyan-400 bg-cyan-950/40 border border-cyan-800/30" : ""
+                                      }`}
+                                      title="Task Archiver Settings"
+                                    >
+                                      <SlidersHorizontal className="w-3 h-3" />
+                                    </button>
+
+                                    {/* Bulk select toggle button */}
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setIsBulkSelectMode(!isBulkSelectMode);
+                                        setSelectedActiveTaskIds([]);
+                                      }}
+                                      className={`text-[7px] font-mono font-bold px-1.5 py-0.5 rounded border transition-all cursor-pointer shrink-0 ml-1.5 ${
+                                        isBulkSelectMode 
+                                          ? "bg-amber-950 text-amber-400 border-amber-500/50 animate-pulse" 
+                                          : "bg-slate-950/40 border-slate-900 text-slate-500 hover:text-slate-350"
+                                      }`}
+                                      title="Toggle Bulk Action Mode"
+                                    >
+                                      BULK
+                                    </button>
                                     <div className="flex bg-slate-950/60 p-0.5 rounded border border-slate-900 ml-2 shrink-0">
                                       <button
                                         onClick={(e) => {
@@ -3357,6 +3587,159 @@ export default function App() {
                                   </span>
                                 </div>
 
+                                {/* TASK SETTINGS PANEL */}
+                                {isTaskSettingsOpen && (
+                                  <div className="bg-slate-950/95 border border-cyan-500/30 rounded-lg p-2 mb-2 text-[9px] font-mono text-left" onClick={e => e.stopPropagation()}>
+                                    <div className="flex justify-between items-center pb-1 border-b border-slate-900 mb-1.5">
+                                      <span className="text-cyan-400 font-bold uppercase tracking-wider">Archiver Setup</span>
+                                      <button onClick={() => setIsTaskSettingsOpen(false)} className="text-slate-500 hover:text-rose-400 font-bold">✕</button>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                                      <span className="text-slate-400">Auto-Archive Completed:</span>
+                                      <input
+                                        type="checkbox"
+                                        checked={autoArchiveCompleted}
+                                        onChange={(e) => {
+                                          setAutoArchiveCompleted(e.target.checked);
+                                          localStorage.setItem("neora_auto_archive_completed", e.target.checked ? "true" : "false");
+                                        }}
+                                        className="w-3.5 h-3.5 text-cyan-500 rounded border-slate-800 bg-slate-900 cursor-pointer"
+                                      />
+                                    </div>
+                                    {autoArchiveCompleted && (
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className="text-slate-400">Archive after:</span>
+                                        <select
+                                          value={archivePeriodHours}
+                                          onChange={(e) => {
+                                            const h = Number(e.target.value);
+                                            setArchivePeriodHours(h);
+                                            localStorage.setItem("neora_archive_period_hours", String(h));
+                                          }}
+                                          className="bg-slate-900 border border-slate-800 rounded px-1 py-0.5 text-[8.5px] text-slate-200 focus:outline-none cursor-pointer"
+                                        >
+                                          <option value={1}>1 hour</option>
+                                          <option value={4}>4 hours</option>
+                                          <option value={12}>12 hours</option>
+                                          <option value={24}>24 hours</option>
+                                          <option value={48}>48 hours</option>
+                                        </select>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* BULK ACTION PANEL */}
+                                {isBulkSelectMode && selectedActiveTaskIds.length > 0 && (
+                                  <div className="bg-slate-950/95 border border-amber-500/35 rounded-lg p-2 mb-2 text-[9px] font-mono text-left flex flex-col gap-1.5" onClick={e => e.stopPropagation()}>
+                                    <div className="flex justify-between items-center pb-1 border-b border-slate-900">
+                                      <span className="text-amber-400 font-bold uppercase tracking-wider">Bulk Controls ({selectedActiveTaskIds.length} Selected)</span>
+                                      <div className="flex gap-2">
+                                        <button 
+                                          onClick={() => {
+                                            setSelectedActiveTaskIds(visibleActiveTasks.map(t => t.id));
+                                          }} 
+                                          className="text-[8px] text-cyan-400 hover:underline"
+                                        >
+                                          All
+                                        </button>
+                                        <button 
+                                          onClick={() => setSelectedActiveTaskIds([])} 
+                                          className="text-[8px] text-rose-400 hover:underline"
+                                        >
+                                          None
+                                        </button>
+                                      </div>
+                                    </div>
+                                    
+                                    <div className="flex flex-wrap gap-2 items-center">
+                                      {/* Bulk Tag appending */}
+                                      <div className="flex items-center gap-1">
+                                        <input
+                                          type="text"
+                                          value={bulkTagInput}
+                                          onChange={(e) => setBulkTagInput(e.target.value)}
+                                          placeholder="Append tag..."
+                                          className="bg-slate-900 border border-slate-800 rounded px-1.5 py-0.5 text-[8px] text-slate-200 placeholder-slate-650 focus:outline-none w-16"
+                                        />
+                                        <button
+                                          onClick={() => {
+                                            if (!bulkTagInput.trim()) return;
+                                            setTasks(prev => prev.map(t => {
+                                              if (selectedActiveTaskIds.includes(t.id)) {
+                                                const currentTags = t.tags || [];
+                                                const cleanTag = bulkTagInput.trim().toLowerCase();
+                                                if (!currentTags.includes(cleanTag)) {
+                                                  return { ...t, tags: [...currentTags, cleanTag] };
+                                                }
+                                              }
+                                              return t;
+                                            }));
+                                            setBulkTagInput("");
+                                            setIsBulkSelectMode(false);
+                                            setSelectedActiveTaskIds([]);
+                                            playSystemChirp("success");
+                                            triggerDbSyncAnimation();
+                                          }}
+                                          className="px-1.5 py-0.5 bg-cyan-950 hover:bg-cyan-900/40 text-cyan-400 rounded border border-cyan-800/30 text-[7.5px] font-bold uppercase"
+                                        >
+                                          Tag
+                                        </button>
+                                      </div>
+
+                                      {/* CSV Export */}
+                                      <button
+                                        onClick={() => {
+                                          const targetTasks = tasks.filter(t => selectedActiveTaskIds.includes(t.id));
+                                          const headers = ["ID", "Title", "Priority", "Due Date", "Completed", "Tags", "Category", "Notes", "Created At"];
+                                          const rows = targetTasks.map(t => [
+                                            t.id,
+                                            `"${t.title.replace(/"/g, '""')}"`,
+                                            t.priority,
+                                            t.dueAt || "",
+                                            t.completed ? "Yes" : "No",
+                                            `"${(t.tags || []).join(', ')}"`,
+                                            t.category || "",
+                                            `"${(t.notes || "").replace(/"/g, '""')}"`,
+                                            t.createdAt || ""
+                                          ]);
+                                          const csvContent = "data:text/csv;charset=utf-8," 
+                                            + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+                                          const encodedUri = encodeURI(csvContent);
+                                          const link = document.createElement("a");
+                                          link.setAttribute("href", encodedUri);
+                                          link.setAttribute("download", `neora_bulk_tasks_${new Date().toISOString().slice(0, 10)}.csv`);
+                                          document.body.appendChild(link);
+                                          link.click();
+                                          document.body.removeChild(link);
+                                          playSystemChirp("success");
+                                        }}
+                                        className="px-1.5 py-0.5 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded border border-slate-800 text-[7.5px] font-bold uppercase"
+                                      >
+                                        CSV
+                                      </button>
+
+                                      {/* JSON Export */}
+                                      <button
+                                        onClick={() => {
+                                          const targetTasks = tasks.filter(t => selectedActiveTaskIds.includes(t.id));
+                                          const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(targetTasks, null, 2));
+                                          const link = document.createElement("a");
+                                          link.setAttribute("href", dataStr);
+                                          link.setAttribute("download", `neora_tasks_backup_${new Date().toISOString().slice(0, 10)}.json`);
+                                          document.body.appendChild(link);
+                                          link.click();
+                                          document.body.removeChild(link);
+                                          playSystemChirp("success");
+                                        }}
+                                        className="px-1.5 py-0.5 bg-amber-950/30 hover:bg-amber-900/20 text-amber-400 rounded border border-amber-800/30 text-[7.5px] font-bold uppercase"
+                                      >
+                                        JSON
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+
                                 {dashboardTaskTab === "active" ? (
                                   <>
                                     <div className="flex flex-wrap gap-1 mt-1.5 mb-1.5">
@@ -3454,17 +3837,7 @@ export default function App() {
                                                       setCompletingTaskIds((prev) => [...prev, tk.id]);
                                                       playSystemChirp("success");
                                                       setTimeout(() => {
-                                                        setTasks((prev) =>
-                                                          prev.map((t) =>
-                                                            t.id === tk.id
-                                                              ? {
-                                                                  ...t,
-                                                                  completed: true,
-                                                                  completedAt: new Date().toISOString(),
-                                                                }
-                                                              : t,
-                                                          ),
-                                                        );
+                                                        completeTask(tk.id);
                                                         setCompletingTaskIds((prev) => prev.filter((id) => id !== tk.id));
                                                         triggerDbSyncAnimation();
                                                       }, 750);
@@ -3558,31 +3931,38 @@ export default function App() {
                                                 >
                                                   <div className="flex justify-between items-center gap-1.5 w-full">
                                                     <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                                                      <input
-                                                        type="checkbox"
-                                                        checked={completingTaskIds.includes(tk.id)}
-                                                        onChange={(e) => {
-                                                          e.stopPropagation();
-                                                          setCompletingTaskIds((prev) => [...prev, tk.id]);
-                                                          playSystemChirp("success");
-                                                          setTimeout(() => {
-                                                            setTasks((prev) =>
-                                                              prev.map((t) =>
-                                                                t.id === tk.id
-                                                                  ? {
-                                                                      ...t,
-                                                                      completed: true,
-                                                                      completedAt: new Date().toISOString(),
-                                                                    }
-                                                                  : t,
-                                                              ),
-                                                            );
-                                                            setCompletingTaskIds((prev) => prev.filter((id) => id !== tk.id));
-                                                            triggerDbSyncAnimation();
-                                                          }, 750);
-                                                        }}
-                                                        className="w-3.5 h-3.5 rounded border border-slate-800 bg-slate-900 text-cyan-500 focus:ring-0 focus:ring-offset-0 cursor-pointer shrink-0"
-                                                      />
+                                                      {isBulkSelectMode ? (
+                                                        <input
+                                                          type="checkbox"
+                                                          checked={selectedActiveTaskIds.includes(tk.id)}
+                                                          onChange={(e) => {
+                                                            e.stopPropagation();
+                                                            if (selectedActiveTaskIds.includes(tk.id)) {
+                                                              setSelectedActiveTaskIds(prev => prev.filter(id => id !== tk.id));
+                                                            } else {
+                                                              setSelectedActiveTaskIds(prev => [...prev, tk.id]);
+                                                            }
+                                                            playSystemChirp("click");
+                                                          }}
+                                                          className="w-3.5 h-3.5 rounded border-amber-500/45 bg-amber-950/20 text-amber-500 focus:ring-0 focus:ring-offset-0 cursor-pointer shrink-0 animate-pulse"
+                                                        />
+                                                      ) : (
+                                                        <input
+                                                          type="checkbox"
+                                                          checked={completingTaskIds.includes(tk.id)}
+                                                          onChange={(e) => {
+                                                            e.stopPropagation();
+                                                            setCompletingTaskIds((prev) => [...prev, tk.id]);
+                                                            playSystemChirp("success");
+                                                            setTimeout(() => {
+                                                              completeTask(tk.id);
+                                                              setCompletingTaskIds((prev) => prev.filter((id) => id !== tk.id));
+                                                              triggerDbSyncAnimation();
+                                                            }, 750);
+                                                          }}
+                                                          className="w-3.5 h-3.5 rounded border border-slate-800 bg-slate-900 text-cyan-500 focus:ring-0 focus:ring-offset-0 cursor-pointer shrink-0"
+                                                        />
+                                                      )}
 
                                                       {/* Visual Priority Gauge (Circular Progress Ring) */}
                                                       {(() => {
@@ -3713,6 +4093,30 @@ export default function App() {
                                                           }}
                                                         >
                                                           <span>{tk.title}</span>
+                                                          {tk.dueAt === todayStr && (
+                                                            (() => {
+                                                              const now = new Date();
+                                                              const endOfDay = new Date();
+                                                              endOfDay.setHours(23, 59, 59, 999);
+                                                              const totalMsInDay = 24 * 60 * 60 * 1000;
+                                                              const remainingMs = endOfDay.getTime() - now.getTime();
+                                                              const percent = Math.max(0, Math.min(100, (remainingMs / totalMsInDay) * 100));
+                                                              const hoursLeft = remainingMs / (1000 * 60 * 60);
+                                                              
+                                                              const r = 4;
+                                                              const circ = 2 * Math.PI * r;
+                                                              const offset = circ - (circ * percent) / 100;
+                                                              return (
+                                                                <div className="w-4 h-4 relative flex items-center justify-center shrink-0 cursor-help ml-1" title={`${hoursLeft.toFixed(1)}h remaining today`}>
+                                                                  <svg className="w-4 h-4 -rotate-90" viewBox="0 0 12 12">
+                                                                    <circle cx="6" cy="6" r={r} className="stroke-rose-950/40 fill-none" strokeWidth="1.2" />
+                                                                    <circle cx="6" cy="6" r={r} className="stroke-rose-500 fill-none transition-all duration-300" strokeWidth="1.2" strokeDasharray={circ} strokeDashoffset={offset} />
+                                                                  </svg>
+                                                                  <span className="absolute text-[5px] font-mono font-extrabold text-rose-400">{Math.ceil(hoursLeft)}h</span>
+                                                                </div>
+                                                              );
+                                                            })()
+                                                          )}
                                                           <span className="text-[7.5px] text-slate-500 shrink-0">
                                                             {expandedTaskIds.includes(tk.id) ? "▲" : "▼"}
                                                           </span>
@@ -3765,6 +4169,123 @@ export default function App() {
                                                               #{tg}
                                                             </span>
                                                           ))}
+                                                        </div>
+                                                      )}
+
+                                                      {/* NESTED SUB-TASKS SECTION */}
+                                                      <div className="space-y-1.5 pt-1.5 border-t border-slate-900/40" onClick={e => e.stopPropagation()}>
+                                                        <div className="flex justify-between items-center mb-1">
+                                                          <span className="font-mono text-[7px] text-cyan-500 uppercase tracking-wider">Sub-Objectives:</span>
+                                                          <span className="text-[7px] font-mono text-slate-500">
+                                                            {(tk.subTasks || []).filter(s => s.completed).length}/{(tk.subTasks || []).length} done
+                                                          </span>
+                                                        </div>
+                                                        {(tk.subTasks || []).map(st => (
+                                                          <div key={st.id} className="flex items-center gap-1.5 py-0.5">
+                                                            <input
+                                                              type="checkbox"
+                                                              checked={st.completed}
+                                                              onChange={(e) => {
+                                                                e.stopPropagation();
+                                                                setTasks(prev => prev.map(t => {
+                                                                  if (t.id === tk.id) {
+                                                                    return {
+                                                                      ...t,
+                                                                      subTasks: (t.subTasks || []).map(s => s.id === st.id ? { ...s, completed: !s.completed } : s)
+                                                                    };
+                                                                  }
+                                                                  return t;
+                                                                }));
+                                                                playSystemChirp("success");
+                                                                triggerDbSyncAnimation();
+                                                              }}
+                                                              className="w-3 h-3 text-cyan-500 rounded border-slate-800 bg-slate-900 cursor-pointer shrink-0 focus:ring-0"
+                                                            />
+                                                            <span className={`text-[8px] font-sans flex-1 truncate ${st.completed ? "line-through text-slate-600 opacity-60" : "text-slate-300"}`}>
+                                                              {st.title}
+                                                            </span>
+                                                            <button
+                                                              onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setTasks(prev => prev.map(t => {
+                                                                  if (t.id === tk.id) {
+                                                                    return {
+                                                                      ...t,
+                                                                      subTasks: (t.subTasks || []).filter(s => s.id !== st.id)
+                                                                    };
+                                                                  }
+                                                                  return t;
+                                                                }));
+                                                                playSystemChirp("click");
+                                                                triggerDbSyncAnimation();
+                                                              }}
+                                                              className="text-slate-600 hover:text-rose-400 font-mono text-[8px] px-1"
+                                                            >
+                                                              ✕
+                                                            </button>
+                                                          </div>
+                                                        ))}
+                                                        
+                                                        <div className="flex gap-1.5 items-center pt-0.5">
+                                                          <input
+                                                            type="text"
+                                                            placeholder="Add sub-task..."
+                                                            id={`new-subtask-input-${tk.id}`}
+                                                            onKeyDown={(e) => {
+                                                              if (e.key === 'Enter') {
+                                                                const val = e.currentTarget.value.trim();
+                                                                if (val) {
+                                                                  setTasks(prev => prev.map(t => {
+                                                                    if (t.id === tk.id) {
+                                                                      return {
+                                                                        ...t,
+                                                                        subTasks: [...(t.subTasks || []), { id: Math.random().toString(), title: val, completed: false }]
+                                                                      };
+                                                                    }
+                                                                    return t;
+                                                                  }));
+                                                                  e.currentTarget.value = "";
+                                                                  playSystemChirp("click");
+                                                                  triggerDbSyncAnimation();
+                                                                }
+                                                              }
+                                                            }}
+                                                            className="flex-1 bg-slate-900 border border-slate-850 focus:border-cyan-500/40 rounded px-1.5 py-0.5 text-[8px] text-slate-200 placeholder-slate-600 focus:outline-none font-sans"
+                                                          />
+                                                          <button
+                                                            onClick={(e) => {
+                                                              e.stopPropagation();
+                                                              const input = document.getElementById(`new-subtask-input-${tk.id}`) as HTMLInputElement;
+                                                              const val = input?.value.trim();
+                                                              if (val) {
+                                                                setTasks(prev => prev.map(t => {
+                                                                  if (t.id === tk.id) {
+                                                                    return {
+                                                                      ...t,
+                                                                      subTasks: [...(t.subTasks || []), { id: Math.random().toString(), title: val, completed: false }]
+                                                                    };
+                                                                  }
+                                                                  return t;
+                                                                }));
+                                                                input.value = "";
+                                                                playSystemChirp("click");
+                                                                triggerDbSyncAnimation();
+                                                              }
+                                                            }}
+                                                            className="px-1.5 py-0.5 bg-cyan-950 hover:bg-cyan-900/40 text-cyan-400 rounded border border-cyan-800/30 text-[7.5px] font-bold"
+                                                          >
+                                                            ADD
+                                                          </button>
+                                                        </div>
+                                                      </div>
+
+                                                      {/* PHOTO ATTACHMENT */}
+                                                      {tk.attachment && (
+                                                        <div className="pt-1.5 border-t border-slate-900/40 flex flex-col gap-1 text-left">
+                                                          <span className="font-mono text-[7px] text-cyan-500 uppercase tracking-wider">Attachment:</span>
+                                                          <div className="relative rounded overflow-hidden max-w-xs border border-cyan-500/15">
+                                                            <img src={tk.attachment} alt="Attachment" className="w-full h-auto object-cover max-h-32" referrerPolicy="no-referrer" />
+                                                          </div>
                                                         </div>
                                                       )}
                                                     </motion.div>
@@ -5577,6 +6098,7 @@ export default function App() {
                 }}
                 onClose={() => setVoicePanelOpen(false)}
                 onSelfEvolution={handleSelfEvolution}
+                onThemeChange={handleThemeChange}
               />
             )}
 
@@ -5687,7 +6209,7 @@ export default function App() {
                         return;
                       }
 
-                      handleAddTask(title, priority, tags, remindAt, category, notesVal);
+                      handleAddTask(title, priority, tags, remindAt, category, notesVal, taskPhoto || undefined, quickRecurring !== 'none' ? quickRecurring : undefined, quickSubTasks);
                       
                       // Seamlessly sync to memory via neoraPost('/api/memory') pipeline (Task 1)
                       neoraPost('/api/memory', {
@@ -5710,6 +6232,11 @@ export default function App() {
                       setQuickCategory('');
                       setQuickTags('');
                       setQuickNotes('');
+                      setTaskPhoto(null);
+                      setQuickRecurring('none');
+                      setQuickSubTasks([]);
+                      setQuickSubTaskInput('');
+                      stopCamera();
                       setIsDashboardAddTaskOpen(false);
                     }} className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
                       
@@ -5826,6 +6353,164 @@ export default function App() {
                         />
                       </div>
 
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-mono text-slate-400 uppercase">
+                          {lang === 'bn' ? 'পুনরাবৃত্তি (Recurring):' : 'Recurrence Schedule:'}
+                        </label>
+                        <select
+                          value={quickRecurring}
+                          onChange={(e) => setQuickRecurring(e.target.value as any)}
+                          className="w-full bg-slate-900 border border-slate-800 focus:border-cyan-500/50 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none cursor-pointer font-sans"
+                        >
+                          <option value="none">{lang === 'bn' ? 'কোনো পুনরাবৃত্তি নেই' : 'No Recurrence (One-off)'}</option>
+                          <option value="daily">{lang === 'bn' ? 'প্রতিদিন' : 'Daily Recurrence'}</option>
+                          <option value="weekly">{lang === 'bn' ? 'প্রতি সপ্তাহে' : 'Weekly Recurrence'}</option>
+                          <option value="monthly">{lang === 'bn' ? 'প্রতি মাসে' : 'Monthly Recurrence'}</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-2 border border-slate-900 rounded-lg p-2.5 bg-slate-950/40">
+                        <label className="block text-[10px] font-mono text-slate-400 uppercase">
+                          {lang === 'bn' ? 'ফটো বা ইমেজ সংযুক্তি:' : 'Photo & Image Attachment:'}
+                        </label>
+                        
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (cameraActive) {
+                                stopCamera();
+                              } else {
+                                startCamera();
+                              }
+                            }}
+                            className={`flex-1 py-1.5 px-2 border rounded text-[10px] font-mono font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                              cameraActive 
+                                ? "bg-rose-950/40 border-rose-800 text-rose-400" 
+                                : "bg-cyan-950/40 border-cyan-800 text-cyan-400 hover:bg-cyan-900/30"
+                            }`}
+                          >
+                            <Camera className="w-3.5 h-3.5" />
+                            <span>{cameraActive ? (lang === 'bn' ? 'ক্যামেরা বন্ধ' : 'SHUT CAMERA') : (lang === 'bn' ? 'ক্যামেরা ব্যবহার' : 'USE WEBCAM')}</span>
+                          </button>
+
+                          <div className="flex-1 relative overflow-hidden">
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={handlePhotoUploadChange}
+                              className="absolute inset-0 opacity-0 cursor-pointer z-10 w-full h-full"
+                            />
+                            <div className="w-full h-full py-1.5 px-2 border border-slate-800 bg-slate-900 rounded text-[10px] font-mono font-bold text-slate-400 flex items-center justify-center gap-1.5 hover:bg-slate-850">
+                              <Upload className="w-3.5 h-3.5" />
+                              <span>{lang === 'bn' ? 'ফাইল আপলোড' : 'CHOOSE FILE'}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {cameraActive && (
+                          <div className="relative rounded-lg overflow-hidden border border-cyan-500/30 bg-black mt-2">
+                            <video
+                              ref={videoRef}
+                              className="w-full h-auto object-cover max-h-48 transform -scale-x-100"
+                              playsInline
+                              muted
+                            />
+                            <div className="absolute bottom-2 left-2 right-2 flex justify-center gap-2">
+                              <button
+                                type="button"
+                                onClick={capturePhoto}
+                                className="px-3 py-1 bg-cyan-500 hover:bg-cyan-400 text-slate-950 rounded font-mono font-bold text-[10px] uppercase shadow-lg shadow-cyan-500/20"
+                              >
+                                Capture Frame
+                              </button>
+                              <button
+                                type="button"
+                                onClick={stopCamera}
+                                className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded font-mono font-bold text-[10px] uppercase"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {taskPhoto && (
+                          <div className="relative border border-slate-900 rounded-lg p-1 bg-slate-950 mt-2 flex flex-col items-center">
+                            <img
+                              src={taskPhoto}
+                              alt="Task Attachment Preview"
+                              className="max-h-32 rounded object-contain w-full"
+                              referrerPolicy="no-referrer"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setTaskPhoto(null)}
+                              className="absolute top-2 right-2 bg-rose-950/85 hover:bg-rose-900 border border-rose-800 text-rose-400 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold"
+                              title="Remove attached photo"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="space-y-1.5 border border-slate-900 rounded-lg p-2.5 bg-slate-950/40">
+                        <label className="block text-[10px] font-mono text-slate-400 uppercase">
+                          {lang === 'bn' ? 'উপ-কাজসমূহ (Sub-Tasks):' : 'Pre-defined Sub-Tasks / Milestones:'}
+                        </label>
+                        
+                        {quickSubTasks.length > 0 && (
+                          <div className="space-y-1 mb-2 bg-slate-900/40 border border-slate-900 p-1.5 rounded-md">
+                            {quickSubTasks.map((st) => (
+                              <div key={st.id} className="flex items-center justify-between gap-1 text-[9px] font-mono py-0.5 text-slate-300">
+                                <span className="truncate">{st.title}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setQuickSubTasks(prev => prev.filter(item => item.id !== st.id))}
+                                  className="text-rose-500 hover:text-rose-400 px-1 text-[8px]"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="flex gap-1.5">
+                          <input
+                            type="text"
+                            value={quickSubTaskInput}
+                            onChange={(e) => setQuickSubTaskInput(e.target.value)}
+                            placeholder={lang === 'bn' ? 'যেমন: হিসাব মেলাও...' : 'e.g., balance numbers...'}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                const val = quickSubTaskInput.trim();
+                                if (val) {
+                                  setQuickSubTasks(prev => [...prev, { id: Math.random().toString(), title: val, completed: false }]);
+                                  setQuickSubTaskInput('');
+                                }
+                              }
+                            }}
+                            className="flex-1 bg-slate-900 border border-slate-800 focus:border-cyan-500/40 rounded px-2 py-1 text-xs text-slate-100 placeholder-slate-600 focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const val = quickSubTaskInput.trim();
+                              if (val) {
+                                setQuickSubTasks(prev => [...prev, { id: Math.random().toString(), title: val, completed: false }]);
+                                setQuickSubTaskInput('');
+                              }
+                            }}
+                            className="px-2.5 bg-cyan-950 hover:bg-cyan-900/40 text-cyan-400 rounded border border-cyan-800/30 text-[10px] font-mono font-bold"
+                          >
+                            ADD
+                          </button>
+                        </div>
+                      </div>
+
                       <div className="space-y-1.5">
                         <label className="block text-[10px] font-mono text-slate-400 uppercase">{lang === 'bn' ? 'অগ্রাধিকার (Priority):' : 'Priority Level:'}</label>
                         <input type="hidden" name="priority" value={newTaskPriority} />
@@ -5884,6 +6569,11 @@ export default function App() {
                             setQuickCategory('');
                             setQuickTags('');
                             setQuickNotes('');
+                            setTaskPhoto(null);
+                            setQuickRecurring('none');
+                            setQuickSubTasks([]);
+                            setQuickSubTaskInput('');
+                            stopCamera();
                             setIsDashboardAddTaskOpen(false);
                           }}
                           className="flex-1 py-2 bg-slate-900 hover:bg-slate-850 border border-slate-800 rounded-lg text-xs font-mono font-bold text-slate-400 transition-all animate-none"

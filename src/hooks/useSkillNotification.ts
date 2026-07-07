@@ -45,13 +45,15 @@ export function useSkillNotification() {
           useCase = "Directly self-heals typescript errors & missing imports.";
         }
 
-        setNotification({
-          id: `notif-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-          skillName,
-          description,
-          useCase,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        });
+        setTimeout(() => {
+          setNotification({
+            id: `notif-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            skillName,
+            description,
+            useCase,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          });
+        }, 0);
       }
     };
 

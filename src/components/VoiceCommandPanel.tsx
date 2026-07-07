@@ -11,6 +11,7 @@ interface VoiceCommandPanelProps {
   onClose: () => void;
   lang: 'en' | 'bn';
   onSelfEvolution?: (action: string) => void;
+  onThemeChange?: (theme: 'cyber' | 'retro' | 'matrix' | 'sunset' | 'solarized') => void;
 }
 
 interface RecentCmd {
@@ -196,10 +197,24 @@ function parseCommand(text: string): { type: string; payload: any } | null {
     }
   }
 
+  // Voice theme switcher commands
+  if (t.includes('theme to') || t.includes('change theme') || t.includes('switch theme') || t.includes('set theme') || t.includes('থিম পরিবর্তন') || t.includes('থিম করো')) {
+    let requestedTheme: 'cyber' | 'retro' | 'matrix' | 'sunset' | 'solarized' | null = null;
+    if (t.includes('cyber') || t.includes('সাইবার')) requestedTheme = 'cyber';
+    else if (t.includes('retro') || t.includes('রেট্রো')) requestedTheme = 'retro';
+    else if (t.includes('matrix') || t.includes('ম্যাট্রিক্স')) requestedTheme = 'matrix';
+    else if (t.includes('sunset') || t.includes('সানসেট')) requestedTheme = 'sunset';
+    else if (t.includes('solarized') || t.includes('সোলাইজড')) requestedTheme = 'solarized';
+    
+    if (requestedTheme) {
+      return { type: 'theme-switch', payload: { theme: requestedTheme } };
+    }
+  }
+
   return null;
 }
 
-export function VoiceCommandPanel({ onAddTask, onAddNote, onAddReminder, onNavigate, onClose, lang, onSelfEvolution }: VoiceCommandPanelProps) {
+export function VoiceCommandPanel({ onAddTask, onAddNote, onAddReminder, onNavigate, onClose, lang, onSelfEvolution, onThemeChange }: VoiceCommandPanelProps) {
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [feedback, setFeedback] = useState<{ msg: string; ok: boolean } | null>(null);
@@ -457,6 +472,16 @@ export function VoiceCommandPanel({ onAddTask, onAddNote, onAddReminder, onNavig
         } else if (cmd.type === 'navigate') {
           onNavigate(cmd.payload.tab);
           actionLabel = `Navigated to ${cmd.payload.dest}`;
+        } else if (cmd.type === 'theme-switch') {
+          if (onThemeChange) {
+            onThemeChange(cmd.payload.theme);
+            actionLabel = lang === 'bn'
+              ? `থিম সফলভাবে '${cmd.payload.theme}' তে পরিবর্তন করা হয়েছে!`
+              : `Theme successfully switched to '${cmd.payload.theme.toUpperCase()}'!`;
+          } else {
+            ok = false;
+            actionLabel = 'Theme controller not available';
+          }
         } else if (cmd.type === 'self-evolution') {
           onNavigate('evolution');
           if (onSelfEvolution) {

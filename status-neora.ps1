@@ -2,7 +2,8 @@ $ErrorActionPreference = 'Stop'
 
 $checks = @(
   @{ Name = 'Server'; Match = 'tsx server.ts' },
-  @{ Name = 'Agent'; Match = 'neora_agent' }
+  @{ Name = 'Agent (Enhanced)'; Match = 'neora_agent_enhanced.py' },
+  @{ Name = 'Agent (Legacy)'; Match = 'neora_agent.py' }
 )
 
 foreach ($check in $checks) {
@@ -17,4 +18,4 @@ foreach ($check in $checks) {
   }
 }
 
-Write-Host "Logs: .\logs\server.out.log, .\logs\server.err.log, .\logs\agent.out.log, .\logs\agent.err.log"
+Write-Host "Logs: .\logs\server.out.log, .\logs\server.err.log, .\logs\agent_enhanced.out.log, .\logs\agent_enhanced.err.log, .\logs\agent_legacy.out.log, .\logs\agent_legacy.err.log"

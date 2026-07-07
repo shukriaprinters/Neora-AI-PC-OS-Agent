@@ -105,10 +105,16 @@ export function SystemEventLog({ lang, onAddSystemLog }: SystemEventLogProps) {
     const handleAddSystemEvent = (e: Event) => {
       const customEvent = e as CustomEvent<SystemEvent>;
       if (customEvent.detail) {
-        setEvents(prev => [...prev.slice(-39), customEvent.detail]);
-        if (onAddSystemLog) {
-          onAddSystemLog(`[NEORA_EVENT] [${customEvent.detail.category.toUpperCase()}] ${customEvent.detail.message}`);
-        }
+        // Defer state update to next tick to avoid "Cannot update a component while rendering a different component"
+        setTimeout(() => {
+          setEvents(prev => {
+            if (prev.some(item => item.id === customEvent.detail.id)) return prev;
+            return [...prev.slice(-39), customEvent.detail];
+          });
+          if (onAddSystemLog) {
+            onAddSystemLog(`[NEORA_EVENT] [${customEvent.detail.category.toUpperCase()}] ${customEvent.detail.message}`);
+          }
+        }, 0);
       }
     };
     window.addEventListener('neora-system-event', handleAddSystemEvent);

@@ -4,7 +4,7 @@ import {
   Laptop, Play, Terminal, Power, RefreshCw, Copy, Check, Download, 
   HelpCircle, Volume2, Mic, AlertCircle, Eye, Settings, FileText, Activity, RotateCcw, XCircle,
   Sliders, Sparkles, Clock, Search, Cpu, BookOpen, ShieldCheck, Zap, Database, Layers,
-  Loader2, Trash, Plus, ShieldAlert
+  Loader2, Trash, Plus, ShieldAlert, Thermometer, HardDrive
 } from 'lucide-react';
 import { copyToClipboardFailsafe } from '../utils/clipboard';
 import { classifyNeoraInput } from '../lib/neoraCommand';
@@ -144,6 +144,32 @@ export function OsAgentView({ lang, geminiKey, setGeminiKey, useGroq, groqKey, g
   });
   const [isFixingRestarts, setIsFixingRestarts] = useState<boolean>(false);
 
+  // New PC Stability States: CPU temperature, disk I/O, and advanced resource throttling
+  const [cpuTemp, setCpuTemp] = useState<number>(48); // in °C
+  const [diskIo, setDiskIo] = useState<number>(12.4); // in MB/s
+  const [diskIoCap, setDiskIoCap] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('neora_disk_io_cap');
+      return saved ? parseInt(saved, 10) : 15; // default 15 MB/s to prevent disk freezes
+    }
+    return 15;
+  });
+  const [coreLimit, setCoreLimit] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('neora_core_limit');
+      return saved ? parseInt(saved, 10) : 2; // default 2 CPU cores to prevent lockups
+    }
+    return 2;
+  });
+  const [thermalGovernor, setThermalGovernor] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('neora_thermal_governor');
+      return saved !== 'false'; // default true: throttles threads under heat
+    }
+    return true;
+  });
+  const [showRegDownloadSuccess, setShowRegDownloadSuccess] = useState<boolean>(false);
+
   // --- ENHANCED SYSTEM AUTO-OPTIMIZER STATES & ENGINES ---
   interface AppItem {
     id: string;
@@ -241,6 +267,7 @@ export function OsAgentView({ lang, geminiKey, setGeminiKey, useGroq, groqKey, g
       if (status !== 'online') return;
 
       // Fluctuating metric simulation
+      let currentCpu = 38;
       setCpuUsage(prev => {
         const next = prev + Math.floor(Math.random() * 11) - 5;
         let bounded = Math.max(10, Math.min(85, next));
@@ -248,7 +275,7 @@ export function OsAgentView({ lang, geminiKey, setGeminiKey, useGroq, groqKey, g
         // If resource capping is active, clamp it!
         if (bounded > resourceCapping) {
           bounded = Math.max(8, Math.min(resourceCapping, next));
-          if (Math.random() > 0.6) {
+          if (Math.random() > 0.7) {
             setLogs(logPrev => [
               ...logPrev,
               `[${new Date().toLocaleTimeString()}] 🛡️ [Resource Cap] Capped Neora thread load at ${resourceCapping}%. Prevented high CPU spike and PC freeze.`
@@ -261,6 +288,7 @@ export function OsAgentView({ lang, geminiKey, setGeminiKey, useGroq, groqKey, g
           ]);
           return Math.floor(15 + Math.random() * 10); // quickly cool down CPU
         }
+        currentCpu = bounded;
         return bounded;
       });
 
@@ -271,7 +299,7 @@ export function OsAgentView({ lang, geminiKey, setGeminiKey, useGroq, groqKey, g
         // If resource capping is active, clamp RAM as well!
         if (bounded > resourceCapping + 5) {
           bounded = Math.max(15, resourceCapping + Math.floor(Math.random() * 3));
-          if (Math.random() > 0.6) {
+          if (Math.random() > 0.7) {
             setLogs(logPrev => [
               ...logPrev,
               `[${new Date().toLocaleTimeString()}] 🧠 [Memory Cap] Restricting memory allocation below ${resourceCapping + 5}% cap. Prevented physical RAM deadlock.`
@@ -285,6 +313,51 @@ export function OsAgentView({ lang, geminiKey, setGeminiKey, useGroq, groqKey, g
           return 28; // force back down
         }
         return bounded;
+      });
+
+      // Fluctuate CPU Temperature based on coreLimit, CPU usage, and thermalGovernor
+      setCpuTemp(prev => {
+        // High CPU loads & more cores generate more heat
+        const heatFactor = (currentCpu / 40) * (coreLimit * 0.8 + 0.4);
+        const targetTemp = 40 + Math.floor(heatFactor * 15);
+        let nextTemp = prev + (targetTemp > prev ? 1 : -1) * (Math.floor(Math.random() * 3) + 1);
+        nextTemp = Math.max(38, Math.min(92, nextTemp));
+
+        // Active Thermal Governor intercepts high heat (prevents crash restarts/hangs)
+        if (thermalGovernor && nextTemp > 75) {
+          nextTemp = Math.max(68, prev - Math.floor(Math.random() * 3) - 2);
+          if (Math.random() > 0.6) {
+            setLogs(logPrev => [
+              ...logPrev,
+              `[${new Date().toLocaleTimeString()}] 🌡️ [Thermal Governor] CPU core temperature reached ${prev}°C! Throttling active cores to cool down hardware.`
+            ]);
+          }
+        } else if (!thermalGovernor && nextTemp > 85) {
+          if (Math.random() > 0.6) {
+            setLogs(logPrev => [
+              ...logPrev,
+              `[${new Date().toLocaleTimeString()}] ⚠️ [Danger: Heat] CPU core is overheating (${nextTemp}°C)! Auto-restart or thermal system freeze is highly likely unless Thermal Governor is enabled.`
+            ]);
+          }
+        }
+        return nextTemp;
+      });
+
+      // Fluctuate Disk I/O based on scanner activity and diskIoCap
+      setDiskIo(prev => {
+        const base = Math.floor(Math.random() * 35) + 5;
+        let nextIo = base;
+        
+        if (nextIo > diskIoCap) {
+          nextIo = Math.max(2, diskIoCap - Math.floor(Math.random() * 3));
+          if (Math.random() > 0.7) {
+            setLogs(logPrev => [
+              ...logPrev,
+              `[${new Date().toLocaleTimeString()}] 💾 [Disk Throttle] Scanning bandwidth restricted to ${diskIoCap} MB/s. Bypassed disk I/O bottleneck & explorer freezes.`
+            ]);
+          }
+        }
+        return nextIo;
       });
 
       // Gradually accumulate cache
@@ -321,7 +394,7 @@ export function OsAgentView({ lang, geminiKey, setGeminiKey, useGroq, groqKey, g
     }, 7000);
 
     return () => clearInterval(interval);
-  }, [status, autoOptimize]);
+  }, [status, autoOptimize, resourceCapping, diskIoCap, coreLimit, thermalGovernor, preventAutoRestarts]);
 
   // Action: Scan local computer for installed software shortcuts
   const handleRescanSoftware = () => {
@@ -451,6 +524,7 @@ export function OsAgentView({ lang, geminiKey, setGeminiKey, useGroq, groqKey, g
       `[${new Date().toLocaleTimeString()}] 🩺 [System Diagnostics] Checking startup delays, background thread stacks, and heat indexes...`,
       `[${new Date().toLocaleTimeString()}] ⚙️ [Daemon Priority] Capping Neora process priority level to BELOW_NORMAL to free up CPU cores for main apps.`,
       `[${new Date().toLocaleTimeString()}] 🚀 [Startup Boost] Configured Neora Delayed Auto-Start (30 seconds delay) on Windows boot.`,
+      `[${new Date().toLocaleTimeString()}] 🌡️ [Thermal Calibrator] Cooling down active CPU processors and flushing thread-heaped cores.`,
       `[${new Date().toLocaleTimeString()}] 🚫 [Registry Fix] Patched Windows Error Reporting (WER) registry keys.`,
       `[${new Date().toLocaleTimeString()}] 🚫 [Crash Shield] Blocked Windows Kernel crash dumps from triggering hard system restarts.`
     ]);
@@ -459,10 +533,12 @@ export function OsAgentView({ lang, geminiKey, setGeminiKey, useGroq, groqKey, g
       setCpuUsage(12);
       setRamUsage(18);
       setTempFilesSize(6);
+      setCpuTemp(41); // cool down CPU temperature
+      setDiskIo(1.8); // decrease Disk I/O rate
       setLogs(prev => [
         ...prev,
         `[${new Date().toLocaleTimeString()}] ✨ [Diagnostic Success] Fixed PC auto-restarts, freezing, and startup lag successfully!`,
-        `[${new Date().toLocaleTimeString()}] 🚀 [System Stabilizer] CPU Load clamped to 12%. RAM stabilized at 18%. PC startup speed boosted by 84%!`
+        `[${new Date().toLocaleTimeString()}] 🚀 [System Stabilizer] CPU Load clamped to 12%. CPU Temp cooled to 41°C. RAM stabilized at 18%. Disk I/O minimized to 1.8 MB/s. PC startup speed boosted by 84%!`
       ]);
       setIsFixingRestarts(false);
       setStatusBanner(lang === 'bn' ? "পিসির হ্যাং, স্লো ও রিস্টার্ট সমস্যা সমাধান করা হয়েছে!" : "PC lagging, freezing, and auto-restart issues resolved successfully!");
@@ -2037,7 +2113,7 @@ while True:
                 </div>
 
                 {/* METRICS METERS */}
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                   <div className="bg-slate-900/60 border border-slate-850 p-2 rounded-lg text-center relative overflow-hidden">
                     <div className="absolute top-0 left-0 h-[2px] bg-cyan-400" style={{ width: `${cpuUsage}%` }} />
                     <span className="block text-[8px] font-mono text-slate-500 uppercase tracking-wider">{lang === 'bn' ? 'সিপিইউ লোড' : 'CPU Load'}</span>
@@ -2064,6 +2140,37 @@ while True:
                     </strong>
                     <span className="text-[7px] text-slate-450 font-mono block mt-0.5 leading-none">
                       {tempFilesSize > 100 ? (lang === 'bn' ? 'আবর্জনা জমা' : 'Needs Scrubbing') : (lang === 'bn' ? 'ক্লিন অ্যান্ড স্পিডি' : 'Clean & Fast')}
+                    </span>
+                  </div>
+
+                  <div className="bg-slate-900/60 border border-slate-850 p-2 rounded-lg text-center relative overflow-hidden">
+                    <div className="absolute top-0 left-0 h-[2px] transition-all duration-300" style={{ 
+                      width: `${Math.min(100, (cpuTemp / 100) * 100)}%`,
+                      backgroundColor: cpuTemp > 75 ? '#ef4444' : cpuTemp > 65 ? '#f59e0b' : '#f43f5e'
+                    }} />
+                    <span className="block text-[8px] font-mono text-slate-500 uppercase tracking-wider flex items-center justify-center gap-1">
+                      <Thermometer className="w-2 h-2 text-rose-450" />
+                      {lang === 'bn' ? 'সিপিইউ তাপমাত্রা' : 'CPU Temp'}
+                    </span>
+                    <strong className={`text-sm font-mono block ${cpuTemp > 75 ? 'text-red-400 animate-pulse' : cpuTemp > 65 ? 'text-amber-400' : 'text-rose-400'}`}>
+                      {cpuTemp}°C
+                    </strong>
+                    <span className="text-[7px] text-slate-450 font-mono block mt-0.5 leading-none">
+                      {cpuTemp > 75 ? (lang === 'bn' ? 'অতিরিক্ত গরম' : 'Overheating!') : cpuTemp > 65 ? (lang === 'bn' ? 'উষ্ণ তাপমাত্রা' : 'Warm') : (lang === 'bn' ? 'ঠান্ডা ও নিরাপদ' : 'Cool & Safe')}
+                    </span>
+                  </div>
+
+                  <div className="bg-slate-900/60 border border-slate-850 p-2 rounded-lg text-center relative overflow-hidden">
+                    <div className="absolute top-0 left-0 h-[2px] bg-indigo-400" style={{ width: `${Math.min(100, (diskIo / 50) * 100)}%` }} />
+                    <span className="block text-[8px] font-mono text-slate-500 uppercase tracking-wider flex items-center justify-center gap-1">
+                      <HardDrive className="w-2 h-2 text-indigo-400" />
+                      {lang === 'bn' ? 'ডিস্ক রাইট রেট' : 'Disk I/O'}
+                    </span>
+                    <strong className={`text-sm font-mono block ${diskIo > diskIoCap ? 'text-yellow-450' : 'text-indigo-400'}`}>
+                      {diskIo.toFixed(1)} MB/s
+                    </strong>
+                    <span className="text-[7px] text-slate-450 font-mono block mt-0.5 leading-none">
+                      {diskIo > diskIoCap ? (lang === 'bn' ? 'ক্যাপড থ্রোটল' : 'Capped Throttle') : (lang === 'bn' ? 'স্বাভাবিক রাইট' : 'Optimal IO')}
                     </span>
                   </div>
                 </div>
@@ -2160,7 +2267,7 @@ while True:
               </div>
 
               {/* --- NEORA SAFEBOOT & RESOURCE CONTROL GUARD --- */}
-              <div className="bg-slate-950/60 rounded-xl p-3.5 border border-slate-850 space-y-3">
+              <div className="bg-slate-950/60 rounded-xl p-3.5 border border-slate-850 space-y-4">
                 <div className="flex items-center justify-between">
                   <h5 className="text-[10px] font-bold text-emerald-450 uppercase tracking-widest flex items-center gap-1.5">
                     <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
@@ -2174,126 +2281,301 @@ while True:
                 <p className="text-[10px] text-slate-400 leading-normal">
                   {lang === 'bn' 
                     ? 'পিসির স্টার্টআপ লেটেন্সি, হাই সিপিইউ/র‍্যাম স্পাইক এবং অটো-রিস্টার্ট লুপ ফিক্স করার জন্য সমন্বিত অটোমেশন শিল্ড।' 
-                    : 'Mitigates startup delays, high CPU/RAM utilization, and prevents Windows crash loops or auto-restarts.'}
+                    : 'Protects physical PCs against boot-up delays, heavy CPU/RAM/Disk loads, and thermal crash-loop auto-restarts.'}
                 </p>
 
-                {/* DYNAMIC PROTECTION METRICS & SETTINGS CONTROLS */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
-                  {/* Option 1: Startup Delay */}
-                  <div className="bg-slate-900/60 border border-slate-850 p-2 rounded-lg flex flex-col justify-between">
-                    <div>
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <Clock className="w-3.5 h-3.5 text-cyan-400" />
-                        <span className="text-[9px] font-bold text-slate-300 leading-tight">
-                          {lang === 'bn' ? 'স্টার্টআপ বুস্ট' : 'Delayed Start (30s)'}
-                        </span>
+                {/* TIER 1: STABILITY & AUTO-START SHIELDS (TOGGLES) */}
+                <div className="border-t border-slate-900 pt-3">
+                  <span className="text-[8px] font-mono font-bold text-slate-500 uppercase tracking-wider block mb-2">
+                    {lang === 'bn' ? '১. স্টেবিলিটি ও অটো-স্টার্ট শিল্ডস' : '1. Core Boot & Crash Protectors'}
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    {/* Option 1: Startup Delay */}
+                    <div className="bg-slate-900/40 border border-slate-850/85 p-2 rounded-lg flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <Clock className="w-3.5 h-3.5 text-cyan-400" />
+                          <span className="text-[9px] font-bold text-slate-300 leading-tight">
+                            {lang === 'bn' ? 'স্টার্টআপ বুস্ট' : 'Delayed Start (30s)'}
+                          </span>
+                        </div>
+                        <p className="text-[8px] text-slate-500 leading-tight mb-2">
+                          {lang === 'bn' 
+                            ? 'পিসি রান করার সময় ৩০ সেকেন্ড পর নিওরা লোড করে বুট স্পিড বাড়ায়।' 
+                            : 'Delays Neora heavy threads for 30s during Windows boot to let systems initialize.'}
+                        </p>
                       </div>
-                      <p className="text-[8px] text-slate-500 leading-tight mb-2">
-                        {lang === 'bn' 
-                          ? 'পিসি রান করার সময় ৩০ সেকেন্ড পর নিওরা লোড করে বুট স্পিড বাড়ায়।' 
-                          : 'Pauses thread execution for 30s during PC boot to prevent startup bottleneck.'}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const next = !startupDelay;
-                        setStartupDelay(next);
-                        localStorage.setItem('neora_startup_delay', String(next));
-                        setLogs(prev => [
-                          ...prev,
-                          `[${new Date().toLocaleTimeString()}] ⚙️ [Config Changed] Delayed Auto-Start changed to: ${next ? 'ENABLED' : 'DISABLED'}`
-                        ]);
-                      }}
-                      className={`w-full py-1 rounded text-[8px] font-bold tracking-wider uppercase transition cursor-pointer text-center ${
-                        startupDelay 
-                          ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' 
-                          : 'bg-slate-800 text-slate-500 border border-slate-700 hover:text-slate-300'
-                      }`}
-                    >
-                      {startupDelay ? (lang === 'bn' ? 'সক্রিয় (নিরাপদ)' : 'ENABLED (SAFE)') : (lang === 'bn' ? 'নিষ্ক্রিয় (ধীর)' : 'DISABLED (LAGGY)')}
-                    </button>
-                  </div>
-
-                  {/* Option 2: Resource Capping Slider */}
-                  <div className="bg-slate-900/60 border border-slate-850 p-2 rounded-lg flex flex-col justify-between">
-                    <div>
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <Sliders className="w-3.5 h-3.5 text-yellow-400" />
-                        <span className="text-[9px] font-bold text-slate-300 leading-tight">
-                          {lang === 'bn' ? 'রিসোর্স থ্রোটলিং ক্যাপ' : 'Resource Throttle Cap'}
-                        </span>
-                      </div>
-                      <p className="text-[8px] text-slate-500 leading-tight mb-2">
-                        {lang === 'bn' 
-                          ? 'নিওরা প্রসেসগুলোর জন্য সর্বোচ্চ অনুমোদিত লোড সিলেকশন।' 
-                          : 'Caps Neora CPU & memory spikes below selected threshold to avoid freezing.'}
-                      </p>
-                    </div>
-                    <div>
-                      <div className="flex justify-between text-[8px] text-slate-400 font-mono mb-1 px-0.5">
-                        <span>{lang === 'bn' ? 'সীমা:' : 'Limit:'}</span>
-                        <span className="text-yellow-400 font-bold">{resourceCapping}%</span>
-                      </div>
-                      <input
-                        type="range"
-                        min="15"
-                        max="85"
-                        step="5"
-                        value={resourceCapping}
-                        onChange={(e) => {
-                          const val = parseInt(e.target.value, 10);
-                          setResourceCapping(val);
-                          localStorage.setItem('neora_resource_capping', String(val));
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !startupDelay;
+                          setStartupDelay(next);
+                          localStorage.setItem('neora_startup_delay', String(next));
                           setLogs(prev => [
                             ...prev,
-                            `[${new Date().toLocaleTimeString()}] ⚙️ [Config Changed] System Resource Cap updated to: ${val}%`
+                            `[${new Date().toLocaleTimeString()}] ⚙️ [Config Changed] Delayed Auto-Start changed to: ${next ? 'ENABLED' : 'DISABLED'}`
                           ]);
                         }}
-                        className="w-full h-1 bg-slate-850 rounded-lg appearance-none cursor-pointer accent-yellow-400"
-                      />
+                        className={`w-full py-1 rounded text-[8px] font-bold tracking-wider uppercase transition cursor-pointer text-center ${
+                          startupDelay 
+                            ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' 
+                            : 'bg-slate-800 text-slate-500 border border-slate-700 hover:text-slate-300'
+                        }`}
+                      >
+                        {startupDelay ? (lang === 'bn' ? 'সক্রিয় (নিরাপদ)' : 'ENABLED (SAFE)') : (lang === 'bn' ? 'নিষ্ক্রিয় (ধীর)' : 'DISABLED (LAGGY)')}
+                      </button>
+                    </div>
+
+                    {/* Option 2: Prevent Auto-Restarts */}
+                    <div className="bg-slate-900/40 border border-slate-850/85 p-2 rounded-lg flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
+                          <span className="text-[9px] font-bold text-slate-300 leading-tight">
+                            {lang === 'bn' ? 'অটো-রিস্টার্ট ব্লকার' : 'Block Crash Reboots'}
+                          </span>
+                        </div>
+                        <p className="text-[8px] text-slate-500 leading-tight mb-2">
+                          {lang === 'bn' 
+                            ? 'উইন্ডোজ ক্র্যাশ করলেও স্বয়ংক্রিয় রিস্টার্ট হওয়া ব্লক করে দেয়।' 
+                            : 'Disables system auto-restart registry settings on Windows Kernel faults.'}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !preventAutoRestarts;
+                          setPreventAutoRestarts(next);
+                          localStorage.setItem('neora_prevent_auto_restarts', String(next));
+                          setLogs(prev => [
+                            ...prev,
+                            `[${new Date().toLocaleTimeString()}] ⚙️ [Config Changed] Block Crash Reboots changed to: ${next ? 'ENABLED' : 'DISABLED'}`
+                          ]);
+                        }}
+                        className={`w-full py-1 rounded text-[8px] font-bold tracking-wider uppercase transition cursor-pointer text-center ${
+                          preventAutoRestarts 
+                            ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' 
+                            : 'bg-slate-800 text-slate-500 border border-slate-700 hover:text-slate-300'
+                        }`}
+                      >
+                        {preventAutoRestarts ? (lang === 'bn' ? 'সুরক্ষিত (ব্লকড)' : 'ENABLED (SHIELDED)') : (lang === 'bn' ? 'অসুরক্ষিত' : 'DISABLED (RISKY)')}
+                      </button>
+                    </div>
+
+                    {/* Option 3: Thermal safety governor */}
+                    <div className="bg-slate-900/40 border border-slate-850/85 p-2 rounded-lg flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <Thermometer className="w-3.5 h-3.5 text-rose-450 animate-pulse" />
+                          <span className="text-[9px] font-bold text-slate-300 leading-tight">
+                            {lang === 'bn' ? 'থার্মাল সেফটি গভর্নর' : 'Thermal safety governor'}
+                          </span>
+                        </div>
+                        <p className="text-[8px] text-slate-500 leading-tight mb-2">
+                          {lang === 'bn' 
+                            ? 'হার্ডওয়্যার অতিরিক্ত গরম হলে কোর প্রসেসিং অটো থ্রোটল করে রিস্টার্ট ঠেকায়।' 
+                            : 'Throttles thread loops when CPU temp exceeds 75°C to avoid heat-forced PC restarts.'}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !thermalGovernor;
+                          setThermalGovernor(next);
+                          localStorage.setItem('neora_thermal_governor', String(next));
+                          setLogs(prev => [
+                            ...prev,
+                            `[${new Date().toLocaleTimeString()}] ⚙️ [Config Changed] Thermal Safety Governor changed to: ${next ? 'ENABLED' : 'DISABLED'}`
+                          ]);
+                        }}
+                        className={`w-full py-1 rounded text-[8px] font-bold tracking-wider uppercase transition cursor-pointer text-center ${
+                          thermalGovernor 
+                            ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' 
+                            : 'bg-slate-800 text-slate-500 border border-slate-700 hover:text-slate-300'
+                        }`}
+                      >
+                        {thermalGovernor ? (lang === 'bn' ? 'সক্রিয় (ঠান্ডা)' : 'ENABLED (THERMO)') : (lang === 'bn' ? 'নিষ্ক্রিয়' : 'DISABLED (RISKY)')}
+                      </button>
                     </div>
                   </div>
+                </div>
 
-                  {/* Option 3: Prevent Auto-Restarts */}
-                  <div className="bg-slate-900/60 border border-slate-850 p-2 rounded-lg flex flex-col justify-between">
-                    <div>
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
-                        <span className="text-[9px] font-bold text-slate-300 leading-tight">
-                          {lang === 'bn' ? 'অটো-রিস্টার্ট ব্লকার' : 'Block Crash Reboots'}
-                        </span>
+                {/* TIER 2: RESOURCE THREAD LIMITERS (SLIDERS & SETS) */}
+                <div className="border-t border-slate-900 pt-3">
+                  <span className="text-[8px] font-mono font-bold text-slate-500 uppercase tracking-wider block mb-2">
+                    {lang === 'bn' ? '২. রিসোর্স ও থ্রেড লিমিটারস' : '2. Resource Capping & Hardware Limits'}
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    {/* Option 1: Resource Capping Slider */}
+                    <div className="bg-slate-900/40 border border-slate-850/85 p-2 rounded-lg flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <Sliders className="w-3.5 h-3.5 text-yellow-400" />
+                          <span className="text-[9px] font-bold text-slate-300 leading-tight">
+                            {lang === 'bn' ? 'সিপিইউ ও র‍্যাম থ্রোটল ক্যাপ' : 'CPU & RAM Throttle Cap'}
+                          </span>
+                        </div>
+                        <p className="text-[8px] text-slate-500 leading-tight mb-2">
+                          {lang === 'bn' 
+                            ? 'নিওরা প্রসেসগুলোর জন্য সর্বোচ্চ অনুমোদিত লোড লিমিট।' 
+                            : 'Caps Neora CPU & memory spikes below selected threshold to avoid freezing.'}
+                        </p>
                       </div>
-                      <p className="text-[8px] text-slate-500 leading-tight mb-2">
+                      <div>
+                        <div className="flex justify-between text-[8px] text-slate-400 font-mono mb-1 px-0.5">
+                          <span>{lang === 'bn' ? 'সীমা:' : 'Limit:'}</span>
+                          <span className="text-yellow-400 font-bold">{resourceCapping}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="15"
+                          max="85"
+                          step="5"
+                          value={resourceCapping}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value, 10);
+                            setResourceCapping(val);
+                            localStorage.setItem('neora_resource_capping', String(val));
+                            setLogs(prev => [
+                              ...prev,
+                              `[${new Date().toLocaleTimeString()}] ⚙️ [Config Changed] System Resource Cap updated to: ${val}%`
+                            ]);
+                          }}
+                          className="w-full h-1 bg-slate-850 rounded-lg appearance-none cursor-pointer accent-yellow-400"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Option 2: Disk I/O Bandwidth Cap */}
+                    <div className="bg-slate-900/40 border border-slate-850/85 p-2 rounded-lg flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <HardDrive className="w-3.5 h-3.5 text-indigo-400" />
+                          <span className="text-[9px] font-bold text-slate-300 leading-tight">
+                            {lang === 'bn' ? 'ডিস্ক রাইট স্পিড ক্যাপ' : 'Disk I/O Write Limit'}
+                          </span>
+                        </div>
+                        <p className="text-[8px] text-slate-500 leading-tight mb-2">
+                          {lang === 'bn' 
+                            ? 'ব্যাকগ্রাউন্ডে ফাইল স্ক্যানিং করার সময় সর্বোচ্চ ডিস্ক স্পিড সীমা।' 
+                            : 'Limits background indexing I/O rate to avoid 100% active disk freezes.'}
+                        </p>
+                      </div>
+                      <div>
+                        <div className="flex justify-between text-[8px] text-slate-400 font-mono mb-1 px-0.5">
+                          <span>{lang === 'bn' ? 'ডিস্ক সীমা:' : 'Disk Limit:'}</span>
+                          <span className="text-indigo-400 font-bold">{diskIoCap} MB/s</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="5"
+                          max="80"
+                          step="5"
+                          value={diskIoCap}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value, 10);
+                            setDiskIoCap(val);
+                            localStorage.setItem('neora_disk_io_cap', String(val));
+                            setLogs(prev => [
+                              ...prev,
+                              `[${new Date().toLocaleTimeString()}] ⚙️ [Config Changed] Disk I/O Throttle Cap updated to: ${val} MB/s`
+                            ]);
+                          }}
+                          className="w-full h-1 bg-slate-850 rounded-lg appearance-none cursor-pointer accent-indigo-400"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Option 3: CPU Core Limits */}
+                    <div className="bg-slate-900/40 border border-slate-850/85 p-2 rounded-lg flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <Cpu className="w-3.5 h-3.5 text-emerald-400" />
+                          <span className="text-[9px] font-bold text-slate-300 leading-tight">
+                            {lang === 'bn' ? 'সর্বোচ্চ অ্যাক্টিভ সিপিইউ কোর' : 'Max CPU Core Limits'}
+                          </span>
+                        </div>
+                        <p className="text-[8px] text-slate-500 leading-tight mb-2">
+                          {lang === 'bn' 
+                            ? 'নিওরা ব্যাকগ্রাউন্ড থ্রেডের জন্য ব্যবহৃত সর্বোচ্চ প্রসেসর কোর সংখ্যা।' 
+                            : 'Configures maximum physical CPU cores allowed for Neora agent daemons.'}
+                        </p>
+                      </div>
+                      <div className="flex gap-1 pt-1.5">
+                        {[1, 2, 4].map(cores => (
+                          <button
+                            key={cores}
+                            type="button"
+                            onClick={() => {
+                              setCoreLimit(cores);
+                              localStorage.setItem('neora_core_limit', String(cores));
+                              setLogs(prev => [
+                                ...prev,
+                                `[${new Date().toLocaleTimeString()}] ⚙️ [Config Changed] Maximum allocated CPU Cores updated to: ${cores} Cores`
+                              ]);
+                            }}
+                            className={`flex-1 py-1 rounded text-[8px] font-bold font-mono transition cursor-pointer text-center ${
+                              coreLimit === cores 
+                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                                : 'bg-slate-950 text-slate-500 border border-slate-800 hover:text-slate-300'
+                            }`}
+                          >
+                            {cores} {cores === 1 ? 'Core' : 'Cores'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* TIER 3: WINDOWS REBOOT registry loop EXPORTER */}
+                <div className="border-t border-slate-900 pt-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[8px] font-mono font-bold text-slate-500 uppercase tracking-wider block">
+                      {lang === 'bn' ? '৩. উইন্ডোজ অটো-রিস্টার্ট লুপ ফিক্স রেজিস্ট্রি প্যাচ' : '3. Windows Crash Auto-Restart Registry Bypass'}
+                    </span>
+                    {showRegDownloadSuccess && (
+                      <span className="text-[8px] font-mono text-emerald-400 font-bold animate-pulse">
+                        {lang === 'bn' ? 'ক্লিপবোর্ডে কপি হয়েছে!' : 'COPIED REGISTRY PATCH!'}
+                      </span>
+                    )}
+                  </div>
+                  <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-850 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
+                    <div className="space-y-0.5">
+                      <p className="text-[9px] font-bold text-slate-300">
+                        {lang === 'bn' ? 'অটো-রিস্টার্ট রেজিস্ট্রি ফিক্স (.reg)' : 'Auto-Restart Registry Fix Script (.reg)'}
+                      </p>
+                      <p className="text-[8px] text-slate-500 leading-tight">
                         {lang === 'bn' 
-                          ? 'উইন্ডোজ ক্র্যাশ করলেও স্বয়ংক্রিয় রিস্টার্ট হওয়া ব্লক করে দেয়।' 
-                          : 'Disables system auto-restart registry settings on Windows Kernel faults.'}
+                          ? 'উইন্ডোজ ক্র্যাশ করলেও স্বয়ংক্রিয় রিস্টার্ট বন্ধ করে ডিসপ্লে স্ক্রিনে বাগ কোড ধরে রাখে।' 
+                          : 'Prevents automatic Windows system reboots on BSOD/Faults, displaying error codes instead.'}
                       </p>
                     </div>
                     <button
                       type="button"
                       onClick={() => {
-                        const next = !preventAutoRestarts;
-                        setPreventAutoRestarts(next);
-                        localStorage.setItem('neora_prevent_auto_restarts', String(next));
-                        setLogs(prev => [
-                          ...prev,
-                          `[${new Date().toLocaleTimeString()}] ⚙️ [Config Changed] Block Crash Reboots changed to: ${next ? 'ENABLED' : 'DISABLED'}`
-                        ]);
+                        const regScriptContent = `Windows Registry Editor Version 5.00\n\n[HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\CrashControl]\n\"AutoReboot\"=dword:00000000\n`;
+                        copyToClipboardFailsafe(regScriptContent).then((success) => {
+                          if (success) {
+                            setShowRegDownloadSuccess(true);
+                            setTimeout(() => setShowRegDownloadSuccess(false), 3000);
+                            setLogs(prev => [
+                              ...prev,
+                              `[${new Date().toLocaleTimeString()}] 💾 [Registry Patch] Copied AutoReboot registry fix script (.reg) successfully!`
+                            ]);
+                          }
+                        });
                       }}
-                      className={`w-full py-1 rounded text-[8px] font-bold tracking-wider uppercase transition cursor-pointer text-center ${
-                        preventAutoRestarts 
-                          ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' 
-                          : 'bg-slate-800 text-slate-500 border border-slate-700 hover:text-slate-300'
-                      }`}
+                      className="w-full sm:w-auto shrink-0 bg-slate-950 hover:bg-slate-900 border border-slate-800 hover:border-slate-700 text-[9px] font-bold text-slate-350 hover:text-cyan-400 px-3 py-1.5 rounded transition flex items-center justify-center gap-1.5 cursor-pointer"
                     >
-                      {preventAutoRestarts ? (lang === 'bn' ? 'সুরক্ষিত (ব্লকড)' : 'ENABLED (SHIELDED)') : (lang === 'bn' ? 'অসুরক্ষিত' : 'DISABLED (RISKY)')}
+                      <Copy className="w-3 h-3" />
+                      <span>{lang === 'bn' ? 'রেজিস্ট্রি প্যাচ কপি করুন' : 'Copy Registry Patch'}</span>
                     </button>
                   </div>
                 </div>
 
                 {/* MAIN RESOLUTION SWEEP CTA */}
-                <div className="pt-1.5">
+                <div className="pt-1.5 border-t border-slate-900">
                   <button
                     type="button"
                     onClick={handleStabilizeResources}
