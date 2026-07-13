@@ -131,6 +131,10 @@ const BuilderView = lazyRetry<any>(
   () => import("./components/BuilderView"),
   "BuilderView",
 );
+const GraphicDesignerStudio = lazyRetry<any>(
+  () => import("./components/GraphicDesignerStudio"),
+  "GraphicDesignerStudio",
+);
 import { usePredictiveLayout } from "./components/DashboardManager";
 import { AgentIntelligenceWidget } from "./components/AgentIntelligenceWidget";
 import { CommandHistoryDrawer } from "./components/CommandHistoryDrawer";
@@ -155,6 +159,7 @@ import {
   Milestone,
   Laptop,
   Download,
+  Palette,
   Search,
   Undo,
   X,
@@ -338,25 +343,6 @@ class AmbientHumManager {
 export default function App() {
   const [showBlueprintSidebar, setShowBlueprintSidebar] = useState(true);
   const [lang, setLang] = useState<"en" | "bn">(() => {
-    try {
-      const locale =
-        navigator.language ||
-        (navigator.languages && navigator.languages[0]) ||
-        "";
-      if (locale.toLowerCase().startsWith("bn")) {
-        return "bn";
-      }
-      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
-      if (
-        tz.toLowerCase().includes("dhaka") ||
-        tz.toLowerCase().includes("calcutta") ||
-        tz.toLowerCase().includes("kolkata")
-      ) {
-        return "bn";
-      }
-    } catch (e) {
-      console.warn("Language auto-detection failed:", e);
-    }
     return (localStorage.getItem("neora_lang") || "en") as "en" | "bn";
   });
 
@@ -877,8 +863,10 @@ export default function App() {
     | "webOs"
     | "evolution"
     | "builder"
+    | "graphicStudio"
   >(() => {
-    return (localStorage.getItem("neora_active_tab") || "home") as any;
+    const saved = localStorage.getItem("neora_active_tab") || "home";
+    return (saved === "pcController" ? "osAgent" : saved) as any;
   });
 
   React.useEffect(() => {
@@ -900,6 +888,51 @@ export default function App() {
     const handleCloseContext = () => setContextMenuTask(null);
     window.addEventListener("click", handleCloseContext);
     return () => window.removeEventListener("click", handleCloseContext);
+  }, []);
+
+  const [isIdle, setIsIdle] = useState(false);
+  const [isTabFocused, setIsTabFocused] = useState(true);
+
+  React.useEffect(() => {
+    // 1. Tab Focus / Visibility Tracking
+    const handleVisibilityChange = () => {
+      const visible = document.visibilityState === "visible";
+      setIsTabFocused(visible);
+      localStorage.setItem("neora_tab_focused", String(visible));
+      window.dispatchEvent(new CustomEvent("neora-focus-state-change", { detail: visible }));
+    };
+    
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    
+    // 2. Idle Inactivity Detection
+    let idleTimeout: any;
+    const resetIdleTimer = () => {
+      setIsIdle(false);
+      localStorage.setItem("neora_user_idle", "false");
+      window.dispatchEvent(new CustomEvent("neora-idle-state-change", { detail: false }));
+      
+      clearTimeout(idleTimeout);
+      idleTimeout = setTimeout(() => {
+        setIsIdle(true);
+        localStorage.setItem("neora_user_idle", "true");
+        window.dispatchEvent(new CustomEvent("neora-idle-state-change", { detail: true }));
+      }, 45000); // 45 seconds of absolute user inactivity triggers idle state
+    };
+
+    resetIdleTimer();
+
+    const activityEvents = ["mousemove", "keydown", "click", "scroll", "touchstart"];
+    activityEvents.forEach((evt) => {
+      window.addEventListener(evt, resetIdleTimer, { passive: true });
+    });
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      clearTimeout(idleTimeout);
+      activityEvents.forEach((evt) => {
+        window.removeEventListener(evt, resetIdleTimer);
+      });
+    };
   }, []);
 
   const [evolutionSubTab, setEvolutionSubTab] = useState<"protocol" | "status">("protocol");
@@ -1200,6 +1233,227 @@ export default function App() {
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
   const mediaStreamRef = React.useRef<MediaStream | null>(null);
 
+  const [selectedFilter, setSelectedFilter] = useState<'normal' | 'cyber' | 'matrix'>('normal');
+  const [isScanningOCR, setIsScanningOCR] = useState(false);
+  const [ocrErrorMessage, setOcrErrorMessage] = useState<string | null>(null);
+
+  const dispatchSystemEvent = (level: "INFO" | "WARNING" | "SUCCESS" | "CRITICAL", message: string, details?: string) => {
+    const customEvt = new CustomEvent("neora-system-event", {
+      detail: {
+        id: "neora-event-" + Math.random().toString(),
+        timestamp: new Date().toTimeString().split(" ")[0],
+        category: "system_heal",
+        level: level,
+        message: message,
+        details: details || ""
+      }
+    });
+    window.dispatchEvent(customEvt);
+  };
+
+  const applyFilterToImage = (imageSrc: string, filter: 'normal' | 'cyber' | 'matrix'): Promise<string> => {
+    return new Promise((resolve) => {
+      if (filter === 'normal') {
+        resolve(imageSrc);
+        return;
+      }
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width > 800 ? 800 : img.width;
+        canvas.height = (img.height / img.width) * canvas.width;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(imageSrc);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imgData.data;
+        
+        if (filter === 'cyber') {
+          for (let i = 0; i < data.length; i += 4) {
+            let r = data[i];
+            let g = data[i+1];
+            let b = data[i+2];
+            if (r > g && r > b) {
+              data[i] = Math.min(255, r * 1.25 + 25);
+              data[i+1] = Math.max(0, g * 0.65);
+              data[i+2] = Math.min(255, b * 1.3 + 45);
+            } else {
+              data[i] = Math.max(0, r * 0.65);
+              data[i+1] = Math.min(255, g * 1.15 + 35);
+              data[i+2] = Math.min(255, b * 1.35 + 55);
+            }
+          }
+          ctx.putImageData(imgData, 0, 0);
+          
+          ctx.strokeStyle = "rgba(0, 255, 240, 0.1)";
+          ctx.lineWidth = 1;
+          for (let y = 0; y < canvas.height; y += 4) {
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(canvas.width, y);
+            ctx.stroke();
+          }
+        } else if (filter === 'matrix') {
+          for (let i = 0; i < data.length; i += 4) {
+            let r = data[i];
+            let g = data[i+1];
+            let b = data[i+2];
+            let v = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            data[i] = Math.max(0, v * 0.15 - 8);
+            data[i+1] = Math.min(255, v * 1.45 + 15);
+            data[i+2] = Math.max(0, v * 0.15 - 8);
+          }
+          ctx.putImageData(imgData, 0, 0);
+          
+          ctx.strokeStyle = "rgba(0, 255, 0, 0.08)";
+          ctx.lineWidth = 2;
+          for (let x = 0; x < canvas.width; x += 12) {
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, canvas.height);
+            ctx.stroke();
+          }
+        }
+        
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
+      };
+      img.onerror = () => resolve(imageSrc);
+      img.src = imageSrc;
+    });
+  };
+
+  const compressAndResizeImage = (dataUrl: string, maxDimension: number, quality: number): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = (height / width) * maxDimension;
+            width = maxDimension;
+          } else {
+            width = (width / height) * maxDimension;
+            height = maxDimension;
+          }
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(dataUrl);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    });
+  };
+
+  const checkAndOptimizeAttachments = async (taskList: Task[]) => {
+    let totalSize = 0;
+    taskList.forEach(t => {
+      if (t.attachment) {
+        totalSize += t.attachment.length * 0.75;
+      }
+    });
+
+    const sizeInMB = totalSize / (1024 * 1024);
+    console.log(`[Attachment Storage Monitor] Total attachment size: ${sizeInMB.toFixed(2)} MB`);
+
+    if (sizeInMB > 50) {
+      const compressedTasks = await Promise.all(taskList.map(async (t) => {
+        if (t.attachment && t.attachment.startsWith("data:image")) {
+          try {
+            const optimized = await compressAndResizeImage(t.attachment, 350, 0.55);
+            return { ...t, attachment: optimized };
+          } catch (e) {
+            return t;
+          }
+        }
+        return t;
+      }));
+      
+      setTasks(compressedTasks);
+      playSystemChirp("success");
+      
+      let newSize = 0;
+      compressedTasks.forEach(t => {
+        if (t.attachment) {
+          newSize += t.attachment.length * 0.75;
+        }
+      });
+      const newSizeInMB = newSize / (1024 * 1024);
+      const savedMB = sizeInMB - newSizeInMB;
+      
+      dispatchSystemEvent(
+        "INFO", 
+        lang === "bn" 
+          ? `মেমরি ক্লিনআপ সফল! অ্যাটাচমেন্ট সাইজ কমিয়ে ${newSizeInMB.toFixed(2)}MB করা হয়েছে।` 
+          : `Automated cleanup completed! Attached images optimized.`,
+        `Reduced storage footprint from ${sizeInMB.toFixed(2)}MB to ${newSizeInMB.toFixed(2)}MB (Saved ${savedMB.toFixed(2)}MB).`
+      );
+    }
+  };
+
+  const runOCRScanner = async () => {
+    if (!taskPhoto) return;
+    setIsScanningOCR(true);
+    setOcrErrorMessage(null);
+    dispatchSystemEvent("INFO", lang === "bn" ? "OCR টেক্সট স্ক্যান শুরু হচ্ছে..." : "Neora OCR Engine: Initializing blueprint/note scan...");
+    
+    try {
+      const geminiKey = localStorage.getItem("neora_gemini_key") || "";
+      const res = await fetch("/api/tasks/ocr", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          photo: taskPhoto,
+          geminiKey: geminiKey
+        })
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `HTTP error ${res.status}`);
+      }
+
+      const data = await res.json();
+      if (data.status === "success" && data.text) {
+        const extracted = data.text;
+        setQuickNotes(prev => {
+          if (prev.trim()) {
+            return `${prev}\n\n=== [Neora OCR Extracted Text] ===\n${extracted}`;
+          } else {
+            return extracted;
+          }
+        });
+        playSystemChirp("success");
+        dispatchSystemEvent("SUCCESS", lang === "bn" ? "OCR স্ক্যান সম্পন্ন হয়েছে!" : "Neora OCR: Scan completed successfully!", `Extracted text length: ${extracted.length} characters.`);
+      } else {
+        throw new Error("No text extracted from the image.");
+      }
+    } catch (err: any) {
+      console.error("OCR Scanner failed:", err);
+      const errMsg = err.message || "Unknown error during OCR scan.";
+      setOcrErrorMessage(errMsg);
+      dispatchSystemEvent("WARNING", lang === "bn" ? "OCR স্ক্যান ব্যর্থ হয়েছে" : "Neora OCR Engine failed", errMsg);
+    } finally {
+      setIsScanningOCR(false);
+    }
+  };
+
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
@@ -1215,7 +1469,7 @@ export default function App() {
     }
   };
 
-  const capturePhoto = () => {
+  const capturePhoto = async () => {
     if (videoRef.current) {
       const canvas = document.createElement('canvas');
       canvas.width = 640;
@@ -1223,8 +1477,9 @@ export default function App() {
       const ctx = canvas.getContext('2d');
       if (ctx) {
         ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL('image/jpeg');
-        setTaskPhoto(dataUrl);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+        const filteredUrl = await applyFilterToImage(dataUrl, selectedFilter);
+        setTaskPhoto(filteredUrl);
       }
       stopCamera();
     }
@@ -1242,8 +1497,10 @@ export default function App() {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setTaskPhoto(reader.result as string);
+      reader.onloadend = async () => {
+        const rawUrl = reader.result as string;
+        const filteredUrl = await applyFilterToImage(rawUrl, selectedFilter);
+        setTaskPhoto(filteredUrl);
       };
       reader.readAsDataURL(file);
     }
@@ -1416,6 +1673,10 @@ export default function App() {
   }, [predictiveWidgets]);
 
   React.useEffect(() => {
+    checkAndOptimizeAttachments(tasks);
+  }, [tasks]);
+
+  React.useEffect(() => {
     // Automatically archive completed tasks based on user preferences and archive inactive tasks > 14 days old
     const runAutoArchive = () => {
       const thresholdDate = new Date();
@@ -1566,7 +1827,7 @@ export default function App() {
           localStorage.setItem("neora_last_backup_time", String(now));
 
           setVoiceToast({
-            id: "backup-" + Math.floor(Math.random() * 10000),
+            id: "backup-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
             message:
               lang === "bn"
                 ? "স্বয়ংক্রিয় ২৪-ঘণ্টার রিকভারি ব্যাকআপ সম্পন্ন হয়েছে!"
@@ -1576,7 +1837,7 @@ export default function App() {
 
           const customEvt = new CustomEvent("neora-system-event", {
             detail: {
-              id: "evt-bk-" + Math.floor(Math.random() * 10000),
+              id: "evt-bk-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
               timestamp: new Date().toTimeString().split(" ")[0],
               category: "task_completion",
               level: "SUCCESS",
@@ -1633,6 +1894,8 @@ export default function App() {
   });
 
   React.useEffect(() => {
+    if (!isTabFocused) return; // Pause completely when tab is hidden to save PC resources
+
     const interval = setInterval(() => {
       let nextLatency = 14;
       let nextHealth = 100;
@@ -1677,9 +1940,9 @@ export default function App() {
         }
         return updated;
       });
-    }, 4000);
+    }, isIdle ? 16000 : 4000); // 16s when idle, 4s when active
     return () => clearInterval(interval);
-  }, []);
+  }, [isIdle, isTabFocused]);
 
   // Debounced auto-saves and draft indicators
   const [qcmdDraft, setQcmdDraft] = useState(() => {
@@ -1732,6 +1995,7 @@ export default function App() {
 
   React.useEffect(() => {
     const checkStateConsistency = async () => {
+      if (!isTabFocused) return; // Completely pause DB synchronization when tab is not in focus
       setDataSyncStatus("checking");
       try {
         const response: any = await neoraGet("/api/memory");
@@ -1784,13 +2048,19 @@ export default function App() {
       }
     };
 
-    const timer = setTimeout(checkStateConsistency, 1500);
-    const interval = setInterval(checkStateConsistency, 30000); // Background reconciliation every 30 seconds
+    const timer = setTimeout(() => {
+      if (isTabFocused) checkStateConsistency();
+    }, 1500);
+    const interval = setInterval(() => {
+      if (isTabFocused) {
+        checkStateConsistency();
+      }
+    }, isIdle ? 120000 : 30000); // 120s when idle, 30s when active
     return () => {
       clearTimeout(timer);
       clearInterval(interval);
     };
-  }, []);
+  }, [isIdle, isTabFocused]);
 
   // Monitor failed command attempts and trigger skill discovery (Task 5)
   React.useEffect(() => {
@@ -1813,7 +2083,7 @@ export default function App() {
           
           const event = new CustomEvent("neora-system-event", {
             detail: {
-              id: "evt-skill-discover-" + Math.floor(Math.random() * 10000),
+              id: "evt-skill-discover-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
               timestamp: new Date().toTimeString().split(' ')[0],
               category: "learning",
               level: "SUCCESS",
@@ -1888,6 +2158,8 @@ export default function App() {
   }, [clickInspectorMode]);
 
   React.useEffect(() => {
+    if (!isTabFocused) return; // Completely pause diagnostic heartbeats when tab is hidden to save local PC CPU/RAM
+
     let cancelled = false;
     const probe = async () => {
       try {
@@ -1907,14 +2179,16 @@ export default function App() {
       }
     };
     probe();
-    const timer = setInterval(probe, 5000);
+    const timer = setInterval(probe, isIdle ? 20000 : 5000); // Dynamic adaptation: slower polling when user is idle
     return () => {
       cancelled = true;
       clearInterval(timer);
     };
-  }, []);
+  }, [isIdle, isTabFocused]);
 
   React.useEffect(() => {
+    if (!isTabFocused) return; // Pause analysis when tab is hidden
+
     const probeOverlay = () => {
       const hit = document.elementFromPoint(
         window.innerWidth / 2,
@@ -1928,24 +2202,26 @@ export default function App() {
     probeOverlay();
     window.addEventListener("resize", probeOverlay);
     window.addEventListener("scroll", probeOverlay, true);
-    const timer = setInterval(probeOverlay, 4000);
+    const timer = setInterval(probeOverlay, isIdle ? 20000 : 4000); // 20s when idle, 4s when active
     return () => {
       window.removeEventListener("resize", probeOverlay);
       window.removeEventListener("scroll", probeOverlay, true);
       clearInterval(timer);
     };
-  }, []);
+  }, [isIdle, isTabFocused]);
 
   React.useEffect(() => {
+    if (!isTabFocused) return; // Pause analysis when tab is hidden
+
     const probeModal = () => {
       setModalOpen(
         Boolean(document.querySelector('[data-neora-modal="open"]')),
       );
     };
     probeModal();
-    const timer = setInterval(probeModal, 2500);
+    const timer = setInterval(probeModal, isIdle ? 15000 : 2500); // 15s when idle, 2.5s when active
     return () => clearInterval(timer);
-  }, []);
+  }, [isIdle, isTabFocused]);
 
   // --- DOWNLOAD REQUISITION REPORT GENERATOR ---
   const handleDownloadReport = () => {
@@ -2281,7 +2557,7 @@ export default function App() {
       // Custom Event for system log update
       const customEvt = new CustomEvent("neora-system-event", {
         detail: {
-          id: "evt-opt-" + Math.floor(Math.random() * 10000),
+          id: "evt-opt-heal-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
           timestamp: new Date().toTimeString().split(" ")[0],
           category: "system_heal",
           level: "CRITICAL",
@@ -2313,7 +2589,7 @@ export default function App() {
 
       const customEvt = new CustomEvent("neora-system-event", {
         detail: {
-          id: "evt-opt-" + Math.floor(Math.random() * 10000),
+          id: "evt-opt-evo-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
           timestamp: new Date().toTimeString().split(" ")[0],
           category: "system_heal",
           level: "CRITICAL",
@@ -2448,6 +2724,8 @@ export default function App() {
         activeTab={activeTab as any}
         onChangeTab={setActiveTab as any}
         onVoiceOpen={() => setVoicePanelOpen(true)}
+        lang={lang}
+        onChangeLang={setLang}
       >
         {showDebugBanner && (
           <DebugBanner
@@ -2872,6 +3150,12 @@ export default function App() {
                       label: "VS Code",
                       icon: Terminal,
                       color: "#00d4ff",
+                    },
+                    {
+                      id: "graphicStudio",
+                      label: t.navDesign,
+                      icon: Palette,
+                      color: "#00ff88",
                     },
                     {
                       id: "evolution",
@@ -5195,10 +5479,6 @@ export default function App() {
                   >
                     {activeTab === "neoraTv" && <NeoraTV lang={lang} />}
 
-                    {activeTab === "pcController" && (
-                      <HostPCControl lang={lang} />
-                    )}
-
                     {activeTab === "chat" && (
                       <ChatView
                         lang={lang}
@@ -5374,6 +5654,8 @@ export default function App() {
                     {activeTab === "vscode" && <VSCodeView />}
 
                     {activeTab === "builder" && <BuilderView lang={lang} onChangeLang={setLang} />}
+
+                    {activeTab === "graphicStudio" && <GraphicDesignerStudio lang={lang} />}
                   </motion.div>
                 </AnimatePresence>
               </main>
@@ -6369,11 +6651,32 @@ export default function App() {
                         </select>
                       </div>
 
-                      <div className="space-y-2 border border-slate-900 rounded-lg p-2.5 bg-slate-950/40">
+                      <div className="space-y-2 border border-slate-900 rounded-lg p-2.5 bg-slate-950/40 animate-fadeIn">
                         <label className="block text-[10px] font-mono text-slate-400 uppercase">
                           {lang === 'bn' ? 'ফটো বা ইমেজ সংযুক্তি:' : 'Photo & Image Attachment:'}
                         </label>
                         
+                        {/* Visual Filters Selector */}
+                        <div className="flex items-center justify-between gap-1 mb-2 bg-slate-900/60 p-1 rounded-lg border border-slate-800/80">
+                          <span className="text-[9px] font-mono text-slate-400 pl-1 uppercase">{lang === 'bn' ? 'ফিল্টার:' : 'Visual Filter:'}</span>
+                          <div className="flex gap-1">
+                            {(['normal', 'cyber', 'matrix'] as const).map((f) => (
+                              <button
+                                key={f}
+                                type="button"
+                                onClick={() => setSelectedFilter(f)}
+                                className={`px-2 py-0.5 rounded text-[8px] font-mono uppercase transition-all border ${
+                                  selectedFilter === f
+                                    ? "bg-cyan-500/15 border-cyan-500/50 text-cyan-400 font-bold shadow-[0_0_8px_rgba(6,182,212,0.15)]"
+                                    : "bg-slate-950 border-slate-900/40 text-slate-500 hover:text-slate-300 hover:border-slate-800"
+                                }`}
+                              >
+                                {f}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
                         <div className="flex gap-2">
                           <button
                             type="button"
@@ -6412,7 +6715,13 @@ export default function App() {
                           <div className="relative rounded-lg overflow-hidden border border-cyan-500/30 bg-black mt-2">
                             <video
                               ref={videoRef}
-                              className="w-full h-auto object-cover max-h-48 transform -scale-x-100"
+                              className={`w-full h-auto object-cover max-h-48 transform -scale-x-100 transition-all duration-300 ${
+                                selectedFilter === 'cyber'
+                                  ? "filter saturate-150 hue-rotate-[280deg] contrast-125 border border-cyan-500/50"
+                                  : selectedFilter === 'matrix'
+                                  ? "filter sepia hue-rotate-[90deg] saturate-[3] brightness-[0.7] contrast-125 border border-emerald-500/50"
+                                  : ""
+                              }`}
                               playsInline
                               muted
                             />
@@ -6440,17 +6749,54 @@ export default function App() {
                             <img
                               src={taskPhoto}
                               alt="Task Attachment Preview"
-                              className="max-h-32 rounded object-contain w-full"
+                              className={`max-h-32 rounded object-contain w-full transition-all duration-300 ${
+                                isScanningOCR ? "opacity-40 blur-[1px]" : ""
+                              }`}
                               referrerPolicy="no-referrer"
                             />
+                            
+                            {isScanningOCR && (
+                              <div className="absolute inset-0 flex flex-col items-center justify-center bg-cyan-950/40 backdrop-blur-[1px]">
+                                <div className="relative w-full h-1 bg-cyan-500/20 overflow-hidden">
+                                  <motion.div
+                                    animate={{ x: ["-100%", "100%"] }}
+                                    transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
+                                    className="absolute inset-y-0 w-1/3 bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.8)]"
+                                  />
+                                </div>
+                                <span className="text-[8px] font-mono font-bold text-cyan-400 mt-2 tracking-widest animate-pulse">
+                                  NEORA OCR: DECRYPTING TEXT...
+                                </span>
+                              </div>
+                            )}
+
                             <button
                               type="button"
                               onClick={() => setTaskPhoto(null)}
-                              className="absolute top-2 right-2 bg-rose-950/85 hover:bg-rose-900 border border-rose-800 text-rose-400 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold"
+                              className="absolute top-2 right-2 bg-rose-950/85 hover:bg-rose-900 border border-rose-800 text-rose-400 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold z-10"
                               title="Remove attached photo"
                             >
                               ✕
                             </button>
+
+                            {/* OCR Action Button */}
+                            <div className="w-full mt-1.5 px-1 pb-1">
+                              <button
+                                type="button"
+                                onClick={runOCRScanner}
+                                disabled={isScanningOCR}
+                                className="w-full py-1.5 bg-cyan-950/50 hover:bg-cyan-500/15 border border-cyan-500/30 hover:border-cyan-400/50 text-cyan-400 rounded-lg text-[9px] font-mono font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                              >
+                                <Sparkles className={`w-3 h-3 ${isScanningOCR ? "animate-spin" : ""}`} />
+                                <span>{isScanningOCR ? (lang === 'bn' ? "স্ক্যান করা হচ্ছে..." : "SCANNING Blueprints...") : (lang === 'bn' ? "ওসিআর টেক্সট স্ক্যান" : "Run Neora OCR Scan")}</span>
+                              </button>
+                              
+                              {ocrErrorMessage && (
+                                <p className="text-[8px] font-mono text-rose-400 mt-1 text-center bg-rose-950/30 border border-rose-900/40 p-1 rounded">
+                                  OCR Error: {ocrErrorMessage}
+                                </p>
+                              )}
+                            </div>
                           </div>
                         )}
                       </div>

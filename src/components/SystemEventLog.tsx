@@ -128,6 +128,18 @@ export function SystemEventLog({ lang, onAddSystemLog }: SystemEventLogProps) {
     if (!isPlaying) return;
 
     const interval = setInterval(() => {
+      // Pause simulation when tab is hidden or low-resource mode is active
+      const tabHidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
+      const isLowMode = typeof window !== 'undefined' && localStorage.getItem("neora_low_resource_mode") === 'true';
+      const isUserIdle = typeof window !== 'undefined' && localStorage.getItem("neora_user_idle") === 'true';
+
+      if (tabHidden) return; // Completely pause processing when tab is not in focus to save PC CPU/RAM
+      if (isLowMode && isUserIdle) {
+        if (Math.random() > 0.1) return; // Scale down frequency by 90%
+      } else if (isLowMode || isUserIdle) {
+        if (Math.random() > 0.3) return; // Scale down frequency by 70%
+      }
+
       const categories: SystemEvent['category'][] = ['api_call', 'memory_update', 'task_completion'];
       const levels: SystemEvent['level'][] = ['INFO', 'SUCCESS', 'WARNING'];
       
@@ -194,7 +206,7 @@ export function SystemEventLog({ lang, onAddSystemLog }: SystemEventLogProps) {
       }
 
       const newEvent: SystemEvent = {
-        id: "evt-" + Math.floor(Math.random() * 10000),
+        id: "evt-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
         timestamp: timestampStr,
         category: chosenCat,
         level: chosenLvl,

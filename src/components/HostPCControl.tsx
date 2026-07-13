@@ -5,7 +5,7 @@ import {
   Volume2, VolumeX, Flame, Activity, Power, CornerDownRight, Search, 
   ShieldAlert, Settings, Plus, LayoutGrid, Terminal, List, Trash2, CheckCircle, AlertOctagon, TerminalSquare
 } from 'lucide-react';
-import { neoraGet, neoraPost } from '../lib/neoraApi';
+import { neoraGet, neoraPost, clearNeoraClientCache, neoraApiStats } from '../lib/neoraApi';
 
 interface HostPCControlProps {
   lang: 'en' | 'bn';
@@ -31,6 +31,9 @@ export function HostPCControl({ lang }: HostPCControlProps) {
   const [tempCelsius, setTempCelsius] = useState<number>(48);
   const [showPathEditor, setShowPathEditor] = useState<boolean>(false);
   const [searchTerm, setSearchTerm] = useState<string>("");
+  const [lowResourceMode, setLowResourceMode] = useState<boolean>(() => {
+    return localStorage.getItem('neora_low_resource_mode') === 'true';
+  });
 
   // 10000x Turbo Power Boost systems
   const [turboLevel, setTurboLevel] = useState<number>(() => {
@@ -513,6 +516,114 @@ export function HostPCControl({ lang }: HostPCControlProps) {
             </button>
           </div>
 
+          {/* 📡 NEORA SELF-HEALING & NETWORK DIAGNOSTICS */}
+          <div className="shrink-0 p-4 border-b border-cyan-500/10 bg-[#000514]/70 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-mono font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                {lang === 'bn' ? 'অটো-হিলিং ডায়াগনস্টিকস' : 'SELF-HEALING NET MONITOR'}
+              </span>
+              <span className="text-[9px] font-mono bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded text-emerald-400 font-bold uppercase animate-pulse">
+                {lang === 'bn' ? 'সুরক্ষিত' : 'HEALTHY'}
+              </span>
+            </div>
+
+            {/* Diagnostic Stats Grid */}
+            <div className="grid grid-cols-2 gap-2 font-mono text-[9px]">
+              <div className="p-2 rounded bg-black/40 border border-slate-900/60 flex flex-col justify-between">
+                <span className="text-slate-500 uppercase">{lang === 'bn' ? 'ক্যাশ কার্যকারিতা:' : 'CACHE HIT RATE:'}</span>
+                <span className="text-cyan-400 font-bold text-xs mt-1">
+                  {(() => {
+                    const total = neoraApiStats.cacheHits + neoraApiStats.cacheMisses;
+                    if (total === 0) return "100%";
+                    return `${((neoraApiStats.cacheHits / total) * 100).toFixed(1)}%`;
+                  })()}
+                </span>
+              </div>
+
+              <div className="p-2 rounded bg-black/40 border border-slate-900/60 flex flex-col justify-between">
+                <span className="text-slate-500 uppercase">{lang === 'bn' ? 'ক্যাশ হিট সংখ্যা:' : 'SAVED REQUESTS:'}</span>
+                <span className="text-purple-400 font-bold text-xs mt-1">
+                  {neoraApiStats.cacheHits} / {neoraApiStats.cacheHits + neoraApiStats.cacheMisses}
+                </span>
+              </div>
+
+              <div className="p-2 rounded bg-black/40 border border-[#10b981]/15 bg-[#10b981]/5 flex flex-col justify-between col-span-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400 font-bold">{lang === 'bn' ? 'এপিআই ট্রাফিক হ্রাস:' : 'API TRAFFIC REDUCTION:'}</span>
+                  <span className="text-emerald-400 font-bold text-[10px]">
+                    {neoraApiStats.cacheHits > 0 
+                      ? `${lang === 'bn' ? 'সক্রিয়' : 'ACTIVE'} (-${Math.round((neoraApiStats.cacheHits / Math.max(1, neoraApiStats.cacheHits + neoraApiStats.cacheMisses)) * 100)}% load)` 
+                      : (lang === 'bn' ? 'পোলিং অপ্টিমাইজড' : 'POLLING OPTIMIZED')}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                id="flush-cache-button"
+                onClick={() => {
+                  clearNeoraClientCache();
+                  neoraApiStats.cacheHits = 0;
+                  neoraApiStats.cacheMisses = 0;
+                  neoraApiStats.rateExceededCount = 0;
+                  setLogs(prev => [
+                    ...prev,
+                    `[${new Date().toLocaleTimeString()}] 🧹 [CACHE-FLUSH] Flushed client-side status & telemetry cache memories.`,
+                    `[${new Date().toLocaleTimeString()}] [SYSTEM] Rate limit counters reset. Network polling re-stabilized.`
+                  ]);
+                }}
+                className="flex-1 py-1 px-2.5 rounded border border-emerald-500/25 bg-emerald-500/10 text-emerald-300 font-mono text-[9.5px] font-bold hover:bg-emerald-500/20 transition-all cursor-pointer text-center"
+              >
+                {lang === 'bn' ? 'ক্যাশ ও স্ট্যাটাস রিসেট' : 'FLUSH TELEMETRY CACHE'}
+              </button>
+            </div>
+
+            {/* Low Resource Toggle Button */}
+            <div className="pt-2 border-t border-slate-950/60 flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-mono text-slate-400 font-bold uppercase">
+                  {lang === 'bn' ? 'পিসি সিপিইউ/র‍্যাম লোড:' : 'PC HARDWARE STABILITY:'}
+                </span>
+                <span className={`text-[9px] font-mono font-bold uppercase ${lowResourceMode ? 'text-emerald-400' : 'text-amber-500'}`}>
+                  {lowResourceMode 
+                    ? (lang === 'bn' ? 'অত্যন্ত হালকা ও ফাস্ট' : 'SMOOTH & ULTRA-LIGHT') 
+                    : (lang === 'bn' ? 'ফুল এফেক্টস ও হেভি' : 'FULL GRAPHICS / HEAVY')}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const targetState = !lowResourceMode;
+                  setLowResourceMode(targetState);
+                  localStorage.setItem("neora_low_resource_mode", String(targetState));
+                  window.dispatchEvent(new CustomEvent("neora-low-resource-toggle"));
+                  
+                  setLogs(prev => [
+                    ...prev,
+                    `[${new Date().toLocaleTimeString()}] ⚙️ [SYSTEM] Low-Resource Smooth PC Mode is now ${targetState ? "ENABLED (Ultralight background, minimized server CPU polling loops, reduced RAM usage)" : "DISABLED (Full animations and active real-time polling enabled)"}.`,
+                  ]);
+                }}
+                className={`w-full py-1.5 px-3.5 rounded font-mono text-[10px] font-bold border transition-all cursor-pointer text-center flex items-center justify-center gap-2 ${
+                  lowResourceMode 
+                    ? 'border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400' 
+                    : 'border-slate-800 bg-slate-950/80 hover:bg-slate-900 text-slate-300'
+                }`}
+              >
+                <Cpu className={`w-3.5 h-3.5 ${lowResourceMode ? 'text-emerald-400 animate-pulse' : 'text-slate-400'}`} />
+                {lowResourceMode 
+                  ? (lang === 'bn' ? 'ফুল গ্রাফিক্স মোড এ যান' : 'SWITCH TO FULL VISUALS') 
+                  : (lang === 'bn' ? 'হালকা ও ফাস্ট মোড করুন' : 'ACTIVATE SMOOTH LIGHT MODE')}
+              </button>
+            </div>
+          </div>
+
           {/* Process Table list */}
           <div className="flex-1 flex flex-col overflow-hidden min-h-0">
             <div className="shrink-0 px-4 py-3 bg-[#000617] border-b border-cyan-500/10 flex items-center justify-between">
@@ -529,7 +640,7 @@ export function HostPCControl({ lang }: HostPCControlProps) {
 
             <div className="flex-1 overflow-y-auto p-3 space-y-2.5 min-h-0">
               {activeProcesses.map((proc, i) => (
-                <div key={proc.pid || i} className="p-3 rounded-xl border bg-slate-950/40 border-slate-900 hover:border-cyan-500/15 flex items-center justify-between gap-3 group transition-all">
+                <div key={`${proc.name}-${proc.pid || i}`} className="p-3 rounded-xl border bg-slate-950/40 border-slate-900 hover:border-cyan-500/15 flex items-center justify-between gap-3 group transition-all">
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
                       <span className="text-xs font-bold font-mono text-slate-200 truncate">{proc.name}</span>

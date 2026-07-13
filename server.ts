@@ -444,7 +444,7 @@ const osAgentState = {
 
 const WATCHDOG_STALE_MS = Number(process.env.NEORA_WATCHDOG_STALE_MS || 30000);
 const WATCHDOG_INTERVAL_MS = Number(process.env.NEORA_WATCHDOG_INTERVAL_MS || 5000);
-const AUTO_SAVE_INTERVAL_MS = Number(process.env.NEORA_RECOVERY_AUTOSAVE_MS || 60000);
+const AUTO_SAVE_INTERVAL_MS = Number(process.env.NEORA_RECOVERY_AUTOSAVE_MS || 300000);
 const RECOVERY_DIR = path.resolve(process.cwd(), "data");
 const RECOVERY_BUNDLE_FILE = path.join(RECOVERY_DIR, "recovery-bundle.json");
 const RECOVERY_SECRET = process.env.NEORA_RECOVERY_PASSPHRASE || AGENT_TOKEN;
@@ -789,13 +789,12 @@ async function generateGeminiContentWithFallback(client: GoogleGenAI, options: {
     throw new Error("Gemini Service is temporarily down (Circuit Breaker OPEN due to high demand / consecutive 503 errors). Please retry in 15 seconds, or select another provider.");
   }
 
-  const baseModel = options.model || "gemini-2.5-flash";
+  const baseModel = options.model || "gemini-3.5-flash";
   const fallbacks = [
-    baseModel === "gemini-3.5-flash" ? "gemini-2.5-flash" : baseModel,
+    baseModel,
+    "gemini-3.5-flash",
     "gemini-2.5-flash",
-    "gemini-1.5-flash",
-    "gemini-2.5-pro",
-    "gemini-1.5-pro"
+    "gemini-2.5-pro"
   ];
   const uniqueModels = [...new Set(fallbacks)];
 
@@ -851,13 +850,12 @@ async function generateGeminiContentStreamWithFallback(client: GoogleGenAI, opti
     throw new Error("Gemini Service is temporarily down (Circuit Breaker OPEN due to high demand / consecutive 503 errors). Please retry in 15 seconds, or select another provider.");
   }
 
-  const baseModel = options.model || "gemini-2.5-flash";
+  const baseModel = options.model || "gemini-3.5-flash";
   const fallbacks = [
-    baseModel === "gemini-3.5-flash" ? "gemini-2.5-flash" : baseModel,
+    baseModel,
+    "gemini-3.5-flash",
     "gemini-2.5-flash",
-    "gemini-1.5-flash",
-    "gemini-2.5-pro",
-    "gemini-1.5-pro"
+    "gemini-2.5-pro"
   ];
   const uniqueModels = [...new Set(fallbacks)];
 
@@ -2788,6 +2786,54 @@ Return ONLY a valid JSON object in the following format (do not include markdown
       fallback: true,
       message: err.message
     });
+  }
+});
+
+app.post("/api/tasks/ocr", async (req, res) => {
+  try {
+    const { photo, geminiKey } = req.body || {};
+    if (!photo) {
+      return res.status(400).json({ error: "No photo data provided" });
+    }
+
+    const apiKey = geminiKey || process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.status(400).json({ error: "GEMINI_API_KEY is not defined. Please add your key in Settings." });
+    }
+
+    let mimeType = "image/png";
+    let base64Data = photo;
+    if (photo.startsWith("data:")) {
+      const match = photo.match(/^data:([^;]+);base64,(.*)$/);
+      if (match) {
+        mimeType = match[1];
+        base64Data = match[2];
+      }
+    }
+
+    const client = getGeminiClient(apiKey);
+    const imagePart = {
+      inlineData: {
+        mimeType: mimeType,
+        data: base64Data
+      }
+    };
+    const textPart = {
+      text: "Read this image very carefully. This is a technical blueprint, whiteboard sketch, handwritten list, or system note. Please scan all readable text, handwritings, symbols, equations, and annotations. Perform highly precise OCR. Extract everything verbatim, structure it cleanly in Markdown, and do not write any introductory or conversational text. Just give the extracted text. If nothing is legible, reply with '[No legible text detected]'."
+    };
+
+    const response = await client.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: [imagePart, textPart]
+    });
+
+    res.json({
+      status: "success",
+      text: response.text || ""
+    });
+  } catch (err: any) {
+    console.error("OCR API failed:", err);
+    res.status(500).json({ error: getCleanErrorMessage(err) });
   }
 });
 

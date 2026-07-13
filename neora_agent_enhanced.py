@@ -341,20 +341,24 @@ def launch(cmd, logs):
         logs.append(f"BLOCKED: {clean}")
         return False
 
-    # Try detached background process with native cwd first on Windows
+    # Try native Windows startfile first on Windows
     if sys.platform == "win32" and os.path.exists(clean):
         try:
-            # Critical bugfix: Always launch heavyweight graphic design tools (such as Photoshop, Illustrator)
-            # with cwd set to their installation directory, and DETACHED_PROCESS flag (0x00000008) so they never block the queue!
-            app_dir = os.path.dirname(clean)
-            subprocess.Popen([clean], shell=False, cwd=app_dir, creationflags=0x00000008)
-            logs.append(f"✓ Launched Windows app detached with native cwd: '{clean}'")
+            # Safe, native interactive launch for GUI apps like Photoshop/Illustrator
+            os.startfile(clean)
+            logs.append(f"✓ Launched Windows app natively via startfile: '{clean}'")
             return True
-        except Exception as e:
-            logs.append(f"Direct detached launch failed: {e}. Trying fallbacks...")
+        except Exception as start_err:
+            try:
+                app_dir = os.path.dirname(clean)
+                subprocess.Popen([clean], shell=False, cwd=app_dir)
+                logs.append(f"✓ Launched Windows app via Popen fallback: '{clean}'")
+                return True
+            except Exception as e:
+                logs.append(f"Direct launch fallback failed: {e}. Trying other fallbacks...")
 
     for strategy in [
-        lambda: (sys.platform == "win32" and os.path.exists(clean)) and subprocess.Popen([clean], shell=False, cwd=os.path.dirname(clean), creationflags=0x00000008),
+        lambda: (sys.platform == "win32" and os.path.exists(clean)) and subprocess.Popen([clean], shell=False, cwd=os.path.dirname(clean)),
         lambda: subprocess.Popen(clean, shell=False, cwd=str(WORKSPACE_DIR)),
         lambda: subprocess.Popen(f'cmd.exe /c start "" "{clean}"', shell=True),
     ]:

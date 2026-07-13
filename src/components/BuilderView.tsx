@@ -825,7 +825,12 @@ export function BuilderView({
         setGitStatusData(data.data);
       }
     } catch (err: any) {
-      console.error("Failed to load git status:", err);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (errMsg.includes("Failed to fetch") || errMsg.includes("NetworkError") || errMsg.includes("fetch")) {
+        console.warn("Failed to load git status (transient):", errMsg);
+      } else {
+        console.error("Failed to load git status:", err);
+      }
     } finally {
       setGitLoading(false);
     }

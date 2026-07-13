@@ -279,8 +279,25 @@ export function NeoraNotifications({
       } catch { /* server might be warming up */ }
     };
     poll();
-    const t = setInterval(poll, 5000);
-    return () => { cancelled = true; clearInterval(t); };
+    let lowMode = typeof window !== "undefined" && localStorage.getItem("neora_low_resource_mode") === "true";
+    let t = setInterval(poll, lowMode ? 20000 : 5000);
+
+    const handleToggle = () => {
+      const nextLowMode = localStorage.getItem("neora_low_resource_mode") === "true";
+      if (nextLowMode !== lowMode) {
+        lowMode = nextLowMode;
+        clearInterval(t);
+        t = setInterval(poll, lowMode ? 20000 : 5000);
+      }
+    };
+
+    window.addEventListener("neora-low-resource-toggle", handleToggle);
+
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+      window.removeEventListener("neora-low-resource-toggle", handleToggle);
+    };
   }, [push]);
 
   // Watch API health drops

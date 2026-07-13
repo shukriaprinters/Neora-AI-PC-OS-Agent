@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Task, Reminder, Note, Memory } from '../types';
 import { TRANSLATIONS } from '../translations';
 import {
@@ -28,7 +28,7 @@ interface OrganizerViewProps {
   onUpdateTaskOrder?: (tasks: Task[]) => void;
 }
 
-export function OrganizerView({
+export const OrganizerView = React.memo(function OrganizerView({
   lang,
   tasks,
   reminders,
@@ -86,6 +86,50 @@ export function OrganizerView({
   const [customTagInput, setCustomTagInput] = useState('');
   const [selectedCompletedHistoryIds, setSelectedCompletedHistoryIds] = useState<string[]>([]);
   const [expandedTaskIds, setExpandedTaskIds] = useState<string[]>([]);
+
+  // Virtualized List pagination thresholds to minimize memory bloat on large datasets
+  const [visibleActiveLimit, setVisibleActiveLimit] = useState(20);
+  const [visibleHistoryLimit, setVisibleHistoryLimit] = useState(20);
+
+  const activeSentinelRef = useRef<HTMLDivElement | null>(null);
+  const historySentinelRef = useRef<HTMLDivElement | null>(null);
+
+  // Auto-loading virtual list IntersectionObserver setup
+  useEffect(() => {
+    if (!('IntersectionObserver' in window)) return;
+
+    const activeObserver = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) {
+        setVisibleActiveLimit(prev => prev + 20);
+      }
+    }, { rootMargin: '100px' });
+
+    if (activeSentinelRef.current) {
+      activeObserver.observe(activeSentinelRef.current);
+    }
+
+    return () => {
+      activeObserver.disconnect();
+    };
+  }, [activeSubTab, tasks.length]);
+
+  useEffect(() => {
+    if (!('IntersectionObserver' in window)) return;
+
+    const historyObserver = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) {
+        setVisibleHistoryLimit(prev => prev + 20);
+      }
+    }, { rootMargin: '100px' });
+
+    if (historySentinelRef.current) {
+      historyObserver.observe(historySentinelRef.current);
+    }
+
+    return () => {
+      historyObserver.disconnect();
+    };
+  }, [activeSubTab, tasks.length]);
 
   const playTaskSound = (type: 'ping' | 'delete' | 'success') => {
     try {
@@ -770,8 +814,9 @@ export function OrganizerView({
             {/* Active Task Lists stream (excluding completed ones which show up in history logs) */}
             <div className="space-y-2">
               {sortedActiveTasks.length > 0 ? (
-                sortedActiveTasks.map(tk => (
-                  <motion.div
+                <>
+                  {sortedActiveTasks.slice(0, visibleActiveLimit).map(tk => (
+                    <motion.div
                     layout
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -928,7 +973,9 @@ export function OrganizerView({
                       )}
                     </AnimatePresence>
                   </motion.div>
-                ))
+                ))}
+                <div ref={activeSentinelRef} className="h-1.5 w-full opacity-0" />
+                </>
               ) : (
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
@@ -1027,10 +1074,12 @@ export function OrganizerView({
 
               <div className="space-y-2 max-h-[250px] overflow-y-auto pr-1">
                 {tasks.filter(t => t.completed && (activeTagFilter === 'all' || (t.tags && t.tags.includes(activeTagFilter)))).length > 0 ? (
-                  [...tasks]
-                    .filter(tk => tk.completed && (activeTagFilter === 'all' || (tk.tags && tk.tags.includes(activeTagFilter))))
-                    .sort((a, b) => (b.completedAt || '').localeCompare(a.completedAt || ''))
-                    .map(tk => {
+                  <>
+                    {[...tasks]
+                      .filter(tk => tk.completed && (activeTagFilter === 'all' || (tk.tags && tk.tags.includes(activeTagFilter))))
+                      .sort((a, b) => (b.completedAt || '').localeCompare(a.completedAt || ''))
+                      .slice(0, visibleHistoryLimit)
+                      .map(tk => {
                       const dateStr = tk.completedAt
                         ? new Date(tk.completedAt).toLocaleDateString(lang === 'bn' ? 'bn-BD' : 'en-US', {
                             month: 'short',
@@ -1088,7 +1137,9 @@ export function OrganizerView({
                           </div>
                         </div>
                       );
-                    })
+                    })}
+                    <div ref={historySentinelRef} className="h-1.5 w-full opacity-0" />
+                  </>
                 ) : (
                   <p className="text-[10px] text-slate-500 text-center py-4 font-mono">
                     {lang === 'bn' ? 'কোনো সম্পন্ন টাস্ক হিস্ট্রি পাওয়া যায়নি।' : 'No completed tasks found in log history.'}
@@ -1623,4 +1674,4 @@ export function OrganizerView({
       )}
     </div>
   );
-}
+});

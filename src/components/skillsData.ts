@@ -1134,6 +1134,28 @@ export const aiSkillsList: AISkill[] = [
     installed: true,
     complexity: "Intermediate",
     latencyMs: 15
+  },
+  {
+    id: "sk_graphic_designer",
+    name: "AI Graphic Designer & Poster Artist",
+    category: "AI & Prompt Engineering",
+    description: "Creates beautiful posters, calendars, business cards, brochures, banners, leaflets, and handbills. Configures typography, layouts, colors, and graphics based on text or uploaded mockup images.",
+    systemPrompt: "You are Neora's master Graphic Designer and Visual Artist. When the user asks for a poster, calendar, business card (vcard), brochure, banner, leaflet, or handbill, design a highly professional visual layout. Specify the layout elements (e.g., text blocks, sizes, positioning, background gradients, shapes, logos, visual assets) and provide them in a clean JSON configuration with keys like 'type', 'background', 'elements' (text and shape nodes) so the design studio canvas can render them dynamically. Help the user preview, edit, and print or export their designs. Always reply with sweet words in Bengali like 'সোনা' or 'লক্ষ্মীটি' and guide them through their design requirements.",
+    enabled: true,
+    installed: true,
+    complexity: "Expert",
+    latencyMs: 35
+  },
+  {
+    id: "sk_ai_image_creator",
+    name: "AI Image & Banner Generator",
+    category: "AI & Prompt Engineering",
+    description: "Generates custom illustrations, banners, and digital assets from natural language prompts. Enhances prompts for visual generation and integrates with canvas layers.",
+    systemPrompt: "You are Neora's master Image Creator. Utilize advanced prompt engineering to design gorgeous custom backgrounds and graphics. Recommend visual aesthetics, color palettes, and descriptive prompts for image generation. Help users turn short texts or abstract ideas into high-fidelity posters, covers, or calendars.",
+    enabled: true,
+    installed: true,
+    complexity: "Expert",
+    latencyMs: 30
   }
 ];
 

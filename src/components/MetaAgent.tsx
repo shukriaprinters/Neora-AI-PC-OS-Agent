@@ -79,7 +79,7 @@ export default function IntelligentAmbientEqualizer() {
           const seenKey = `meta_agent_toast_${moduleName}`;
           if (matchedKeyword && !localStorage.getItem(seenKey)) {
             const draft: SkeletonDraft = {
-              id: "draft-" + Math.floor(Math.random() * 10000),
+              id: "draft-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
               moduleName,
               triggerPhrase: matchedKeyword,
               codeSkeleton: skeleton,
@@ -92,7 +92,7 @@ export default function IntelligentAmbientEqualizer() {
             const ts = new Date().toTimeString().split(' ')[0];
             const event = new CustomEvent("neora-system-event", {
               detail: {
-                id: "evt-meta-" + Math.floor(Math.random() * 10000),
+                id: "evt-meta-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
                 timestamp: ts,
                 category: "self_evolution",
                 level: "SUCCESS",
@@ -126,7 +126,7 @@ export default function IntelligentAmbientEqualizer() {
     const ts = new Date().toTimeString().split(' ')[0];
     const event = new CustomEvent("neora-system-event", {
       detail: {
-        id: "evt-meta-deploy-" + Math.floor(Math.random() * 10000),
+        id: "evt-meta-deploy-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
         timestamp: ts,
         category: "self_evolution",
         level: "SUCCESS",

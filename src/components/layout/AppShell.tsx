@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
 import {
   Brain, LayoutDashboard, MessageSquare, Monitor,
-  Settings, Workflow, Activity, Zap, Shield, ChevronRight, LayoutGrid,
-  DollarSign, Filter, Milestone, BookOpen, Laptop, Tv, Sliders, Share2, Hammer
+  Settings, Workflow, Activity, Zap, Shield, ChevronRight, ChevronLeft, LayoutGrid,
+  DollarSign, Filter, Milestone, BookOpen, Laptop, Tv, Sliders, Share2, Hammer,
+  Menu, Languages
 } from "lucide-react";
 import { NebulaBackground } from "../NebulaBackground";
 import { VoiceOrb } from "../VoiceOrb";
@@ -13,7 +14,6 @@ const navItems = [
   { id: "chat",         label: "Neural Chat", icon: MessageSquare,   color: "#00d4ff" },
   { id: "builder",      label: "Builder",     icon: Hammer,          color: "#c084fc" },
   { id: "neoraTv",      label: "Neora TV",    icon: Tv,              color: "#ff007c" },
-  { id: "pcController", label: "PC Control",  icon: Sliders,         color: "#38bdf8" },
   { id: "autonomy",     label: "Automation",  icon: Workflow,        color: "#1a9fff" },
   { id: "productivity", label: "Memory",      icon: Brain,           color: "#7c3aed" },
   { id: "memoriesGraph",label: "Memories Graph",icon: Share2,        color: "#38bdf8" },
@@ -35,12 +35,15 @@ interface AppShellProps {
   onChangeTab: (tab: ActiveTab) => void;
   onVoiceOpen?: () => void;
   children: React.ReactNode;
+  lang: "en" | "bn";
+  onChangeLang: (lang: "en" | "bn") => void;
 }
 
-export function AppShell({ activeTab, onChangeTab, onVoiceOpen, children }: AppShellProps) {
+export function AppShell({ activeTab, onChangeTab, onVoiceOpen, children, lang, onChangeLang }: AppShellProps) {
   const [time, setTime] = useState(new Date());
   const [sysLoad, setSysLoad] = useState(42);
   const [isListening, setIsListening] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   useEffect(() => {
     const t = setInterval(() => setTime(new Date()), 1000);
@@ -60,6 +63,29 @@ export function AppShell({ activeTab, onChangeTab, onVoiceOpen, children }: AppS
   const timeStr = time.toLocaleTimeString("en-US", { hour12: false });
   const dateStr = time.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 
+  const getLabel = (id: string, defaultLabel: string) => {
+    if (lang === "en") return defaultLabel;
+    const mapping: Record<string, string> = {
+      home: "ড্যাশবোর্ড",
+      chat: "নিওরা চ্যাট",
+      builder: "বিল্ডার",
+      neoraTv: "নিওরা টিভি",
+      autonomy: "এজেন্ট প্ল্যানার",
+      productivity: "অর্গানাইজার স্টুডিও",
+      memoriesGraph: "মেমোরিজ গ্রাফ",
+      invoice: "আর্নিং স্টুডিও",
+      osAgent: "পিসি ওএস এজেন্ট",
+      webOs: "নিওরা পিসি",
+      filterLab: "ফিল্টার রিসার্চ ল্যাব",
+      roadmap: "উন্নয়ন রোডম্যাপ",
+      blueprint: "সিস্টেম ব্লুপ্রিন্ট",
+      evolution: "স্বয়ংক্রিয় ইভোলিউশন",
+      dev: "সেটিংস",
+      vscode: "ওয়ার্কস্পেস",
+    };
+    return mapping[id] || defaultLabel;
+  };
+
   return (
     <div className="relative h-screen w-full overflow-hidden bg-[#000814] text-white">
       <NebulaBackground />
@@ -68,11 +94,11 @@ export function AppShell({ activeTab, onChangeTab, onVoiceOpen, children }: AppS
       <div className="relative z-10 flex h-screen w-full overflow-hidden">
 
         {/* ===== JARVIS SIDEBAR ===== */}
-        <aside className="hidden md:flex w-64 flex-col shrink-0" style={{
+        <aside className={`hidden md:flex flex-col shrink-0 transition-all duration-300 ease-in-out relative ${isSidebarCollapsed ? "w-0 overflow-hidden border-r-0 opacity-0" : "w-64"}`} style={{
           background: "rgba(0,8,20,0.88)",
-          borderRight: "1px solid rgba(0,212,255,0.12)",
+          borderRight: isSidebarCollapsed ? "none" : "1px solid rgba(0,212,255,0.12)",
           backdropFilter: "blur(24px)",
-          boxShadow: "4px 0 40px rgba(0,0,0,0.5), inset -1px 0 0 rgba(0,212,255,0.05)",
+          boxShadow: isSidebarCollapsed ? "none" : "4px 0 40px rgba(0,0,0,0.5), inset -1px 0 0 rgba(0,212,255,0.05)",
         }}>
 
           {/* Logo / Identity */}
@@ -85,12 +111,22 @@ export function AppShell({ activeTab, onChangeTab, onVoiceOpen, children }: AppS
               paddingBottom: activeTab === "home" ? "20px" : "0px",
             }}
             transition={{ type: "spring", stiffness: 140, damping: 20 }}
-            className="overflow-hidden flex flex-col items-center w-full"
+            className="overflow-hidden flex flex-col items-center w-full relative"
             style={{
               borderBottom: activeTab === "home" ? "1px solid rgba(0,212,255,0.08)" : "none",
               background: "linear-gradient(180deg, rgba(0,212,255,0.04) 0%, transparent 100%)",
             }}
           >
+            {/* Collapse button inside sidebar header */}
+            <button
+              type="button"
+              onClick={() => setIsSidebarCollapsed(true)}
+              className="absolute right-3 top-3 p-1 rounded-lg bg-slate-900/40 hover:bg-slate-800/80 text-slate-400 hover:text-cyan-400 border border-slate-800 hover:border-cyan-500/30 transition-all cursor-pointer z-20"
+              title="Collapse Sidebar"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </button>
+
             {/* Voice Orb */}
             <VoiceOrb
               size="md"
@@ -182,6 +218,24 @@ export function AppShell({ activeTab, onChangeTab, onVoiceOpen, children }: AppS
             </div>
           </motion.div>
 
+          {/* Language Selector inside Sidebar */}
+          <div className="px-4 py-2.5 w-full select-none">
+            <button
+              type="button"
+              onClick={() => onChangeLang(lang === "en" ? "bn" : "en")}
+              className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-[#00d4ff]/5 hover:bg-[#00d4ff]/10 border border-[#00d4ff]/15 hover:border-[#00d4ff]/35 text-[#00d4ff] text-xs font-mono font-bold cursor-pointer transition-all shadow-[0_0_8px_rgba(0,212,255,0.03)]"
+              title={lang === "bn" ? "ইংরেজিতে পরিবর্তন করুন" : "Switch to Bengali"}
+            >
+              <div className="flex items-center gap-1.5">
+                <Languages className="w-3.5 h-3.5 animate-pulse" />
+                <span>{lang === "bn" ? "ভাষা: বাংলা" : "Language: EN"}</span>
+              </div>
+              <span className="text-[9px] bg-[#00d4ff]/20 px-1.5 py-0.5 rounded text-white font-sans font-normal tracking-wide uppercase">
+                {lang === "bn" ? "EN" : "বাংলা"}
+              </span>
+            </button>
+          </div>
+
           {/* Navigation */}
           <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
             {navItems.map((item) => {
@@ -200,7 +254,7 @@ export function AppShell({ activeTab, onChangeTab, onVoiceOpen, children }: AppS
                     className="h-4 w-4 shrink-0"
                     style={isActive ? { color: item.color, filter: `drop-shadow(0 0 4px ${item.color})` } : {}}
                   />
-                  <span className={`text-sm ${isActive ? "font-medium" : ""}`}>{item.label}</span>
+                  <span className={`text-sm ${isActive ? "font-medium" : ""}`}>{getLabel(item.id, item.label)}</span>
                   {isActive && (
                     <ChevronRight
                       className="h-3 w-3 ml-auto"
@@ -221,21 +275,34 @@ export function AppShell({ activeTab, onChangeTab, onVoiceOpen, children }: AppS
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div className="jarvis-ping" />
-                  <span className="text-[10px] font-mono" style={{ color: "#00ff88" }}>ONLINE</span>
+                  <span className="text-[10px] font-mono" style={{ color: "#00ff88" }}>{lang === "bn" ? "অনলাইন" : "ONLINE"}</span>
                 </div>
                 <Shield className="h-3 w-3 text-slate-500" />
               </div>
               <div className="jarvis-separator" />
               <div className="flex items-center gap-2 text-[10px] font-mono text-slate-500">
                 <Zap className="h-3 w-3" style={{ color: "#f5a623" }} />
-                <span>Neural Engine Active</span>
+                <span>{lang === "bn" ? "নিওরাল ইঞ্জিন সচল" : "Neural Engine Active"}</span>
               </div>
             </div>
           </div>
         </aside>
 
         {/* ===== MAIN CONTENT ===== */}
-        <main className="flex-1 pb-20 md:pb-0 min-w-0 flex flex-col h-screen overflow-hidden">
+        <main className="flex-1 pb-20 md:pb-0 min-w-0 flex flex-col h-screen overflow-hidden relative">
+
+          {/* Floating Expand Sidebar Button (Only visible on desktop when sidebar is collapsed) */}
+          {isSidebarCollapsed && (
+            <button
+              type="button"
+              onClick={() => setIsSidebarCollapsed(false)}
+              className="hidden md:flex absolute top-4 left-4 z-40 p-2 rounded-lg bg-slate-950/80 hover:bg-slate-900 border border-cyan-500/35 text-cyan-400 hover:text-cyan-300 shadow-[0_0_15px_rgba(0,212,255,0.25)] hover:shadow-[0_0_20px_rgba(0,212,255,0.4)] cursor-pointer transition-all items-center gap-1.5 text-[10px] font-mono font-bold uppercase"
+              title={lang === "bn" ? "সাইডবার দেখান" : "Show Sidebar"}
+            >
+              <Menu className="w-4 h-4 animate-pulse" />
+              <span>{lang === "bn" ? "সাইডবার" : "Sidebar"}</span>
+            </button>
+          )}
 
           {/* Mobile top bar */}
           <div className="sticky top-0 z-20 border-b px-4 py-3 backdrop-blur-2xl md:hidden" style={{
@@ -278,7 +345,7 @@ export function AppShell({ activeTab, onChangeTab, onVoiceOpen, children }: AppS
                   } : { color: "rgba(100,116,139,0.8)", border: "1px solid transparent" }}
                 >
                   <item.icon className="h-4 w-4" style={isActive ? { filter: `drop-shadow(0 0 3px ${item.color})` } : {}} />
-                  <span className="leading-none truncate">{item.label.split(" ")[0]}</span>
+                  <span className="leading-none truncate">{getLabel(item.id, item.label).split(" ")[0]}</span>
                 </button>
               );
             })}

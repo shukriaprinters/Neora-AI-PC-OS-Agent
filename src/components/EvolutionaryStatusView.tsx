@@ -74,7 +74,7 @@ export default function EvolutionaryStatusView({
       const ts = new Date().toTimeString().split(' ')[0];
       const event = new CustomEvent("neora-system-event", {
         detail: {
-          id: "evt-skill-verify-" + Math.floor(Math.random() * 10000),
+          id: "evt-skill-verify-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
           timestamp: ts,
           category: "system_heal",
           level: "SUCCESS",
@@ -200,7 +200,7 @@ export default function EvolutionaryStatusView({
       // System notification
       const customEvt = new CustomEvent("neora-system-event", {
         detail: {
-          id: "evt-self-learn-" + Math.floor(Math.random() * 10000),
+          id: "evt-self-learn-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
           timestamp: new Date().toTimeString().split(' ')[0],
           category: "memory_update",
           level: "SUCCESS",
@@ -275,7 +275,7 @@ export default function EvolutionaryStatusView({
       const ts = new Date().toTimeString().split(' ')[0];
       const event = new CustomEvent("neora-system-event", {
         detail: {
-          id: "evt-research-" + Math.floor(Math.random() * 10000),
+          id: "evt-research-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
           timestamp: ts,
           category: "api_call",
           level: "INFO",

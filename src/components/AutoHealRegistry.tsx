@@ -11,7 +11,10 @@ export function AutoHealRegistry({ lang }: { lang: "en" | "bn" }) {
       if (
         msg.includes("[vite] failed to connect to websocket") ||
         msg.includes("WebSocket closed without opened") ||
-        (msg.includes("Failed to fetch") && (msg.includes("ollama") || msg.includes("tags")))
+        msg.includes("Error fetching OS Agent status") ||
+        msg.includes("Error fetching repository Git status") ||
+        msg.includes("Failed to load git status") ||
+        (msg.includes("Failed to fetch") && (msg.includes("ollama") || msg.includes("tags") || msg.includes("os/status") || msg.includes("git/status")))
       ) {
         // Auto heal: trigger a system event log instead of letting it pollute console as red error
         const customEvt = new CustomEvent("neora-system-event", {

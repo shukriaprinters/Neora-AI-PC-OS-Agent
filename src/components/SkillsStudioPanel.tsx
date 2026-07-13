@@ -102,7 +102,7 @@ background_loops:
       alert(lang === "bn" ? "দয়া করে নাম এবং বিবরণ প্রদান করুন।" : "Please provide both skill name and description.");
       return;
     }
-    const newId = "custom-skill-" + Math.floor(Math.random() * 10000);
+    const newId = "custom-skill-" + Date.now() + "-" + Math.floor(Math.random() * 1000000);
     const newSkill = {
       id: newId,
       name: wizardName.trim(),

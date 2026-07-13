@@ -14,6 +14,7 @@ import { LocalFileSystemBrowser } from './LocalFileSystemBrowser';
 import { AgentExecutionLog } from './AgentExecutionLog';
 import { aiSkillsList, AISkill } from './skillsData';
 import { SkillsStudioPanel } from './SkillsStudioPanel';
+import { HostPCControl } from './HostPCControl';
 
 interface OsAgentViewProps {
   lang: 'en' | 'bn';
@@ -666,7 +667,12 @@ export function OsAgentView({ lang, geminiKey, setGeminiKey, useGroq, groqKey, g
         setGitStatus(res.data);
       }
     } catch (err) {
-      console.error("Error fetching repository Git status:", err);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (errMsg.includes("Failed to fetch") || errMsg.includes("NetworkError") || errMsg.includes("fetch")) {
+        console.warn("Error fetching repository Git status (transient):", errMsg);
+      } else {
+        console.error("Error fetching repository Git status:", err);
+      }
     } finally {
       setIsGitLoading(false);
     }
@@ -777,7 +783,7 @@ export function OsAgentView({ lang, geminiKey, setGeminiKey, useGroq, groqKey, g
   const [isCompiling, setIsCompiling] = useState<boolean>(false);
   const [copiedToken, setCopiedToken] = useState<boolean>(false);
   const [copiedScript, setCopiedScript] = useState<boolean>(false);
-  const [viewMode, setViewMode] = useState<'monitor' | 'setup' | 'terminal' | 'mission' | 'research' | 'skills_studio'>('monitor');
+  const [viewMode, setViewMode] = useState<'monitor' | 'setup' | 'terminal' | 'mission' | 'research' | 'skills_studio' | 'pc_control'>('monitor');
   const [isListening, setIsListening] = useState<boolean>(false);
 
   // Holographic toast notification state
@@ -893,7 +899,12 @@ export function OsAgentView({ lang, geminiKey, setGeminiKey, useGroq, groqKey, g
       const staleRunning = (data.queue || []).some((item: CommandItem) => item.status === 'running');
       setWatchdogNote(staleRunning ? (lang === 'bn' ? 'ওয়াচডগ সক্রিয়: চলমান কমান্ড পর্যবেক্ষণ করছে' : 'Watchdog active: monitoring running commands') : null);
     } catch (err) {
-      console.error('Error fetching OS Agent status:', err);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (errMsg.includes("Failed to fetch") || errMsg.includes("NetworkError") || errMsg.includes("fetch")) {
+        console.warn('Error fetching OS Agent status (transient):', errMsg);
+      } else {
+        console.error('Error fetching OS Agent status:', err);
+      }
       const endpointLabel = err instanceof NeoraApiError ? err.endpoint : '/api/os/status';
       setStatusEndpoint(endpointLabel);
       setStatusBanner(lang === 'bn'
@@ -917,18 +928,89 @@ export function OsAgentView({ lang, geminiKey, setGeminiKey, useGroq, groqKey, g
     }
   };
 
-  // Poll status every 3 seconds to keep UI completely synchronized
+  // Poll status with dynamic intervals adapting to low-resource mode to preserve local PC stability
   useEffect(() => {
-    fetchAgentStatus();
-    fetchWorkspaceState();
-    fetchGitStatus();
-    const interval = setInterval(fetchAgentStatus, 3000);
-    const gitInterval = setInterval(fetchGitStatus, 15000); // Poll git status occasionally
-    const workspaceInterval = setInterval(fetchWorkspaceState, 15000);
+    let lowMode = typeof window !== "undefined" && localStorage.getItem("neora_low_resource_mode") === "true";
+    let isIdle = typeof window !== "undefined" && localStorage.getItem("neora_user_idle") === "true";
+    let isFocused = typeof document !== "undefined" && document.visibilityState === "visible";
+    
+    const getStatusInterval = () => {
+      if (!isFocused) return 86400000; // Paused when tab is not in focus
+      const base = lowMode ? 15000 : 3000;
+      return isIdle ? base * 4 : base; // Scale interval 4x when idle
+    };
+    const getGitInterval = () => {
+      if (!isFocused) return 86400000;
+      const base = lowMode ? 45000 : 15000;
+      return isIdle ? base * 4 : base;
+    };
+    const getWorkspaceInterval = () => {
+      if (!isFocused) return 86400000;
+      const base = lowMode ? 45000 : 15000;
+      return isIdle ? base * 4 : base;
+    };
+
+    let interval = setInterval(() => {
+      if (document.visibilityState === "visible") fetchAgentStatus();
+    }, getStatusInterval());
+    let gitInterval = setInterval(() => {
+      if (document.visibilityState === "visible") fetchGitStatus();
+    }, getGitInterval());
+    let workspaceInterval = setInterval(() => {
+      if (document.visibilityState === "visible") fetchWorkspaceState();
+    }, getWorkspaceInterval());
+
+    const recreateIntervals = () => {
+      clearInterval(interval);
+      clearInterval(gitInterval);
+      clearInterval(workspaceInterval);
+
+      interval = setInterval(() => {
+        if (document.visibilityState === "visible") fetchAgentStatus();
+      }, getStatusInterval());
+      gitInterval = setInterval(() => {
+        if (document.visibilityState === "visible") fetchGitStatus();
+      }, getGitInterval());
+      workspaceInterval = setInterval(() => {
+        if (document.visibilityState === "visible") fetchWorkspaceState();
+      }, getWorkspaceInterval());
+    };
+
+    const handleToggle = () => {
+      const nextLowMode = localStorage.getItem("neora_low_resource_mode") === "true";
+      if (nextLowMode !== lowMode) {
+        lowMode = nextLowMode;
+        recreateIntervals();
+      }
+    };
+
+    const handleIdleChange = (e: any) => {
+      isIdle = e.detail;
+      recreateIntervals();
+    };
+
+    const handleFocusChange = (e: any) => {
+      isFocused = e.detail;
+      recreateIntervals();
+      if (isFocused) {
+        // Fetch immediately on focus
+        fetchAgentStatus();
+        fetchWorkspaceState();
+        fetchGitStatus();
+      }
+    };
+
+    window.addEventListener("neora-low-resource-toggle", handleToggle);
+    window.addEventListener("neora-idle-state-change", handleIdleChange as EventListener);
+    window.addEventListener("neora-focus-state-change", handleFocusChange as EventListener);
+
     return () => {
       clearInterval(interval);
       clearInterval(gitInterval);
       clearInterval(workspaceInterval);
+      window.removeEventListener("neora-low-resource-toggle", handleToggle);
+      window.removeEventListener("neora-idle-state-change", handleIdleChange as EventListener);
+      window.removeEventListener("neora-focus-state-change", handleFocusChange as EventListener);
     };
   }, []);
 
@@ -1813,6 +1895,14 @@ while True:
           >
             <Eye className="w-3.5 h-3.5" />
             <span>{lang === 'bn' ? 'আই স্ক্রিন' : 'Agent Monitor'}</span>
+          </button>
+          <button 
+            type="button"
+            onClick={() => setViewMode('pc_control')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold cursor-pointer transition-all ${viewMode === 'pc_control' ? 'bg-cyan-500/15 text-cyan-400 font-bold border border-cyan-500/10' : 'text-slate-400 hover:text-slate-200'}`}
+          >
+            <Activity className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+            <span>{lang === 'bn' ? 'পিসি হার্ডওয়্যার ও কন্ট্রোল' : 'PC Control & Telemetry'}</span>
           </button>
           <button 
             type="button"
@@ -3043,6 +3133,12 @@ while True:
               setCustomSkills={setCustomSkills}
               onTriggerToast={triggerSkillToast}
             />
+          )}
+
+          {viewMode === 'pc_control' && (
+            <div className="flex-1 overflow-y-auto bg-slate-950">
+              <HostPCControl lang={lang} />
+            </div>
           )}
 
           {/* VIEW: Agent Monitor (Screenshots scaled view) */}

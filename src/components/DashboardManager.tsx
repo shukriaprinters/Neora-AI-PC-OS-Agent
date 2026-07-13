@@ -72,7 +72,7 @@ export function usePredictiveLayout() {
       const ts = new Date().toTimeString().split(' ')[0];
       const event = new CustomEvent("neora-system-event", {
         detail: {
-          id: "evt-opt-all-" + Math.floor(Math.random() * 10000),
+          id: "evt-opt-all-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
           timestamp: ts,
           category: "self_evolution",
           level: "SUCCESS",
@@ -111,7 +111,7 @@ interface DynamicWidgetManagerProps {
   onOptimize: () => void;
 }
 
-export function DynamicWidgetManager({
+export const DynamicWidgetManager = React.memo(function DynamicWidgetManager({
   lang,
   widgets,
   setWidgets,
@@ -215,4 +215,4 @@ export function DynamicWidgetManager({
       </div>
     </div>
   );
-}
+});

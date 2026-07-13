@@ -1,9 +1,24 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 
 export function NebulaBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [isLowResource, setIsLowResource] = useState(() => {
+    return typeof window !== "undefined" && localStorage.getItem("neora_low_resource_mode") === "true";
+  });
 
   useEffect(() => {
+    const handleToggle = () => {
+      setIsLowResource(localStorage.getItem("neora_low_resource_mode") === "true");
+    };
+    window.addEventListener("neora-low-resource-toggle", handleToggle);
+    return () => {
+      window.removeEventListener("neora-low-resource-toggle", handleToggle);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isLowResource) return;
+
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
@@ -122,7 +137,16 @@ export function NebulaBackground() {
       cancelAnimationFrame(animId);
       window.removeEventListener("resize", resize);
     };
-  }, []);
+  }, [isLowResource]);
+
+  if (isLowResource) {
+    return (
+      <div 
+        className="pointer-events-none fixed inset-0 -z-10 bg-gradient-to-br from-slate-950 via-[#000511] to-black"
+        style={{ opacity: 0.95 }}
+      />
+    );
+  }
 
   return (
     <canvas

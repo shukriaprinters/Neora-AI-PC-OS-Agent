@@ -1512,7 +1512,7 @@ export function PlannerView({ lang, autonomyLevel, setAutonomyLevel }: PlannerVi
                     {processes.map((p) => {
                       const dead = p.status === 'Dead';
                       return (
-                        <tr key={p.pid} className={`border-b border-slate-950 hover:bg-slate-900/40 transition-colors ${dead ? 'text-slate-600 italic line-through' : 'text-slate-300'}`}>
+                        <tr key={`${p.name}-${p.pid}`} className={`border-b border-slate-950 hover:bg-slate-900/40 transition-colors ${dead ? 'text-slate-600 italic line-through' : 'text-slate-300'}`}>
                           <td className="p-2 font-mono text-slate-500 font-bold">{p.pid}</td>
                           <td className="p-2 flex items-center gap-1.5">
                             <Server className={`w-3 h-3 ${dead ? 'text-slate-650' : 'text-cyan-500'}`} />

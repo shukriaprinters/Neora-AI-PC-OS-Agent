@@ -32,6 +32,7 @@ import {
   Copy,
   Edit3,
   Download,
+  Palette,
   History,
   Gauge,
   VolumeX,
@@ -659,8 +660,24 @@ export function ChatView({
       }
     };
     loadWorkspaceState();
-    const interval = setInterval(loadWorkspaceState, 15000);
-    return () => clearInterval(interval);
+    let lowMode = typeof window !== "undefined" && localStorage.getItem("neora_low_resource_mode") === "true";
+    let interval = setInterval(loadWorkspaceState, lowMode ? 45000 : 15000);
+
+    const handleToggle = () => {
+      const nextLowMode = localStorage.getItem("neora_low_resource_mode") === "true";
+      if (nextLowMode !== lowMode) {
+        lowMode = nextLowMode;
+        clearInterval(interval);
+        interval = setInterval(loadWorkspaceState, lowMode ? 45000 : 15000);
+      }
+    };
+
+    window.addEventListener("neora-low-resource-toggle", handleToggle);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("neora-low-resource-toggle", handleToggle);
+    };
   }, []);
 
   const handlersRef = useRef({ onAddTask, onAddReminder, onAddNote, onSearchBlueprints });
@@ -3215,6 +3232,36 @@ ${uniqueSkills.length > 0 ? uniqueSkills.map((sk, index) => `${index + 1}. ${sk}
                             >
                               {m.content}
                             </ReactMarkdown>
+
+                            {/* Dynamic Design Assistant Shortcut Card */}
+                            {isBot && (m.content.toLowerCase().includes('poster') || m.content.includes('পোস্টার') || m.content.toLowerCase().includes('calendar') || m.content.includes('ক্যালেন্ডার') || m.content.toLowerCase().includes('vcard') || m.content.includes('কার্ড') || m.content.toLowerCase().includes('leaflet') || m.content.includes('লিফলেট') || m.content.toLowerCase().includes('handbill') || m.content.includes('হ্যান্ডবিল') || m.content.toLowerCase().includes('banner') || m.content.includes('ব্যানার') || m.content.toLowerCase().includes('design') || m.content.includes('ডিজাইন')) && (
+                              <div className="mt-3 p-3 bg-cyan-950/20 border border-cyan-500/20 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-3 shadow-md animate-pulse">
+                                <div className="flex items-center gap-2">
+                                  <div className="p-2 bg-cyan-500/15 rounded-lg shrink-0">
+                                    <Palette className="w-5 h-5 text-cyan-400" />
+                                  </div>
+                                  <div className="text-left">
+                                    <h4 className="text-xs font-bold text-white font-sans">
+                                      {lang === 'bn' ? '🎨 কাস্টম ডিজাইন রেডি!' : '🎨 Custom Design Ready!'}
+                                    </h4>
+                                    <p className="text-[10px] text-slate-400 font-mono">
+                                      {lang === 'bn' ? 'ডিজাইন স্টুডিওতে এটি প্রিভিউ, এডিট এবং প্রিন্ট করতে পারবেন সোনা।' : 'Open Design Studio to preview, customize, and print it.'}
+                                    </p>
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={() => {
+                                    const btn = document.getElementById('navtab-graphicStudio');
+                                    if (btn) {
+                                      btn.click();
+                                    }
+                                  }}
+                                  className="px-3.5 py-1.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold font-mono rounded-lg transition-all shadow-[0_0_15px_rgba(6,182,212,0.45)] cursor-pointer"
+                                >
+                                  {lang === 'bn' ? 'ডিজাইন স্টুডিও খুলুন ➔' : 'OPEN STUDIO ➔'}
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
 

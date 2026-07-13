@@ -152,7 +152,7 @@ export class CognitiveEvolutionEngine {
     const ts = new Date().toTimeString().split(' ')[0];
     const newEvent = new CustomEvent("neora-system-event", {
       detail: {
-        id: "evt-se-" + Math.floor(Math.random() * 10000),
+        id: "evt-se-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
         timestamp: ts,
         category: "self_evolution", // Differentiated category
         level: "INFO",
@@ -199,7 +199,7 @@ export class CognitiveEvolutionEngine {
     const ts = new Date().toTimeString().split(' ')[0];
     const event = new CustomEvent("neora-system-event", {
       detail: {
-        id: "evt-appr-" + Math.floor(Math.random() * 10000),
+        id: "evt-appr-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
         timestamp: ts,
         category: "self_evolution",
         level: "SUCCESS",
@@ -238,7 +238,7 @@ export class CognitiveEvolutionEngine {
     const ts = new Date().toTimeString().split(' ')[0];
     const event = new CustomEvent("neora-system-event", {
       detail: {
-        id: "evt-rej-" + Math.floor(Math.random() * 10000),
+        id: "evt-rej-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
         timestamp: ts,
         category: "self_evolution",
         level: "WARNING",

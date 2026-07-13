@@ -106,19 +106,85 @@ async function fetchWithRetry(path: string, init: RequestInit, options?: NeoraFe
   throw new NeoraApiError(path, lastError instanceof Error ? lastError.message : "Request failed");
 }
 
+// Client-side cache and in-flight request deduplication to prevent 429 Rate Exceeded errors from proxy
+const clientCache = new Map<string, { data: any; timestamp: number }>();
+const inflightRequests = new Map<string, Promise<any>>();
+
+export const neoraApiStats = {
+  cacheHits: 0,
+  cacheMisses: 0,
+  rateExceededCount: 0,
+};
+
+const CACHE_CONFIGS: Record<string, number> = {
+  "/api/os/status": 3500,     // Cache OS Agent status for 3.5 seconds
+  "/api/git/status": 15000,   // Cache Git repository status for 15 seconds
+  "/api/memory": 10000,       // Cache memories for 10 seconds
+  "/api/plan/active": 10000,  // Cache active plans for 10 seconds
+};
+
+export function clearNeoraClientCache() {
+  clientCache.clear();
+  inflightRequests.clear();
+}
+
 export async function neoraGet<T>(path: string, options?: NeoraFetchOptions): Promise<T> {
-  const token = typeof window !== 'undefined' ? (localStorage.getItem('neora_token') || 'NEORA-X7-AGENT') : 'NEORA-X7-AGENT';
-  const response = await fetchWithRetry(path, {
-    method: "GET",
-    headers: {
-      "Accept": "application/json",
-      "x-neora-token": token,
-    },
-  }, options);
-  return parseResponse<T>(response);
+  const cacheDuration = CACHE_CONFIGS[path] || 0;
+  const now = Date.now();
+
+  // 1. Check if we have a valid cached entry
+  if (cacheDuration > 0 && clientCache.has(path)) {
+    const entry = clientCache.get(path)!;
+    if (now - entry.timestamp < cacheDuration) {
+      neoraApiStats.cacheHits++;
+      return entry.data as T;
+    }
+  }
+
+  // 2. Check if there is already an in-flight request for this exact path
+  if (inflightRequests.has(path)) {
+    neoraApiStats.cacheHits++; // Count deduplicated requests as cache hits/saved calls
+    return inflightRequests.get(path) as Promise<T>;
+  }
+
+  neoraApiStats.cacheMisses++;
+
+  // 3. Perform fetch
+  const fetchPromise = (async () => {
+    try {
+      const token = typeof window !== 'undefined' ? (localStorage.getItem('neora_token') || 'NEORA-X7-AGENT') : 'NEORA-X7-AGENT';
+      const response = await fetchWithRetry(path, {
+        method: "GET",
+        headers: {
+          "Accept": "application/json",
+          "x-neora-token": token,
+        },
+      }, options);
+      const parsed = await parseResponse<T>(response);
+
+      if (cacheDuration > 0) {
+        clientCache.set(path, { data: parsed, timestamp: Date.now() });
+      }
+      return parsed;
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (errMsg.includes("Rate exceeded") || errMsg.includes("429")) {
+        neoraApiStats.rateExceededCount++;
+      }
+      throw err;
+    } finally {
+      inflightRequests.delete(path);
+    }
+  })();
+
+  inflightRequests.set(path, fetchPromise);
+  return fetchPromise;
 }
 
 export async function neoraPost<T>(path: string, body?: JsonObject, options?: NeoraFetchOptions): Promise<T> {
+  // Clear cache on mutations to ensure subsequent fetch is completely fresh
+  clearNeoraClientCache();
+
   const token = typeof window !== 'undefined' ? (localStorage.getItem('neora_token') || 'NEORA-X7-AGENT') : 'NEORA-X7-AGENT';
   const response = await fetchWithRetry(path, {
     method: "POST",
@@ -138,6 +204,8 @@ export async function neoraPost<T>(path: string, body?: JsonObject, options?: Ne
 }
 
 export async function neoraDelete<T>(path: string, options?: NeoraFetchOptions): Promise<T> {
+  clearNeoraClientCache();
+
   const token = typeof window !== 'undefined' ? (localStorage.getItem('neora_token') || 'NEORA-X7-AGENT') : 'NEORA-X7-AGENT';
   const response = await fetchWithRetry(path, {
     method: "DELETE",
@@ -150,6 +218,8 @@ export async function neoraDelete<T>(path: string, options?: NeoraFetchOptions):
 }
 
 export async function neoraUpload<T>(path: string, formData: FormData, options?: NeoraFetchOptions): Promise<T> {
+  clearNeoraClientCache();
+
   const response = await fetchWithRetry(path, {
     method: "POST",
     body: formData,

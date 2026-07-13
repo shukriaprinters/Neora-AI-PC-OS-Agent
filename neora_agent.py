@@ -818,14 +818,19 @@ def execute_instruction(action, param):
                     launched = False
                     errors = []
 
-                    # 1. Try direct execute (using lists for space compatibility)
+                    # 1. Try native Windows startfile or direct execution
                     try:
                         if sys.platform == "win32" and os.path.exists(clean_cmd):
-                            # Critical bugfix: Always set cwd to application directory and use DETACHED_PROCESS creation flag on Windows
-                            app_dir = os.path.dirname(clean_cmd)
-                            subprocess.Popen([clean_cmd], shell=False, cwd=app_dir, creationflags=0x00000008)
-                            launched = True
-                            logs.append(f"✓ Launched Windows app from resolved path: '{clean_cmd}' with detached context")
+                            try:
+                                # Safe, native interactive launch for GUI apps like Photoshop/Illustrator
+                                os.startfile(clean_cmd)
+                                launched = True
+                                logs.append(f"✓ Launched Windows app natively via startfile: '{clean_cmd}'")
+                            except Exception as start_err:
+                                app_dir = os.path.dirname(clean_cmd)
+                                subprocess.Popen([clean_cmd], shell=False, cwd=app_dir)
+                                launched = True
+                                logs.append(f"✓ Launched Windows app via Popen fallback: '{clean_cmd}'")
                         elif sys.platform == "darwin" and clean_cmd.endswith(".app"):
                             subprocess.Popen(["open", clean_cmd])
                             launched = True
@@ -838,25 +843,21 @@ def execute_instruction(action, param):
                     except Exception as e:
                         errors.append(f"Direct failed: {e}")
 
-                    # 2. Try via shell
+                    # 2. Try native start or shell
                     if not launched:
                         try:
-                            exec_str = f'"{clean_cmd}"' if "\\" in clean_cmd or "/" in clean_cmd else clean_cmd
-                            subprocess.Popen(exec_str, shell=True, cwd=str(WORKSPACE_DIR))
-                            launched = True
-                            logs.append(f"✓ Launched process via shell: '{clean_cmd}'")
+                            if sys.platform == "win32":
+                                app_name = orig_base[:-4] if orig_base.endswith(".exe") else orig_base
+                                subprocess.Popen(f'cmd.exe /c start "" "{app_name}"', shell=True)
+                                launched = True
+                                logs.append(f"✓ Launched Windows app registry/start shell: '{app_name}'")
+                            else:
+                                exec_str = f'"{clean_cmd}"' if "\\" in clean_cmd or "/" in clean_cmd else clean_cmd
+                                subprocess.Popen(exec_str, shell=True, cwd=str(WORKSPACE_DIR))
+                                launched = True
+                                logs.append(f"✓ Launched process via shell: '{clean_cmd}'")
                         except Exception as e:
-                            errors.append(f"Shell failed: {e}")
-
-                    # 3. Try Windows registry start
-                    if not launched and sys.platform == "win32":
-                        try:
-                            app_name = orig_base[:-4] if orig_base.endswith(".exe") else orig_base
-                            subprocess.Popen(f'cmd.exe /c start "" "{app_name}"', shell=True)
-                            launched = True
-                            logs.append(f"✓ Launched Windows app registry start: '{app_name}'")
-                        except Exception as e:
-                            errors.append(f"Windows start failed: {e}")
+                            errors.append(f"Shell/Start failed: {e}")
 
                     # 4. Try darwin shell open
                     if not launched and sys.platform == "darwin":
