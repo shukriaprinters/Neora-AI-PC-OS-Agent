@@ -275,7 +275,7 @@
         "tool",
         "palette-generator"
       ],
-      "createdAt": "2026-07-19T12:20:00.312Z"
+      "createdAt": "2026-07-19T12:44:36.214Z"
     },
     {
       "id": "neora_design_critic",
@@ -289,7 +289,7 @@
         "tool",
         "validator"
       ],
-      "createdAt": "2026-07-19T12:20:00.316Z"
+      "createdAt": "2026-07-19T12:44:36.229Z"
     },
     {
       "id": "neora_poster_generator",
@@ -303,7 +303,7 @@
         "tool",
         "scaffolder"
       ],
-      "createdAt": "2026-07-19T12:20:00.323Z"
+      "createdAt": "2026-07-19T12:44:36.234Z"
     }
   ],
   "workflowHistory": [],
