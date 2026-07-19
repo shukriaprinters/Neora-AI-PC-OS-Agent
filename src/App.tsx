@@ -148,9 +148,53 @@ import { SECTIONS, RAW_MASTER_PROMPT } from "./masterPromptText";
 import { Task, Reminder, Note, Memory, SubTask } from "./types";
 import { TRANSLATIONS } from "./translations";
 import { neoraDelete, neoraGet, neoraPost } from "./lib/neoraApi";
-import { useNeoraPersistence } from "./lib/useNeoraPersistence";
-import { DEFAULT_TASKS, DEFAULT_REMINDERS, DEFAULT_NOTES, DEFAULT_MEMORIES } from "./data/defaultUserData";
-import { MessageSquare, Cpu, FileSliders as Sliders, DollarSign, Clipboard, Languages, Terminal, BookOpen, Key, LogOut, ListFilter as Filter, Milestone, Laptop, Download, Palette, Search, Undo, X, Activity, CircleAlert, Upload, Tv, Share2, Volume2, VolumeX, Music, ChevronLeft, ChevronRight, Sparkles, Circle as HelpCircle, Plus, CircleCheck as CheckCircle, ChevronDown, ChevronUp, Calendar, CreditCard as Edit, TriangleAlert as AlertTriangle, History, Zap, Trash, Play, SlidersHorizontal, Camera, Mic, Square } from "lucide-react";
+import {
+  MessageSquare,
+  Cpu,
+  Sliders,
+  DollarSign,
+  Clipboard,
+  Languages,
+  Terminal,
+  BookOpen,
+  Key,
+  LogOut,
+  Filter,
+  Milestone,
+  Laptop,
+  Download,
+  Palette,
+  Search,
+  Undo,
+  X,
+  Activity,
+  CircleAlert,
+  Upload,
+  Tv,
+  Share2,
+  Volume2,
+  VolumeX,
+  Music,
+  ChevronLeft,
+  ChevronRight,
+  Sparkles,
+  HelpCircle,
+  Plus,
+  CheckCircle,
+  ChevronDown,
+  ChevronUp,
+  Calendar,
+  Edit,
+  AlertTriangle,
+  History,
+  Zap,
+  Trash,
+  Play,
+  SlidersHorizontal,
+  Camera,
+  Mic,
+  Square
+} from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   ResponsiveContainer,
@@ -900,36 +944,112 @@ export default function App() {
 
   const [evolutionSubTab, setEvolutionSubTab] = useState<"protocol" | "status">("protocol");
 
-  // Dynamic collections (defaults imported from data module)
-  const [tasks, setTasks] = useState<Task[]>(DEFAULT_TASKS);
-  const [reminders, setReminders] = useState<Reminder[]>(DEFAULT_REMINDERS);
-  const [notes, setNotes] = useState<Note[]>(DEFAULT_NOTES);
+  // Dynamic collections
+  const [tasks, setTasks] = useState<Task[]>([
+    {
+      id: "1",
+      title: "Deliver brochure proof to Shukria Printers",
+      notes: "",
+      priority: "high",
+      dueAt: "2026-06-07",
+      completed: false,
+    },
+    {
+      id: "2",
+      title: "Submit quarterly tax calculations sheet",
+      notes: "",
+      priority: "critical",
+      dueAt: "2026-06-08",
+      completed: true,
+    },
+    {
+      id: "3",
+      title: "Stage local updates & run typechecking validation",
+      notes: "",
+      priority: "medium",
+      dueAt: "2026-06-09",
+      completed: false,
+    },
+  ]);
 
-  // Supabase persistence: sync tasks/reminders/notes across reloads & devices
-  const persistenceEnabled = true;
-  const neoraPersistence = useNeoraPersistence(tasks, reminders, notes, {
-    enabled: persistenceEnabled,
-  });
+  const [reminders, setReminders] = useState<Reminder[]>([
+    {
+      id: "1",
+      title: "Call client to verify poster colors",
+      remindAt: "2026-06-07T11:00",
+      repeat: "none",
+      completed: false,
+    },
+    {
+      id: "2",
+      title: "Auto-backup repository checkpoints",
+      remindAt: "2026-06-08T23:59",
+      repeat: "daily",
+      completed: false,
+    },
+  ]);
 
-  // Initial load from Supabase on mount (replaces defaults if remote data exists)
-  React.useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const [remoteTasks, remoteReminders, remoteNotes] = await Promise.all([
-        neoraPersistence.loadTasks(),
-        neoraPersistence.loadReminders(),
-        neoraPersistence.loadNotes(),
-      ]);
-      if (cancelled) return;
-      if (remoteTasks.length > 0) setTasks(remoteTasks);
-      if (remoteReminders.length > 0) setReminders(remoteReminders);
-      if (remoteNotes.length > 0) setNotes(remoteNotes);
-    })();
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const [notes, setNotes] = useState<Note[]>([
+    {
+      id: "1",
+      title: "Office address memo",
+      content: "Contact point: Silicon Tower, Floor 14, Gulshan-2, Dhaka.",
+      createdAt: new Date().toLocaleDateString(),
+    },
+    {
+      id: "2",
+      title: "Printers pricing framework",
+      content:
+        "Standard glossy banner setup: $120/piece. Volume discount at 10% for orders > 5 pieces.",
+      createdAt: new Date().toLocaleDateString(),
+    },
+  ]);
 
-  const [memories, setMemories] = useState<Memory[]>(DEFAULT_MEMORIES);
+  const [memories, setMemories] = useState<Memory[]>([
+    {
+      id: "1",
+      key: "Default Printer Contact",
+      value: "shukriaprinters@gmail.com",
+      category: "work",
+      importance: 5,
+    },
+    {
+      id: "2",
+      key: "Autonomous safety rule",
+      category: "preference",
+      value:
+        "Never write onto /etc/ or system roots system-wide without password prompt",
+      importance: 4,
+    },
+    {
+      id: "syntax-home",
+      key: "Syntax: home tab",
+      category: "preference",
+      value: "open [tab] (Navigate), add task [name] (Schedule task), diagnose (Run health check)",
+      importance: 3,
+    },
+    {
+      id: "syntax-chat",
+      key: "Syntax: chat tab",
+      category: "preference",
+      value: "/clear (Reset active chat), /analyze (Audit workspace logs), /heal (Auto-patch errors)",
+      importance: 3,
+    },
+    {
+      id: "syntax-osAgent",
+      key: "Syntax: osAgent tab",
+      category: "preference",
+      value: "run [app] (Launch dynamic app), write [file] (Write custom script), status (Hardware probe)",
+      importance: 3,
+    },
+    {
+      id: "syntax-autonomy",
+      key: "Syntax: autonomy tab",
+      category: "preference",
+      value: "schedule [job] (Setup scheduler), prioritize [task] (Increase item latency weight)",
+      importance: 3,
+    },
+  ]);
 
   const [autonomyLevel, setAutonomyLevel] = useState<number>(3);
 

@@ -43,6 +43,11 @@ import { NLARDashboard } from "./NLARDashboard";
 import { NGEDashboard } from "./NGEDashboard";
 import { NGEPDashboard } from "./NGEPDashboard";
 import { NVIPDashboard } from "./NVIPDashboard";
+import { WorkspaceRuntimeDashboard } from "./WorkspaceRuntimeDashboard";
+import { EPDMSDashboard } from "./EPDMSDashboard";
+import { ECVEDashboard } from "./ECVEDashboard";
+import { ESARWPEDashboard } from "./ESARWPEDashboard";
+import { EnterpriseKernelDashboard } from "./EnterpriseKernelDashboard";
 
 import {
   ARCH_DIAGRAMS, DEVELOPER_DOCS, STORYBOOK_SPECS
@@ -62,7 +67,7 @@ export default function NeoraDesignerOS({ lang }: { lang: "en" | "bn" }) {
   
   // Custom states for sidebars
   const [activeSidebarTab, setActiveSidebarTab] = useState<
-    "projects" | "layers" | "assets" | "plugins" | "router" | "vision" | "color" | "reference" | "workspace" | "brain" | "director" | "orchestrator" | "generation" | "compiler" | "ndge" | "nuwe" | "nide" | "ndiqa" | "tests" | "database" | "docs" | "ndkasip" | "ncoampp" | "nacdi" | "ndsrp" | "nuar" | "nlar" | "nge" | "ngep" | "nvip"
+    "projects" | "layers" | "assets" | "plugins" | "router" | "vision" | "color" | "reference" | "workspace" | "brain" | "director" | "orchestrator" | "generation" | "compiler" | "ndge" | "nuwe" | "nide" | "ndiqa" | "tests" | "database" | "docs" | "ndkasip" | "ncoampp" | "nacdi" | "ndsrp" | "nuar" | "nlar" | "nge" | "ngep" | "nvip" | "wrt" | "epdms" | "ecve" | "esarwpe" | "eck"
   >("projects");
 
   // Accordion status states
@@ -457,6 +462,38 @@ export default function NeoraDesignerOS({ lang }: { lang: "en" | "bn" }) {
       triggerToast("Asset successfully registered", "success");
       addSystemLog(`Uploaded asset complete: ${newAsset.name}`);
     }, 1000);
+  };
+
+  const handleRealFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    addSystemLog(`Processing uploaded image file: ${file.name}...`);
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64Url = reader.result as string;
+      const newAsset: Asset = {
+        id: `asset-${Date.now()}`,
+        name: file.name,
+        type: "image",
+        url: base64Url,
+        sizeBytes: file.size,
+        mimeType: file.type,
+        category: "uploads"
+      };
+      setAssets(prev => [newAsset, ...prev]);
+      setIsUploading(false);
+      triggerToast("Real image successfully registered!", "success");
+      addSystemLog(`Success: Local asset uploaded and encoded: ${file.name}`);
+    };
+    reader.onerror = () => {
+      setIsUploading(false);
+      triggerToast("Failed to read image file", "error");
+      addSystemLog("Error: FileReader failed to process uploaded payload.");
+    };
+    reader.readAsDataURL(file);
   };
 
   // ==========================================
@@ -910,6 +947,11 @@ export default function NeoraDesignerOS({ lang }: { lang: "en" | "bn" }) {
               { id: "nge", icon: Layers3, label: lang === "bn" ? "গ্রাফিক্স ইঞ্জিন (NGE)" : "Graphics Engine (NGE)", color: "text-indigo-400" },
               { id: "ngep", icon: Sparkles, label: lang === "bn" ? "জেনারেটিভ এডিটিং (NGEP)" : "Image Editing (NGEP)", color: "text-cyan-400" },
               { id: "nvip", icon: Eye, label: lang === "bn" ? "ভিশন প্লাটফর্ম (NVIP)" : "Vision Platform (NVIP)", color: "text-emerald-400" },
+              { id: "wrt", icon: Cpu, label: lang === "bn" ? "ওয়ার্কস্পেস রানটাইম (WRT)" : "Workspace Runtime (WRT)", color: "text-indigo-400" },
+              { id: "epdms", icon: FolderOpen, label: lang === "bn" ? "প্রকল্প ও নথি (EPDMS)" : "Project & Document (EPDMS)", color: "text-emerald-400" },
+              { id: "ecve", icon: Grid, label: lang === "bn" ? "ক্যানভাস ও ভিউপোর্ট (ECVE)" : "Canvas & Viewport (ECVE)", color: "text-cyan-400" },
+              { id: "esarwpe", icon: Clock, label: lang === "bn" ? "রিকভারি ও অটোসেভ (ESARWPE)" : "Autosave & Recovery (ESARWPE)", color: "text-amber-400" },
+              { id: "eck", icon: Settings, label: lang === "bn" ? "কার্নেল ও অর্কেস্ট্রেটর (ECK)" : "Operating Kernel (ECK)", color: "text-fuchsia-400" },
               { id: "tests", icon: Terminal, label: lang === "bn" ? "টেস্ট" : "Testing", color: "text-emerald-400" },
               { id: "database", icon: Database, label: lang === "bn" ? "ডিবি" : "Database", color: "text-sky-400" },
               { id: "docs", icon: FileText, label: lang === "bn" ? "নথি" : "Dev Manual", color: "text-yellow-400" }
@@ -1047,13 +1089,16 @@ export default function NeoraDesignerOS({ lang }: { lang: "en" | "bn" }) {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-mono font-bold text-slate-400 uppercase">Registered smart assets</span>
-                  <button
-                    onClick={handleUploadAssetSimulate}
-                    disabled={isUploading}
-                    className="text-[9px] font-mono font-bold text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 rounded hover:bg-cyan-500/25 cursor-pointer"
-                  >
+                  <label className="text-[9px] font-mono font-bold text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 rounded hover:bg-cyan-500/25 cursor-pointer block">
                     {isUploading ? "Uploading..." : "Upload files"}
-                  </button>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleRealFileUpload}
+                      disabled={isUploading}
+                    />
+                  </label>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
@@ -1314,6 +1359,46 @@ export default function NeoraDesignerOS({ lang }: { lang: "en" | "bn" }) {
             {/* NEORA VISION INTELLIGENCE PLATFORM (NVIP) DASHBOARD */}
             {activeSidebarTab === "nvip" && (
               <NVIPDashboard
+                lang={lang}
+                onAddSystemLog={(msg) => addSystemLog(msg)}
+              />
+            )}
+
+            {/* NEORA WORKSPACE RUNTIME ARCHITECTURE (WRT) DASHBOARD */}
+            {activeSidebarTab === "wrt" && (
+              <WorkspaceRuntimeDashboard
+                lang={lang}
+                onAddSystemLog={(msg) => addSystemLog(msg)}
+              />
+            )}
+
+            {/* NEORA ENTERPRISE PROJECT & DOCUMENT MANAGEMENT SYSTEM (EPDMS) DASHBOARD */}
+            {activeSidebarTab === "epdms" && (
+              <EPDMSDashboard
+                lang={lang}
+                onAddSystemLog={(msg) => addSystemLog(msg)}
+              />
+            )}
+
+            {/* NEORA ENTERPRISE CANVAS & VIEWPORT ENGINE (ECVE) DASHBOARD */}
+            {activeSidebarTab === "ecve" && (
+              <ECVEDashboard
+                lang={lang}
+                onAddSystemLog={(msg) => addSystemLog(msg)}
+              />
+            )}
+
+            {/* NEORA SESSION, AUTOSAVE, RECOVERY & PERSISTENCE ENGINE (ESARWPE) DASHBOARD */}
+            {activeSidebarTab === "esarwpe" && (
+              <ESARWPEDashboard
+                lang={lang}
+                onAddSystemLog={(msg) => addSystemLog(msg)}
+              />
+            )}
+
+            {/* NEORA ENTERPRISE CORE RUNTIME KERNEL (ECK) DASHBOARD */}
+            {activeSidebarTab === "eck" && (
+              <EnterpriseKernelDashboard
                 lang={lang}
                 onAddSystemLog={(msg) => addSystemLog(msg)}
               />
