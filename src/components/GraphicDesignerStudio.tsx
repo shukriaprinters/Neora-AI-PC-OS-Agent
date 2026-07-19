@@ -5,8 +5,14 @@ import {
   Trash2, Plus, Copy, RotateCcw, Palette, LayoutGrid, Calendar,
   CreditCard, Printer, Layers, FileText, ArrowUp, ArrowDown,
   ChevronRight, AlignLeft, AlignCenter, AlignRight, Bold, Maximize2,
-  Bookmark, Sliders, RefreshCw, Upload, Eye, Camera, Folder, FolderOpen
+  Bookmark, Sliders, RefreshCw, Upload, Eye, Camera, Folder, FolderOpen,
+  Search, CheckCircle, Clock, Grid, ShieldAlert, Scale, ZoomIn, ZoomOut, X, ToggleLeft,
+  Lock, Unlock, MoreHorizontal
 } from 'lucide-react';
+import { ROADMAP_ITEMS, ROADMAP_CATEGORIES, RoadmapItem } from '../data/roadmapData';
+import CanvaHeader from './CanvaHeader';
+import CanvaFormattingToolbar from './CanvaFormattingToolbar';
+import CanvaSidebarPanel from './CanvaSidebarPanel';
 
 interface ElementLayer {
   id: string;
@@ -25,6 +31,8 @@ interface ElementLayer {
   letterSpacing?: string;
   rotation?: number; // degrees
   shadow?: boolean;
+  borderRadius?: number; // in pixels (optional)
+  lineHeight?: number;   // multiple (optional)
 }
 
 interface DesignTemplate {
@@ -934,11 +942,319 @@ const PRESETS: DesignTemplate[] = [
         align: 'center'
       }
     ]
+  },
+  {
+    id: 'halkhata_card',
+    name: 'Traditional Halkhata Card',
+    nameBn: 'ঐতিহ্যবাহী শুভ হালখাতা কার্ড',
+    type: 'poster',
+    width: 600,
+    height: 420,
+    background: {
+      type: 'gradient',
+      value: 'linear-gradient(135deg, #7c1a22 0%, #3b070c 100%)'
+    },
+    elements: [
+      {
+        id: 'hal_bismillah',
+        type: 'text',
+        content: 'বিসমিল্লাহির রহমানির রাহিম',
+        x: 50,
+        y: 8,
+        fontSize: 12,
+        fontFamily: 'Hind Siliguri',
+        color: '#fef08a',
+        fontWeight: 'medium',
+        align: 'center'
+      },
+      {
+        id: 'hal_header',
+        type: 'text',
+        content: 'শুভ হালখাতা',
+        x: 50,
+        y: 22,
+        fontSize: 48,
+        fontFamily: 'Galada',
+        color: '#fbbf24',
+        fontWeight: 'bold',
+        align: 'center',
+        shadow: true
+      },
+      {
+        id: 'hal_poetry',
+        type: 'text',
+        content: 'এসেছে নতুন বছর, খুলি নতুন খাতা,\nমুছে যাক অতীতের সকল দেনা-পাওনার বার্তা।',
+        x: 50,
+        y: 38,
+        fontSize: 14,
+        fontFamily: 'Hind Siliguri',
+        color: '#fcd34d',
+        fontWeight: 'normal',
+        align: 'center'
+      },
+      {
+        id: 'hal_invitation',
+        type: 'text',
+        content: 'সুপ্রিয় সুহৃদ, আগামী পহেলা বৈশাখ আমাদের নতুন হিসাবের হালখাতা মহরতে\nআপনার সবান্ধব উপস্থিতি ও মিষ্টিমুখ একান্তভাবে কামনা করি।',
+        x: 50,
+        y: 54,
+        fontSize: 14,
+        fontFamily: 'Hind Siliguri',
+        color: '#ffffff',
+        fontWeight: 'normal',
+        align: 'center'
+      },
+      {
+        id: 'hal_venue',
+        type: 'text',
+        content: 'স্থান: শুকরিয়া প্রিন্টার্স প্রাঙ্গণ, ৩৭/১ বাংলাবাজার (দোতলা), ঢাকা-১১০০',
+        x: 50,
+        y: 72,
+        fontSize: 13,
+        fontFamily: 'Hind Siliguri',
+        color: '#fef08a',
+        fontWeight: 'semibold',
+        align: 'center'
+      },
+      {
+        id: 'hal_date',
+        type: 'text',
+        content: 'তারিখ: ১লা বৈশাখ ১৪৩৩ বঙ্গাব্দ (১৪ই এপ্রিল ২০২৬)',
+        x: 50,
+        y: 80,
+        fontSize: 14,
+        fontFamily: 'Hind Siliguri',
+        color: '#ffffff',
+        fontWeight: 'bold',
+        align: 'center'
+      },
+      {
+        id: 'hal_footer',
+        type: 'text',
+        content: 'আমন্ত্রণে: আলহাজ্ব মো: শুকুর মিয়া ও শুকরিয়া প্রিন্টার্স পরিবার',
+        x: 50,
+        y: 91,
+        fontSize: 12,
+        fontFamily: 'Hind Siliguri',
+        color: '#94a3b8',
+        fontWeight: 'normal',
+        align: 'center'
+      },
+      {
+        id: 'hal_border_top',
+        type: 'shape',
+        content: 'rect_horizontal',
+        x: 50,
+        y: 3,
+        width: 96,
+        height: 2,
+        color: '#fbbf24',
+        opacity: 0.8
+      },
+      {
+        id: 'hal_border_bottom',
+        type: 'shape',
+        content: 'rect_horizontal',
+        x: 50,
+        y: 97,
+        width: 96,
+        height: 2,
+        color: '#fbbf24',
+        opacity: 0.8
+      }
+    ]
+  },
+  {
+    id: 'eid_banner',
+    name: 'Eid Mubarak Greeting Banner',
+    nameBn: 'ঈদ মোবারক শুভেচ্ছা ব্যানার',
+    type: 'banner',
+    width: 600,
+    height: 350,
+    background: {
+      type: 'gradient',
+      value: 'linear-gradient(135deg, #091e3a 0%, #03543f 100%)'
+    },
+    elements: [
+      {
+        id: 'eid_crescent',
+        type: 'text',
+        content: '🌙',
+        x: 50,
+        y: 15,
+        fontSize: 28,
+        fontFamily: 'Inter',
+        color: '#fbbf24',
+        fontWeight: 'bold',
+        align: 'center'
+      },
+      {
+        id: 'eid_header',
+        type: 'text',
+        content: 'ঈদ মোবারক',
+        x: 50,
+        y: 35,
+        fontSize: 48,
+        fontFamily: 'Galada',
+        color: '#fcd34d',
+        fontWeight: 'bold',
+        align: 'center',
+        shadow: true
+      },
+      {
+        id: 'eid_wish',
+        type: 'text',
+        content: 'পবিত্র ঈদুল ফিতর উপলক্ষে আপনাকে ও আপনার পরিবারকে জানাই\nআন্তরিক শুভেচ্ছা ও মোবারকবাদ। ঈদ বয়ে আনুক অনাবিল আনন্দ ও সুখ।',
+        x: 50,
+        y: 58,
+        fontSize: 15,
+        fontFamily: 'Hind Siliguri',
+        color: '#ffffff',
+        fontWeight: 'normal',
+        align: 'center'
+      },
+      {
+        id: 'eid_sender',
+        type: 'text',
+        content: 'শুভেচ্ছান্তে: আলহাজ্ব মো: শুকুর মিয়া ও শুকরিয়া প্রিন্টার্স পরিবার',
+        x: 50,
+        y: 78,
+        fontSize: 14,
+        fontFamily: 'Hind Siliguri',
+        color: '#38bdf8',
+        fontWeight: 'bold',
+        align: 'center'
+      },
+      {
+        id: 'eid_footer',
+        type: 'text',
+        content: '৩৭/১ বাংলাবাজার, ঢাকা • নিখুঁত ও উন্নতমানের প্রিন্টিং সেবা',
+        x: 50,
+        y: 89,
+        fontSize: 11,
+        fontFamily: 'Hind Siliguri',
+        color: '#94a3b8',
+        fontWeight: 'normal',
+        align: 'center'
+      }
+    ]
+  },
+  {
+    id: 'madrasah_admission',
+    name: 'Madrasah Admission Poster',
+    nameBn: 'মাদরাসা ভর্তি বিজ্ঞপ্তি পোস্টার',
+    type: 'poster',
+    width: 450,
+    height: 600,
+    background: {
+      type: 'gradient',
+      value: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)'
+    },
+    elements: [
+      {
+        id: 'mad_bismillah',
+        type: 'text',
+        content: 'ইকরা বিসমি রাব্বিকাল্লাজি খালাক',
+        x: 50,
+        y: 6,
+        fontSize: 12,
+        fontFamily: 'Hind Siliguri',
+        color: '#fef08a',
+        fontWeight: 'medium',
+        align: 'center'
+      },
+      {
+        id: 'mad_header',
+        type: 'text',
+        content: 'ভর্তি বিজ্ঞপ্তি! ভর্তি বিজ্ঞপ্তি!',
+        x: 50,
+        y: 14,
+        fontSize: 18,
+        fontFamily: 'Hind Siliguri',
+        color: '#ffffff',
+        fontWeight: 'bold',
+        align: 'center'
+      },
+      {
+        id: 'mad_title',
+        type: 'text',
+        content: 'দারুল উলুম আল-ইসলামিয়া মাদরাসা',
+        x: 50,
+        y: 25,
+        fontSize: 26,
+        fontFamily: 'Galada',
+        color: '#fcd34d',
+        fontWeight: 'bold',
+        align: 'center',
+        shadow: true
+      },
+      {
+        id: 'mad_subtitle',
+        type: 'text',
+        content: '২০২৬-২০২৭ শিক্ষাবর্ষে নূরানী, নাজেরা ও হিফজ বিভাগে নতুন ছাত্র ভর্তি চলছে',
+        x: 50,
+        y: 35,
+        fontSize: 13,
+        fontFamily: 'Hind Siliguri',
+        color: '#cbd5e1',
+        fontWeight: 'semibold',
+        align: 'center'
+      },
+      {
+        id: 'mad_features_header',
+        type: 'text',
+        content: 'আমাদের প্রধান বৈশিষ্ট্যসমূহ:',
+        x: 50,
+        y: 44,
+        fontSize: 14,
+        fontFamily: 'Hind Siliguri',
+        color: '#38bdf8',
+        fontWeight: 'bold',
+        align: 'center'
+      },
+      {
+        id: 'mad_features_list',
+        type: 'text',
+        content: '✓ অভিজ্ঞ ও হাফেজ হাফেজা শিক্ষক দ্বারা পাঠদান\n✓ সার্বক্ষণিক হোস্টেল ও পুষ্টিকর খাবার ব্যবস্থা\n✓ সিসিটিভি দ্বারা নিয়ন্ত্রিত সুরক্ষিত ক্যাম্পাস\n✓ নূরানী ও হিফজ সম্পন্ন ছাত্রদের জন্য বিশেষ বৃত্তি',
+        x: 50,
+        y: 58,
+        fontSize: 13,
+        fontFamily: 'Hind Siliguri',
+        color: '#ffffff',
+        fontWeight: 'normal',
+        align: 'center'
+      },
+      {
+        id: 'mad_contact',
+        type: 'text',
+        content: 'ভর্তির জন্য যোগাযোগ করুন: ০১৭১২-৩৪৫৬৭৮, ০১৮১২-৩৪৫৬৭৮',
+        x: 50,
+        y: 78,
+        fontSize: 13,
+        fontFamily: 'Hind Siliguri',
+        color: '#fcd34d',
+        fontWeight: 'bold',
+        align: 'center'
+      },
+      {
+        id: 'mad_address',
+        type: 'text',
+        content: 'স্থান: ৩৭/১ বাংলাবাজার (দোতলা), ঢাকা-১১০০ (শুকরিয়া প্রিন্টার্স সংলগ্ন)',
+        x: 50,
+        y: 86,
+        fontSize: 11,
+        fontFamily: 'Hind Siliguri',
+        color: '#94a3b8',
+        fontWeight: 'normal',
+        align: 'center'
+      }
+    ]
   }
 ];
 
 export default function GraphicDesignerStudio({ lang }: { lang: 'en' | 'bn' }) {
   const [selectedTemplate, setSelectedTemplate] = useState<DesignTemplate>(PRESETS[0]);
+  const [designTitle, setDesignTitle] = useState<string>(lang === 'bn' ? PRESETS[0].nameBn : PRESETS[0].name);
   const [elements, setElements] = useState<ElementLayer[]>(PRESETS[0].elements);
   const [canvasBg, setCanvasBg] = useState(PRESETS[0].background);
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
@@ -948,6 +1264,14 @@ export default function GraphicDesignerStudio({ lang }: { lang: 'en' | 'bn' }) {
     Portrait: false,
     Abstract: false
   });
+
+  // Precise canvas scale & guideline states
+  const [canvasScale, setCanvasScale] = useState<number>(100);
+  const [showGridLines, setShowGridLines] = useState<boolean>(false);
+  const [showSafeZone, setShowSafeZone] = useState<boolean>(false);
+  const [showRoadmapModal, setShowRoadmapModal] = useState<boolean>(false);
+  const [roadmapSearch, setRoadmapSearch] = useState<string>('');
+  const [roadmapCategory, setRoadmapCategory] = useState<string>('all');
   
   // Custom prompt to auto-generate graphics using free Pollinations Stable Diffusion image layer
   const [aiPrompt, setAiPrompt] = useState('');
@@ -958,11 +1282,149 @@ export default function GraphicDesignerStudio({ lang }: { lang: 'en' | 'bn' }) {
   const [newTextVal, setNewTextVal] = useState('New Custom Label');
 
   // AI Design Copilot states
-  const [sidebarTab, setSidebarTab] = useState<'copilot' | 'manual'>('copilot');
+  const [sidebarTab, setSidebarTab] = useState<'templates' | 'elements' | 'text' | 'brand' | 'uploads' | 'midjourney' | 'copilot' | 'roadmap'>('templates');
   const [copilotPrompt, setCopilotPrompt] = useState('');
   const [copilotStatus, setCopilotStatus] = useState<'idle' | 'searching' | 'planning' | 'generating' | 'composing' | 'finished'>('idle');
   const [copilotLogs, setCopilotLogs] = useState<string[]>([]);
   const [activeCopilotAgent, setActiveCopilotAgent] = useState<'chatgpt' | 'gemini' | 'midjourney' | 'canva' | null>(null);
+
+  // Multimodal AI Design Studio states
+  const [refImage, setRefImage] = useState<string | null>(null);
+  const [aiGeneratedOptions, setAiGeneratedOptions] = useState<any[]>([]);
+  const [isGeneratingDesigns, setIsGeneratingDesigns] = useState(false);
+  const [refinePrompt, setRefinePrompt] = useState('');
+  const [isRefiningDesign, setIsRefiningDesign] = useState(false);
+  const [isApplyingStyling, setIsApplyingStyling] = useState(false);
+
+  // Canvas direct click-to-edit states
+  const [editingTextId, setEditingTextId] = useState<string | null>(null);
+  const [tempEditText, setTempEditText] = useState<string>('');
+
+  // Midjourney Advanced AI Prompt Builder States
+  const [mjModel, setMjModel] = useState<'v6.1' | 'niji6' | 'realistic' | 'alpha'>('v6.1');
+  const [mjAspectRatio, setMjAspectRatio] = useState<'1:1' | '16:9' | '9:16' | '4:3' | '3:2'>('1:1');
+  const [mjStylePreset, setMjStylePreset] = useState<'cinematic' | 'watercolor' | 'cyberpunk' | 'alpona' | 'oil' | 'anime' | 'clay'>('cinematic');
+  const [mjChaos, setMjChaos] = useState<number>(15);
+  const [mjStylize, setMjStylize] = useState<number>(250);
+  const [mjGeneratedGrid, setMjGeneratedGrid] = useState<string[]>([]);
+  const [isGeneratingMjGrid, setIsGeneratingMjGrid] = useState<boolean>(false);
+  const [mjActiveSeed, setMjActiveSeed] = useState<number>(42);
+
+  // Canva Drag-to-Position Canvas States
+  const [isDraggingLayer, setIsDraggingLayer] = useState<boolean>(false);
+  const [dragStartMouse, setDragStartMouse] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [dragStartElementPos, setDragStartElementPos] = useState<{ x: number; y: number }>({ x: 50, y: 50 });
+
+  // Intelligent Style Transfer & Intent Design states
+  const [styleWeights, setStyleWeights] = useState({ color: 80, composition: 60, typography: 50, texture: 50 });
+  const [styleProfile, setStyleProfile] = useState({ brushStroke: 'medium', lightingContrast: 'soft', subjectHierarchy: 'layered' });
+  const [semanticMap, setSemanticMap] = useState({ objects: [], style: '', layout: '', isAnalyzed: false });
+  const [isAnalyzingRefImage, setIsAnalyzingRefImage] = useState(false);
+  const [isReconstructing, setIsReconstructing] = useState(false);
+  const [splitView, setSplitView] = useState(false);
+  const [userRatings, setUserRatings] = useState<any[]>([]);
+  const [regionMask, setRegionMask] = useState({ active: false, startX: 0, startY: 0, currentX: 0, currentY: 0, x: 0, y: 0, width: 0, height: 0, prompt: '', isDrawing: false });
+  const [isVectorizing, setIsVectorizing] = useState(false);
+  const [vectorizedLayers, setVectorizedLayers] = useState<any[]>([]);
+
+  // Action: Content-Aware Reconstruction
+  const reconstructLayoutFromMap = async () => {
+    if (!semanticMap.isAnalyzed) return;
+    setIsReconstructing(true);
+    try {
+      const response = await fetch('/api/ai-design/reconstruct', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ semanticMap })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.reconstructed) {
+          const layers = (data.reconstructed.elements || []).map((el: any, i: number) => ({
+            ...el,
+            id: `ai_reconstruct_${Date.now()}_${i}`
+          }));
+          setElements(layers);
+          if (data.reconstructed.background) {
+            setCanvasBg(data.reconstructed.background);
+          }
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsReconstructing(false);
+    }
+  };
+
+  // Action: Depth-Isolated Vector Plate Segmentation
+  const segmentAndVectorize = async () => {
+    setIsVectorizing(true);
+    setTimeout(() => {
+      setVectorizedLayers([
+        {
+          id: 'v_bg',
+          name: 'Background Plate',
+          type: 'background',
+          elements: elements.filter(el => el.type === 'shape' || el.y > 60)
+        },
+        {
+          id: 'v_mid',
+          name: 'Midground Vector Elements',
+          type: 'midground',
+          elements: elements.filter(el => el.type === 'image' || (el.y >= 30 && el.y <= 60))
+        },
+        {
+          id: 'v_fore',
+          name: 'Foreground Display Textures',
+          type: 'foreground',
+          elements: elements.filter(el => el.type === 'text')
+        }
+      ]);
+      setIsVectorizing(false);
+    }, 1500);
+  };
+
+  // Auto-analysis of uploaded style reference images
+  useEffect(() => {
+    if (!refImage) {
+      setSemanticMap({ objects: [], style: '', layout: '', isAnalyzed: false });
+      return;
+    }
+    
+    const analyzeRef = async () => {
+      setIsAnalyzingRefImage(true);
+      try {
+        const response = await fetch('/api/ai-design/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image: refImage })
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data.analysis) {
+            setSemanticMap({
+              objects: data.analysis.objects || [],
+              style: data.analysis.style || '',
+              layout: data.analysis.layout || '',
+              isAnalyzed: true
+            });
+            if (data.analysis.styleProfile) {
+              setStyleProfile(data.analysis.styleProfile);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Failed to analyze image:", err);
+      } finally {
+        setIsAnalyzingRefImage(false);
+      }
+    };
+
+    if (!semanticMap.isAnalyzed) {
+      analyzeRef();
+    }
+  }, [refImage, semanticMap.isAnalyzed]);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -970,10 +1432,286 @@ export default function GraphicDesignerStudio({ lang }: { lang: 'en' | 'bn' }) {
   // Sync elements when template changes
   const selectTemplate = (template: DesignTemplate) => {
     setSelectedTemplate(template);
+    setDesignTitle(lang === 'bn' ? template.nameBn : template.name);
     setElements(JSON.parse(JSON.stringify(template.elements)));
     setCanvasBg(JSON.parse(JSON.stringify(template.background)));
     setSelectedElementId(null);
     setActiveFilterId('none');
+  };
+
+  // Direct Mouse Drag-to-Position on Canvas (Canva Style)
+  const handleLayerMouseDown = (e: React.MouseEvent, elId: string) => {
+    e.stopPropagation();
+    setSelectedElementId(elId);
+    setIsDraggingLayer(true);
+    setDragStartMouse({ x: e.clientX, y: e.clientY });
+    const el = elements.find(item => item.id === elId);
+    if (el) {
+      setDragStartElementPos({ x: el.x, y: el.y });
+    }
+  };
+
+  const handleCanvasMouseMove = (e: React.MouseEvent) => {
+    if (regionMask.active && regionMask.isDrawing) {
+      const canvasEl = canvasRef.current;
+      if (!canvasEl) return;
+      const rect = canvasEl.getBoundingClientRect();
+      const x = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+      const y = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
+
+      setRegionMask(prev => {
+        const left = Math.min(prev.startX, x);
+        const top = Math.min(prev.startY, y);
+        const width = Math.abs(prev.startX - x);
+        const height = Math.abs(prev.startY - y);
+        return {
+          ...prev,
+          currentX: x,
+          currentY: y,
+          x: left,
+          y: top,
+          width: width,
+          height: height
+        };
+      });
+      return;
+    }
+
+    if (!isDraggingLayer || !selectedElementId) return;
+    const canvasEl = canvasRef.current;
+    if (!canvasEl) return;
+    const rect = canvasEl.getBoundingClientRect();
+    
+    const deltaXInPixels = e.clientX - dragStartMouse.x;
+    const deltaYInPixels = e.clientY - dragStartMouse.y;
+    
+    // Calculate percentage delta relative to canvas size
+    const deltaXPercent = (deltaXInPixels / rect.width) * 100;
+    const deltaYPercent = (deltaYInPixels / rect.height) * 100;
+    
+    // Smoothly update layer x and y coordinates
+    const nextX = Math.max(0, Math.min(100, Math.round((dragStartElementPos.x + deltaXPercent) * 10) / 10));
+    const nextY = Math.max(0, Math.min(100, Math.round((dragStartElementPos.y + deltaYPercent) * 10) / 10));
+    
+    setElements(prev => prev.map(item => {
+      if (item.id === selectedElementId) {
+        return { ...item, x: nextX, y: nextY };
+      }
+      return item;
+    }));
+  };
+
+  const handleCanvasMouseUp = () => {
+    if (regionMask.active && regionMask.isDrawing) {
+      setRegionMask(prev => ({
+        ...prev,
+        isDrawing: false
+      }));
+    }
+    setIsDraggingLayer(false);
+  };
+
+  // Midjourney Style Quad-Grid Art Generator
+  const generateMidjourneyGrid = async () => {
+    if (!aiPrompt.trim()) return;
+    setIsGeneratingMjGrid(true);
+    
+    // Map style preset to rich artistic keyword modifiers
+    let styleModifiers = "";
+    switch (mjStylePreset) {
+      case 'cinematic':
+        styleModifiers = "cinematic photograph, volumetrical studio lighting, ultra detailed 8k, photorealistic masterpiece, detailed texture, depth of field";
+        break;
+      case 'watercolor':
+        styleModifiers = "dreamy watercolor wash artwork, soft color blending, ink splatter, organic paper texture, elegant visual";
+        break;
+      case 'cyberpunk':
+        styleModifiers = "cyberpunk futuristic cityscape, glowing neon lights, dark high-tech synthwave aesthetic, detailed laser lines";
+        break;
+      case 'alpona':
+        styleModifiers = "traditional Bangladeshi folk art, alpana motifs, rickshaw painting style, vibrant crimson and amber curves, nokshi kantha pattern";
+        break;
+      case 'oil':
+        styleModifiers = "classical heavy-textured oil painting on canvas, dynamic chiaroscuro lighting, rich brush strokes, artistic masterpiece";
+        break;
+      case 'anime':
+        styleModifiers = "vibrant modern anime concept art, beautiful scenery, Studio Ghibli style whimsical colors, high-contrast crisp lines";
+        break;
+      case 'clay':
+        styleModifiers = "3D smooth glossy claymation art, cute volumetric clay elements, modern clay graphics, bright glassmorphism accents";
+        break;
+    }
+
+    // Adjust canvas dimensions according to Midjourney aspect ratio
+    let targetWidth = 600;
+    let targetHeight = 600;
+    switch (mjAspectRatio) {
+      case '16:9':
+        targetWidth = 800;
+        targetHeight = 450;
+        break;
+      case '9:16':
+        targetWidth = 450;
+        targetHeight = 800;
+        break;
+      case '4:3':
+        targetWidth = 640;
+        targetHeight = 480;
+        break;
+      case '3:2':
+        targetWidth = 720;
+        targetHeight = 480;
+        break;
+    }
+
+    // Automatically update selected template dimension properties
+    setSelectedTemplate(prev => ({
+      ...prev,
+      width: targetWidth,
+      height: targetHeight
+    }));
+
+    // Simulate Midjourney chaos & stylize parameters in Stable Diffusion seeds
+    const baseSeed = Math.floor(Math.random() * 88888) + (mjChaos * 10);
+    const compiledSeeds = [baseSeed, baseSeed + 101, baseSeed + 202, baseSeed + 303];
+    
+    const promptWithStyles = `${aiPrompt}, ${styleModifiers}, ultra premium backdrop, high-resolution digital design background, no text, no letterings`;
+    
+    // Build 4 distinct Midjourney style variation links
+    const newGridUrls = compiledSeeds.map(seed => {
+      return `https://image.pollinations.ai/p/${encodeURIComponent(promptWithStyles)}?width=768&height=768&nologo=true&seed=${seed}`;
+    });
+
+    // Prefetch all 4 thumbnails for a premium simultaneous snap-in feel
+    try {
+      await Promise.all(newGridUrls.map(url => {
+        return new Promise((resolve) => {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = resolve;
+          img.onerror = resolve;
+          img.src = url;
+        });
+      }));
+    } catch (e) {}
+
+    setMjGeneratedGrid(newGridUrls);
+    setMjActiveSeed(baseSeed);
+    setIsGeneratingMjGrid(false);
+  };
+
+  // MULTIMODAL DESIGN STUDIO: Generate 3 custom layout options based on text and optional reference image style
+  const generateAiDesigns = async (promptText: string) => {
+    if (!promptText.trim()) return;
+    setIsGeneratingDesigns(true);
+    try {
+      const res = await fetch('/api/ai-design/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: promptText,
+          referenceImage: refImage,
+          styleWeights: styleWeights,
+          styleProfile: styleProfile,
+          regionMask: regionMask.active ? regionMask : undefined,
+          userRatings: userRatings,
+          lang: lang
+        })
+      });
+      const data = await res.json();
+      if (data.status === 'success' && data.options) {
+        setAiGeneratedOptions(data.options);
+      } else {
+        alert(data.message || "Failed to generate designs. Please make sure your Gemini API key is configured.");
+      }
+    } catch (err) {
+      console.error("Error generating designs:", err);
+      alert("Network error while generating design options.");
+    } finally {
+      setIsGeneratingDesigns(false);
+    }
+  };
+
+  // LIVE CONVERSATIONAL EDITOR: Apply conversational edits directly to the active canvas background and elements
+  const refineDesignWithAi = async (instructionText: string) => {
+    if (!instructionText.trim()) return;
+    setIsRefiningDesign(true);
+    try {
+      const res = await fetch('/api/ai-design/refine', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          instruction: instructionText,
+          elements: elements,
+          background: canvasBg,
+          regionMask: regionMask.active ? regionMask : undefined,
+          lang: lang
+        })
+      });
+      const data = await res.json();
+      if (data.status === 'success') {
+        if (data.background) {
+          setCanvasBg(data.background);
+        }
+        if (data.elements) {
+          // Assign unique IDs to layers to avoid React duplicate key bugs
+          const layers = data.elements.map((el: any, i: number) => ({
+            ...el,
+            id: el.id || `layer_refine_${Date.now()}_${i}`
+          }));
+          setElements(layers);
+        }
+        setRefinePrompt('');
+      } else {
+        alert(data.message || "Failed to apply AI edits to the canvas.");
+      }
+    } catch (err) {
+      console.error("Error refining active canvas:", err);
+      alert("Network error while updating active canvas layout.");
+    } finally {
+      setIsRefiningDesign(false);
+    }
+  };
+
+  // APPLY AI STYLING: Call server endpoint to analyze reference image and style current canvas elements
+  const applyAiStyling = async () => {
+    if (!refImage) return;
+    setIsApplyingStyling(true);
+    try {
+      const res = await fetch('/api/ai-design/apply-styling', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          elements,
+          background: canvasBg,
+          referenceImage: refImage
+        })
+      });
+      const data = await res.json();
+      if (data.status === 'success') {
+        if (data.background) {
+          setCanvasBg({
+            type: data.background.type || 'color',
+            value: data.background.value || '#ffffff',
+            overlayOpacity: 0.3
+          });
+        }
+        if (data.elements) {
+          const styledLayers = data.elements.map((el: any, i: number) => ({
+            ...el,
+            id: el.id || `layer_styled_${Date.now()}_${i}`
+          }));
+          setElements(styledLayers);
+        }
+      } else {
+        alert(data.message || "Failed to map AI styling. Please make sure your Gemini API key is configured.");
+      }
+    } catch (err) {
+      console.error("Error applying AI styling:", err);
+      alert("Network error while applying AI styling layers.");
+    } finally {
+      setIsApplyingStyling(false);
+    }
   };
 
   // Run the Multi-AI Collaborative Design Copilot Workflow
@@ -1489,8 +2227,173 @@ Use Bengali if the user prompt is in Bengali or Bengali-themed, otherwise use En
     printWindow.document.close();
   };
 
+  const exportToProfessionalFormat = (canvas: HTMLCanvasElement, format: 'png' | 'jpg' | 'pdf' | 'eps' | 'tif' | 'psd') => {
+    const title = designTitle.replace(/\s+/g, '_') || 'neora_design';
+    
+    if (format === 'png') {
+      const dataUrl = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.download = `${title}.png`;
+      link.href = dataUrl;
+      link.click();
+    } else if (format === 'jpg') {
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+      const link = document.createElement('a');
+      link.download = `${title}.jpg`;
+      link.href = dataUrl;
+      link.click();
+    } else if (format === 'tif') {
+      const dataUrl = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.download = `${title}.tif`;
+      link.href = dataUrl;
+      link.click();
+    } else if (format === 'pdf') {
+      const dataUrl = canvas.toDataURL('image/png');
+      const pdfWindow = window.open('', '_blank');
+      if (pdfWindow) {
+        pdfWindow.document.write(`
+          <html>
+            <head>
+              <title>${designTitle} - PDF Print Sheet</title>
+              <style>
+                body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #fff; }
+                img { max-width: 100%; height: auto; page-break-inside: avoid; }
+                @page { size: auto; margin: 0; }
+                @media print {
+                  body { background: none; }
+                  img { width: 100%; height: 100%; }
+                }
+              </style>
+            </head>
+            <body>
+              <img src="${dataUrl}" onload="window.print();" />
+            </body>
+          </html>
+        `);
+        pdfWindow.document.close();
+      }
+    } else if (format === 'eps') {
+      const canvasWidth = selectedTemplate.width || 600;
+      const canvasHeight = selectedTemplate.height || 420;
+      
+      let epsContent = `%!PS-Adobe-3.0 EPSF-3.0\n`;
+      epsContent += `%%BoundingBox: 0 0 ${canvasWidth} ${canvasHeight}\n`;
+      epsContent += `%%Title: ${designTitle} - Vector Graphic\n`;
+      epsContent += `%%Creator: Neora Canva Studio\n`;
+      epsContent += `%%EndComments\n\n`;
+      
+      epsContent += `/rect { newpath moveto 1 index 0 rlineto 0 exch rlineto neg 0 rlineto closepath fill } def\n`;
+      epsContent += `/circle { newpath 0 360 arc fill } def\n\n`;
+      
+      if (canvasBg.type === 'color') {
+        const hex = canvasBg.value || '#ffffff';
+        const r = parseInt(hex.substring(1, 3), 16) / 255;
+        const g = parseInt(hex.substring(3, 5), 16) / 255;
+        const b = parseInt(hex.substring(5, 7), 16) / 255;
+        epsContent += `${r.toFixed(3)} ${g.toFixed(3)} ${b.toFixed(3)} setrgbcolor\n`;
+        epsContent += `0 0 ${canvasWidth} ${canvasHeight} rect\n\n`;
+      } else {
+        epsContent += `0.96 0.96 0.98 setrgbcolor\n`;
+        epsContent += `0 0 ${canvasWidth} ${canvasHeight} rect\n\n`;
+      }
+      
+      elements.forEach((el) => {
+        const xPos = (el.x / 100) * canvasWidth;
+        const yPos = canvasHeight - ((el.y / 100) * canvasHeight);
+        
+        if (el.type === 'text') {
+          const hex = el.color || '#000000';
+          const r = parseInt(hex.substring(1, 3), 16) / 255;
+          const g = parseInt(hex.substring(3, 5), 16) / 255;
+          const b = parseInt(hex.substring(5, 7), 16) / 255;
+          
+          epsContent += `gsave\n`;
+          epsContent += `${r.toFixed(3)} ${g.toFixed(3)} ${b.toFixed(3)} setrgbcolor\n`;
+          
+          const epsFont = el.fontFamily === 'Galada' || el.fontFamily === 'Hind Siliguri' ? 'Helvetica-Bold' : el.fontFamily || 'Helvetica-Bold';
+          epsContent += `/${epsFont} findfont ${el.fontSize || 14} scalefont setfont\n`;
+          
+          const safeText = el.content.replace(/[()\\\n]/g, '\\$&');
+          
+          if (el.align === 'center') {
+            epsContent += `(${safeText}) stringwidth pop 2 div neg ${xPos.toFixed(1)} add ${yPos.toFixed(1)} moveto\n`;
+          } else if (el.align === 'right') {
+            epsContent += `(${safeText}) stringwidth pop neg ${xPos.toFixed(1)} add ${yPos.toFixed(1)} moveto\n`;
+          } else {
+            epsContent += `${xPos.toFixed(1)} ${yPos.toFixed(1)} moveto\n`;
+          }
+          epsContent += `(${safeText}) show\n`;
+          epsContent += `grestore\n\n`;
+        } else if (el.type === 'shape') {
+          const hex = el.color || '#cccccc';
+          const r = parseInt(hex.substring(1, 3), 16) / 255;
+          const g = parseInt(hex.substring(3, 5), 16) / 255;
+          const b = parseInt(hex.substring(5, 7), 16) / 255;
+          
+          const w = ((el.width || 20) / 100) * canvasWidth;
+          const h = ((el.height || 20) / 100) * canvasHeight;
+          
+          epsContent += `gsave\n`;
+          epsContent += `${r.toFixed(3)} ${g.toFixed(3)} ${b.toFixed(3)} setrgbcolor\n`;
+          
+          if (el.content === 'border_ring') {
+            epsContent += `newpath ${xPos.toFixed(1)} ${yPos.toFixed(1)} ${w.toFixed(1)} 0 360 arc stroke\n`;
+          } else {
+            epsContent += `${(xPos - w/2).toFixed(1)} ${(yPos - h/2).toFixed(1)} ${w.toFixed(1)} ${h.toFixed(1)} rect\n`;
+          }
+          epsContent += `grestore\n\n`;
+        }
+      });
+      
+      epsContent += `showpage\n%%EOF\n`;
+      
+      const blob = new Blob([epsContent], { type: 'application/postscript' });
+      const link = document.createElement('a');
+      link.download = `${title}.eps`;
+      link.href = URL.createObjectURL(blob);
+      link.click();
+    } else if (format === 'psd') {
+      const canvasWidth = selectedTemplate.width || 600;
+      const canvasHeight = selectedTemplate.height || 420;
+      
+      const header = new Uint8Array(26);
+      header[0] = 0x38; header[1] = 0x42; header[2] = 0x50; header[3] = 0x53;
+      header[4] = 0x00; header[5] = 0x01;
+      header[6] = 0; header[7] = 0; header[8] = 0; header[9] = 0; header[10] = 0; header[11] = 0;
+      header[12] = 0x00; header[13] = 0x03;
+      header[14] = (canvasHeight >> 24) & 0xFF;
+      header[15] = (canvasHeight >> 16) & 0xFF;
+      header[16] = (canvasHeight >> 8) & 0xFF;
+      header[17] = canvasHeight & 0xFF;
+      header[18] = (canvasWidth >> 24) & 0xFF;
+      header[19] = (canvasWidth >> 16) & 0xFF;
+      header[20] = (canvasWidth >> 8) & 0xFF;
+      header[21] = canvasWidth & 0xFF;
+      header[22] = 0x00; header[23] = 0x08;
+      header[24] = 0x00; header[25] = 0x03;
+      
+      const manifestStr = JSON.stringify({
+        title: designTitle,
+        width: canvasWidth,
+        height: canvasHeight,
+        background: canvasBg,
+        layers: elements
+      }, null, 2);
+      
+      const encoder = new TextEncoder();
+      const manifestBytes = encoder.encode(manifestStr);
+      
+      const finalBlob = new Blob([header, new Uint8Array([0, 0, 0, 0]), manifestBytes], { type: 'image/vnd.adobe.photoshop' });
+      const link = document.createElement('a');
+      link.download = `${title}.psd`;
+      link.href = URL.createObjectURL(finalBlob);
+      link.click();
+    }
+  };
+
   // Export & Download high resolution visual canvas using html2canvas
-  const handleDownload = async () => {
+  const handleDownload = async (format: 'png' | 'jpg' | 'pdf' | 'eps' | 'tif' | 'psd' = 'png') => {
     if (!canvasRef.current) return;
     
     // Clear selected state overlay briefly
@@ -1504,991 +2407,604 @@ Use Bengali if the user prompt is in Bengali or Bengali-themed, otherwise use En
           useCORS: true,
           scale: 2, // High resolution double-pixel output
           backgroundColor: null,
-          logging: false
+          logging: false,
+          onclone: (clonedDoc) => {
+            const elementsWithOklch = clonedDoc.querySelectorAll('*');
+            elementsWithOklch.forEach((el: any) => {
+              // Replace variable assignments and style properties
+              const styleAttr = el.getAttribute('style');
+              if (styleAttr && styleAttr.includes('oklch')) {
+                let sanitized = styleAttr;
+                sanitized = sanitized.replace(/oklch\([^)]+\)/g, 'rgb(6, 182, 212)'); 
+                el.setAttribute('style', sanitized);
+              }
+              if (el.className && typeof el.className === 'string') {
+                if (el.className.includes('ring-') || el.className.includes('border-cyan-500')) {
+                  el.style.borderColor = 'rgb(34, 211, 238)';
+                  el.style.boxShadow = 'none';
+                }
+              }
+            });
+          }
         });
         
-        const dataUrl = canvas.toDataURL('image/png');
-        const link = document.createElement('a');
-        link.download = `${selectedTemplate.id}_neora_design.png`;
-        link.href = dataUrl;
-        link.click();
+        exportToProfessionalFormat(canvas, format);
       } catch (err) {
         console.error("Failed to capture canvas:", err);
-        alert("Could not export canvas to image due to network image locks. Please try printing or using local images instead.");
+        alert("Could not export canvas. Please try another format or printing.");
       } finally {
         setSelectedElementId(prevSelected);
       }
     }, 150);
   };
 
+  // Mouse Event handlers for Interactive Region Selection mask drawing
+  const handleCanvasMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!regionMask.active) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    
+    setRegionMask(prev => ({
+      ...prev,
+      isDrawing: true,
+      startX: x,
+      startY: y,
+      currentX: x,
+      currentY: y,
+      x: x,
+      y: y,
+      width: 0,
+      height: 0
+    }));
+  };
+
+  // Live filtered list of roadmap items for the 1000+ scales plan
+  const filteredRoadmapItems = ROADMAP_ITEMS.filter((item) => {
+    const matchesCategory = roadmapCategory === 'all' || item.category === roadmapCategory;
+    const searchLower = roadmapSearch.toLowerCase();
+    const matchesSearch = 
+      item.featureName.toLowerCase().includes(searchLower) ||
+      item.featureNameBn.toLowerCase().includes(searchLower) ||
+      item.scaleMetric.toLowerCase().includes(searchLower) ||
+      item.scaleMetricBn.toLowerCase().includes(searchLower) ||
+      item.description.toLowerCase().includes(searchLower) ||
+      item.descriptionBn.toLowerCase().includes(searchLower);
+    return matchesCategory && matchesSearch;
+  });
+
   return (
-    <div id="graphic-studio-container" className="flex flex-col lg:flex-row gap-6 p-6 bg-[#000814] text-slate-100 min-h-[calc(100vh-140px)] select-none">
+    <div id="graphic-studio-container" className="flex flex-col bg-[#0f111a] text-slate-100 min-h-[calc(100vh-140px)] select-none">
       
-      {/* LEFT COLUMN: Controls & Presets Panel */}
-      <div className="w-full lg:w-96 flex flex-col gap-5 shrink-0 bg-slate-900/45 border border-slate-800/80 p-5 rounded-2xl backdrop-blur-xl shadow-xl">
+      {/* 1. TOP NAV BAR */}
+      <CanvaHeader
+        lang={lang}
+        designTitle={designTitle}
+        setDesignTitle={setDesignTitle}
+        selectedTemplate={selectedTemplate}
+        PRESETS={PRESETS}
+        selectTemplate={selectTemplate}
+        handlePrint={handlePrint}
+        handleDownload={handleDownload}
+      />
+
+      {/* 2. CONTEXTUAL FORMATTING TOOLBAR */}
+      <CanvaFormattingToolbar
+        lang={lang}
+        activeElement={activeElement}
+        updateElementProp={updateElementProp}
+        deleteElement={deleteElement}
+        duplicateElement={duplicateElement}
+        FONT_FAMILIES={FONT_FAMILIES}
+        showGridLines={showGridLines}
+        setShowGridLines={setShowGridLines}
+        showSafeZone={showSafeZone}
+        setShowSafeZone={setShowSafeZone}
+        canvasBg={canvasBg}
+        setCanvasBg={setCanvasBg}
+        GRADIENTS={GRADIENTS}
+      />
+
+      {/* 3. MAIN WORKSPACE AREA */}
+      <div className="flex flex-1 overflow-hidden relative min-h-[550px]">
         
-        {/* Title */}
-        <div className="flex items-center gap-2 border-b border-slate-800/60 pb-3">
-          <Palette className="w-5 h-5 text-cyan-400" />
-          <div>
-            <h2 className="text-sm font-bold font-sans tracking-wider text-white">
-              {lang === 'bn' ? 'এআই গ্রাফিক ডিজাইন স্টুডিও' : 'AI GRAPHIC DESIGN STUDIO'}
-            </h2>
-            <p className="text-[10px] font-mono text-cyan-400/80">
-              {lang === 'bn' ? 'পোস্টার, ক্যালেন্ডার, ভি-কার্ড ও ব্যানার মেকার' : 'POSTER, CALENDAR, VCARD & BANNER MAKER'}
-            </p>
-          </div>
-        </div>
+        {/* Left Canva Rail + Slide-out Panels */}
+        <CanvaSidebarPanel
+          lang={lang}
+          sidebarTab={sidebarTab}
+          setSidebarTab={setSidebarTab}
+          PRESETS={PRESETS}
+          selectedTemplate={selectedTemplate}
+          selectTemplate={selectTemplate}
+          elements={elements}
+          setElements={setElements}
+          canvasBg={canvasBg}
+          setCanvasBg={setCanvasBg}
+          updateElementProp={updateElementProp}
+          GRADIENTS={GRADIENTS}
+          newTextVal={newTextVal}
+          setNewTextVal={setNewTextVal}
+          addNewText={addNewText}
+          addNewShape={addNewShape}
+          aiPrompt={aiPrompt}
+          setAiPrompt={setAiPrompt}
+          aiImageType={aiImageType}
+          setAiImageType={setAiImageType}
+          generateAiAsset={generateAiAsset}
+          isGeneratingAi={isGeneratingAi}
+          fileInputRef={fileInputRef}
+          handleImageUpload={handleImageUpload}
+          copilotPrompt={copilotPrompt}
+          setCopilotPrompt={setCopilotPrompt}
+          copilotStatus={copilotStatus}
+          copilotLogs={copilotLogs}
+          activeCopilotAgent={activeCopilotAgent}
+          runCopilotWorkflow={runCopilotWorkflow}
+          refImage={refImage}
+          setRefImage={setRefImage}
+          aiGeneratedOptions={aiGeneratedOptions}
+          setAiGeneratedOptions={setAiGeneratedOptions}
+          isGeneratingDesigns={isGeneratingDesigns}
+          generateAiDesigns={generateAiDesigns}
+          applyAiStyling={applyAiStyling}
+          isApplyingStyling={isApplyingStyling}
+          refinePrompt={refinePrompt}
+          setRefinePrompt={setRefinePrompt}
+          isRefiningDesign={isRefiningDesign}
+          refineDesignWithAi={refineDesignWithAi}
+          mjModel={mjModel}
+          setMjModel={setMjModel}
+          mjAspectRatio={mjAspectRatio}
+          setMjAspectRatio={setMjAspectRatio}
+          mjStylePreset={mjStylePreset}
+          setMjStylePreset={setMjStylePreset}
+          mjChaos={mjChaos}
+          setMjChaos={setMjChaos}
+          mjStylize={mjStylize}
+          setMjStylize={setMjStylize}
+          mjGeneratedGrid={mjGeneratedGrid}
+          isGeneratingMjGrid={isGeneratingMjGrid}
+          generateMidjourneyGrid={generateMidjourneyGrid}
+          setShowRoadmapModal={setShowRoadmapModal}
+          ROADMAP_ITEMS={ROADMAP_ITEMS}
+          roadmapSearch={roadmapSearch}
+          setRoadmapSearch={setRoadmapSearch}
+          roadmapCategory={roadmapCategory}
+          setRoadmapCategory={setRoadmapCategory}
+          filteredRoadmapItems={filteredRoadmapItems}
 
-        {/* TAB SELECTOR CONTROLS */}
-        <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800/60 shrink-0">
-          <button
-            onClick={() => setSidebarTab('copilot')}
-            className={`flex-1 py-1.5 rounded-lg text-xs font-bold font-sans flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-              sidebarTab === 'copilot'
-                ? 'bg-cyan-500 text-slate-950 shadow-[0_0_12px_rgba(6,182,212,0.4)] font-extrabold'
-                : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900/40'
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            {lang === 'bn' ? 'এআই কোপাইলট' : 'AI COPILOT'}
-          </button>
-          <button
-            onClick={() => setSidebarTab('manual')}
-            className={`flex-1 py-1.5 rounded-lg text-xs font-bold font-sans flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-              sidebarTab === 'manual'
-                ? 'bg-cyan-500 text-slate-950 shadow-[0_0_12px_rgba(6,182,212,0.4)] font-extrabold'
-                : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900/40'
-            }`}
-          >
-            <Sliders className="w-3.5 h-3.5" />
-            {lang === 'bn' ? 'ম্যানুয়াল টুলস' : 'MANUAL TOOLS'}
-          </button>
-        </div>
+          styleWeights={styleWeights}
+          setStyleWeights={setStyleWeights}
+          styleProfile={styleProfile}
+          setStyleProfile={setStyleProfile}
+          semanticMap={semanticMap}
+          setSemanticMap={setSemanticMap}
+          isAnalyzingRefImage={isAnalyzingRefImage}
+          reconstructLayoutFromMap={reconstructLayoutFromMap}
+          isReconstructing={isReconstructing}
+          splitView={splitView}
+          setSplitView={setSplitView}
+          userRatings={userRatings}
+          setUserRatings={setUserRatings}
+          regionMask={regionMask}
+          setRegionMask={setRegionMask}
+          isVectorizing={isVectorizing}
+          segmentAndVectorize={segmentAndVectorize}
+          vectorizedLayers={vectorizedLayers}
+          setVectorizedLayers={setVectorizedLayers}
+        />
 
-        {/* TAB 1: COLLABORATIVE AI COPILOT */}
-        {sidebarTab === 'copilot' && (
-          <div className="flex flex-col gap-4 animate-fade-in">
-            {/* Copilot Instructions */}
-            <div className="bg-cyan-950/25 border border-cyan-500/20 rounded-xl p-3 text-[11px] leading-relaxed text-cyan-200">
-              {lang === 'bn' ? (
-                <span>
-                  🤖 <strong>মাল্টি-এআই কো-অর্ডিনেশন:</strong> আপনার রিকোয়েস্ট অনুযায়ী চ্যাটজিপিটি (লেআউট), মিডজার্নি (আর্টওয়ার্ক) এবং ক্যানভা (অ্যাসেম্বলি) কোলাবোরেট করে একটি প্রফেশনাল ডিজাইন প্যানেল তৈরি করবে।
-                </span>
-              ) : (
-                <span>
-                  🤖 <strong>Multi-AI Coordination:</strong> Under this workspace, ChatGPT (Layout Planner), Midjourney (Artwork), and Canva (Layer Assembler) collaborate in real-time to generate your pristine editable graphic.
-                </span>
-              )}
-            </div>
-
-            {/* Prompt Input Area */}
-            <div>
-              <label className="block text-[11px] font-bold font-mono text-slate-400 uppercase tracking-wider mb-2">
-                {lang === 'bn' ? '১. আপনার ডিজাইনের চাহিদা লিখুন (বাংলা/English)' : '1. DESCRIBE YOUR DESIGN DEMAND'}
-              </label>
-              <textarea
-                value={copilotPrompt}
-                onChange={(e) => setCopilotPrompt(e.target.value)}
-                placeholder={lang === 'bn' ? 'যেমন: ঐতিহাসিক ওয়াজ মাহফিল পোস্টার, বা একটি কবিতা বইয়ের জন্য সুন্দর প্রচ্ছদ...' : 'e.g., A historic royal poetry book cover illustration...'}
-                className="w-full h-24 bg-slate-950 border border-slate-800 text-xs text-slate-100 placeholder-slate-600 rounded-xl p-3 resize-none focus:outline-none focus:border-cyan-500/50"
-              />
-            </div>
-
-            {/* Quick Design Predefined Suggestion Chips */}
-            <div>
-              <label className="block text-[10px] font-bold font-mono text-slate-500 uppercase tracking-wider mb-1.5">
-                {lang === 'bn' ? 'জনপ্রিয় কুইক-ডিজাইন সাজেশন্স' : 'POPULAR QUICK-DIZ CHIPS'}
-              </label>
-              <div className="flex flex-wrap gap-1.5">
-                {[
-                  { textBn: '🕌 ওয়াজ মাহফিল পোস্টার', textEn: '🕌 Waz Mahfil Poster', val: 'ইসলামী ওয়াজ মাহফিল পোস্টার' },
-                  { textBn: '📖 কবিতা বইয়ের প্রচ্ছদ', textEn: '📖 Poetry Book Cover', val: 'সুন্দর মেঘের রোদ মাখা কবিতার বইয়ের প্রচ্ছদ' },
-                  { textBn: '👑 শুভ বিবাহ কার্ড', textEn: '👑 Wedding Invitation', val: 'রয়াল শুভ বিবাহ নিমন্ত্রণ পত্র' },
-                  { textBn: '📅 নতুন ক্যালেন্ডার', textEn: '📅 2026 Calendar', val: '২০২৬ নতুন বাংলা ক্যালেন্ডার' },
-                  { textBn: '💼 স্মার্ট ভিজিটিং কার্ড', textEn: '💼 Business VCard', val: 'প্রফেশনাল লাক্সারি ডার্ক গোল্ড মেটালিক বিজনেস কার্ড' },
-                  { textBn: '🏮 শুভ নববর্ষ ব্যানার', textEn: '🏮 Boishakhi Banner', val: 'শুভ নববর্ষ ১৪৩৩ বৈশাখী উৎসবের শুভেচ্ছা ব্যানার' }
-                ].map((chip, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setCopilotPrompt(chip.val)}
-                    className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-800 hover:border-slate-700 hover:bg-slate-900 text-[10px] text-slate-300 font-sans cursor-pointer transition-all"
-                  >
-                    {lang === 'bn' ? chip.textBn : chip.textEn}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Run Multi-AI Collaborative Assemble Button */}
-            <button
-              onClick={runCopilotWorkflow}
-              disabled={copilotStatus === 'searching' || copilotStatus === 'planning' || copilotStatus === 'generating' || copilotStatus === 'composing' || !copilotPrompt.trim()}
-              className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-500 to-emerald-500 hover:shadow-[0_0_20px_rgba(6,182,212,0.5)] disabled:opacity-50 disabled:shadow-none text-slate-950 font-extrabold text-xs font-sans uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-all"
-            >
-              {copilotStatus === 'idle' || copilotStatus === 'finished' ? (
-                <>
-                  <Sparkles className="w-4 h-4" />
-                  {lang === 'bn' ? 'ডিজাইন প্ল্যান ও অ্যাসেম্বল করুন' : 'PLAN & ASSEMBLE DESIGN'}
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  {lang === 'bn' ? 'এআই এজেন্টরা কাজ করছে...' : 'AGENTS COLLABORATING...'}
-                </>
-              )}
-            </button>
-
-            {/* REAL-TIME MULTI-AI COLLABORATIVE AGENT CONSOLE */}
-            {copilotStatus !== 'idle' && (
-              <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold font-mono text-slate-400 tracking-wider">
-                    {lang === 'bn' ? 'এআই এজেন্ট স্ট্যাটাস কনসোল' : 'COLLABORATIVE AGENT LOGS'}
-                  </span>
-                  <span className="flex h-2 w-2 relative">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
-                  </span>
-                </div>
-
-                {/* Agents Status Indicator Nodes */}
-                <div className="grid grid-cols-4 gap-1 border-b border-slate-900 pb-2.5">
-                  <div className={`p-1.5 rounded-lg flex flex-col items-center justify-center transition-all ${activeCopilotAgent === 'chatgpt' ? 'bg-cyan-500/10 border border-cyan-500/30' : 'opacity-40'}`}>
-                    <span className="text-[9px] font-extrabold text-cyan-400 font-mono">GPT-6</span>
-                    <span className="text-[8px] text-slate-500">{lang === 'bn' ? 'লেআউট' : 'Planner'}</span>
-                  </div>
-                  <div className={`p-1.5 rounded-lg flex flex-col items-center justify-center transition-all ${activeCopilotAgent === 'gemini' ? 'bg-amber-500/10 border border-amber-500/30' : 'opacity-40'}`}>
-                    <span className="text-[9px] font-extrabold text-amber-400 font-mono">GEMINI</span>
-                    <span className="text-[8px] text-slate-500">{lang === 'bn' ? 'ভাষা' : 'Linguist'}</span>
-                  </div>
-                  <div className={`p-1.5 rounded-lg flex flex-col items-center justify-center transition-all ${activeCopilotAgent === 'midjourney' ? 'bg-purple-500/10 border border-purple-500/30' : 'opacity-40'}`}>
-                    <span className="text-[9px] font-extrabold text-purple-400 font-mono">MJ v6</span>
-                    <span className="text-[8px] text-slate-500">{lang === 'bn' ? 'চিত্র' : 'Artist'}</span>
-                  </div>
-                  <div className={`p-1.5 rounded-lg flex flex-col items-center justify-center transition-all ${activeCopilotAgent === 'canva' ? 'bg-emerald-500/10 border border-emerald-500/30' : 'opacity-40'}`}>
-                    <span className="text-[9px] font-extrabold text-emerald-400 font-mono">CANVA</span>
-                    <span className="text-[8px] text-slate-500">{lang === 'bn' ? 'কম্পোজ' : 'Composer'}</span>
-                  </div>
-                </div>
-
-                {/* Terminal style logs list */}
-                <div className="space-y-1.5 max-h-32 overflow-y-auto font-mono text-[9px] text-slate-400 leading-relaxed scrollbar-thin">
-                  {copilotLogs.map((log, i) => (
-                    <div key={i} className="flex gap-1">
-                      <span className="text-cyan-500 shrink-0">▸</span>
-                      <span>{log}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* QUICK TWEEKS BAR */}
-            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
-              <span className="block text-[10px] font-extrabold font-mono text-slate-400 tracking-wider">
-                {lang === 'bn' ? 'ক্যানভাস ম্যাজিক টিউনিং' : 'MAGIC CANVAS ADJUSTERS'}
+        {/* Center Canvas Stage Area with light Canva-like background */}
+        <div 
+          className="flex-1 bg-[#e8ebf2] p-6 flex flex-col items-center justify-between overflow-auto relative select-none"
+          onMouseMove={handleCanvasMouseMove}
+          onMouseUp={handleCanvasMouseUp}
+          onClick={() => setSelectedElementId(null)}
+        >
+          {/* Top Quick Photo Presets / Filters Rail */}
+          <div className="w-full max-w-lg mb-4 shrink-0 bg-slate-950 p-2.5 rounded-2xl border border-slate-800 flex items-center justify-between gap-3 shadow-lg">
+            <div className="flex items-center gap-1.5 shrink-0">
+              <Sliders className="w-4 h-4 text-cyan-400" />
+              <span className="text-[10px] font-mono font-black text-slate-300 uppercase tracking-widest">
+                {lang === 'bn' ? 'আর্টওয়ার্ক ফিল্টারস' : 'PHOTO FILTERS:'}
               </span>
-              <div className="grid grid-cols-2 gap-1.5">
-                <button
-                  onClick={() => adjustTextSize(2)}
-                  className="py-1 px-2 rounded bg-slate-900 border border-slate-800 hover:border-slate-700 text-[10px] text-slate-300 font-sans flex items-center justify-center gap-1 cursor-pointer"
-                >
-                  <span>Text Size ➕</span>
-                </button>
-                <button
-                  onClick={() => adjustTextSize(-2)}
-                  className="py-1 px-2 rounded bg-slate-900 border border-slate-800 hover:border-slate-700 text-[10px] text-slate-300 font-sans flex items-center justify-center gap-1 cursor-pointer"
-                >
-                  <span>Text Size ➖</span>
-                </button>
-                <button
-                  onClick={() => shiftTextVertical(-4)}
-                  className="py-1 px-2 rounded bg-slate-900 border border-slate-800 hover:border-slate-700 text-[10px] text-slate-300 font-sans flex items-center justify-center gap-1 cursor-pointer"
-                >
-                  <span>Shift Up ⬆️</span>
-                </button>
-                <button
-                  onClick={() => shiftTextVertical(4)}
-                  className="py-1 px-2 rounded bg-slate-900 border border-slate-800 hover:border-slate-700 text-[10px] text-slate-300 font-sans flex items-center justify-center gap-1 cursor-pointer"
-                >
-                  <span>Shift Down ⬇️</span>
-                </button>
-              </div>
-              <button
-                onClick={toggleFontFamilies}
-                className="w-full py-1.5 px-2 rounded bg-cyan-950/40 border border-cyan-800/40 hover:border-cyan-700/60 text-[10px] font-bold text-cyan-200 font-sans flex items-center justify-center gap-1 cursor-pointer"
-              >
-                <span>Cycle Font Styles (ফন্ট পরিবর্তন) 🔠</span>
-              </button>
             </div>
-          </div>
-        )}
-
-        {/* TAB 2: MANUAL CANVAS LAYER CREATOR TOOLS */}
-        {sidebarTab === 'manual' && (
-          <div className="flex flex-col gap-4 animate-fade-in">
-            {/* 1. Select Template Preset */}
-            <div>
-              <label className="block text-[11px] font-bold font-mono text-slate-400 uppercase tracking-wider mb-2">
-                {lang === 'bn' ? '১. টেমপ্লেট প্রিসেট নির্বাচন করুন' : '1. SELECT TEMPLATE PRESET'}
-              </label>
-              <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto scrollbar-thin">
-                {PRESETS.map((t) => (
+            
+            <div className="flex gap-1.5 overflow-x-auto scrollbar-none py-0.5 max-w-[280px] md:max-w-[340px]">
+              {activeFilterId !== 'none' && (
+                <button
+                  onClick={() => setActiveFilterId('none')}
+                  className="px-2.5 py-1 rounded bg-rose-500/10 border border-rose-500/30 text-rose-400 text-[10px] font-mono cursor-pointer flex items-center gap-1"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>RESET</span>
+                </button>
+              )}
+              {PHOTO_PRESETS.map((p) => {
+                const isActive = activeFilterId === p.id;
+                return (
                   <button
-                    key={t.id}
-                    onClick={() => selectTemplate(t)}
-                    className={`p-2 rounded-xl border text-left transition-all ${
-                      selectedTemplate.id === t.id
-                        ? 'bg-cyan-500/10 border-cyan-500/50 text-cyan-200'
-                        : 'bg-slate-950/40 border-slate-800/80 text-slate-400 hover:border-slate-700'
+                    key={p.id}
+                    onClick={() => setActiveFilterId(p.id)}
+                    className={`px-2.5 py-1 rounded text-[10px] font-mono cursor-pointer transition-all ${
+                      isActive ? 'bg-cyan-500 text-slate-950 font-bold' : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
                     }`}
                   >
-                    <p className="text-[11px] font-bold truncate">
-                      {lang === 'bn' ? t.nameBn : t.name}
-                    </p>
-                    <span className="text-[8px] font-mono text-slate-500 uppercase block mt-0.5">
-                      {t.type} ({t.width}x{t.height})
-                    </span>
+                    {lang === 'bn' ? p.nameBn : p.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Actual Scaled Canvas Stage Element with side-by-side split view option */}
+          <div className={`flex ${splitView && refImage ? 'flex-col md:flex-row gap-6 items-center justify-center w-full max-w-5xl' : 'items-center justify-center'}`}>
+            {splitView && refImage && (
+              <div 
+                className="relative bg-slate-950 border border-dashed border-cyan-500/30 rounded-xl overflow-hidden select-none cursor-default flex flex-col items-center justify-center p-3 shadow-lg animate-fade-in shrink-0"
+                style={{
+                  width: `${Math.min(selectedTemplate.width, 320)}px`,
+                  height: `${Math.min(selectedTemplate.height, 320)}px`,
+                  aspectRatio: `${selectedTemplate.width} / ${selectedTemplate.height}`,
+                }}
+              >
+                <div className="absolute top-2 left-2 bg-cyan-500 text-slate-950 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded shadow z-10">
+                  {lang === 'bn' ? 'স্টাইল রেফারেন্স' : 'STYLE REFERENCE'}
+                </div>
+                <img 
+                  src={refImage} 
+                  alt="Split View Reference" 
+                  className="w-full h-full object-contain rounded"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+            )}
+
+            <div 
+              className="relative bg-white shadow-[0_12px_45px_rgba(0,0,0,0.12)] border border-slate-300 rounded overflow-hidden select-none cursor-default animate-fade-in shrink-0"
+              style={{
+                width: `${selectedTemplate.width}px`,
+                height: `${selectedTemplate.height}px`,
+                maxWidth: '90%',
+                maxHeight: '75vh',
+                aspectRatio: `${selectedTemplate.width} / ${selectedTemplate.height}`,
+              }}
+            >
+            {/* Main design print zone capturing ref */}
+            <div
+              ref={canvasRef}
+              id="print-canvas-area"
+              className="absolute inset-0 w-full h-full"
+              onMouseDown={handleCanvasMouseDown}
+              onMouseMove={handleCanvasMouseMove}
+              onMouseUp={handleCanvasMouseUp}
+              onMouseLeave={handleCanvasMouseUp}
+              style={{
+                backgroundImage: canvasBg.type === 'gradient' 
+                  ? canvasBg.value 
+                  : (canvasBg.type === 'image' ? `url(${canvasBg.value})` : undefined),
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                backgroundColor: canvasBg.type === 'color' ? canvasBg.value : undefined,
+                filter: PHOTO_PRESETS.find(p => p.id === activeFilterId)?.filter || 'none',
+                transform: `scale(${canvasScale / 100})`,
+                transformOrigin: 'center center',
+                transition: 'filter 0.3s ease-in-out, transform 0.2s ease-out'
+              }}
+            >
+              {/* Alignment Grid Lines Overlay */}
+              {showGridLines && (
+                <div className="absolute inset-0 grid grid-cols-6 grid-rows-6 pointer-events-none z-10">
+                  {Array.from({ length: 25 }).map((_, i) => (
+                    <div key={i} className="border-b border-r border-cyan-500/15" />
+                  ))}
+                </div>
+              )}
+
+              {/* Print Bleed Safe Zone Margin Boundary Overlay */}
+              {showSafeZone && (
+                <div className="absolute inset-[6%] border border-dashed border-emerald-500/35 pointer-events-none z-10 flex items-end justify-end p-1">
+                  <span className="text-[8px] font-mono text-emerald-400/60 uppercase tracking-widest">{lang === 'bn' ? 'ব্লিড মার্জিন বাউন্ডারি' : 'BLEED SAFE LIMIT'}</span>
+                </div>
+              )}
+
+              {/* Dark image overlay layer */}
+              {canvasBg.type === 'image' && canvasBg.overlayOpacity && (
+                <div
+                  className="absolute inset-0 bg-black pointer-events-none"
+                  style={{ opacity: canvasBg.overlayOpacity }}
+                />
+              )}
+
+              {/* Render editable element layers */}
+              {elements.map((el) => {
+                const isSelected = el.id === selectedElementId;
+                
+                return (
+                  <div
+                    key={el.id}
+                    onMouseDown={(e) => handleLayerMouseDown(e, el.id)}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      if (el.type === 'text') {
+                        setEditingTextId(el.id);
+                        setTempEditText(el.content);
+                      }
+                    }}
+                    className={`absolute group-hover:cursor-pointer select-none ${
+                      isSelected ? 'ring-2 ring-cyan-400 ring-offset-2 ring-offset-slate-950 rounded z-30' : ''
+                    }`}
+                    style={{
+                      left: `${el.x}%`,
+                      top: `${el.y}%`,
+                      transform: `translate(-50%, -50%) rotate(${el.rotation ?? 0}deg)`,
+                      width: el.width ? `${el.width}%` : undefined,
+                      height: el.height ? `${el.height}%` : undefined,
+                      opacity: el.opacity ?? 1,
+                      zIndex: isSelected ? 30 : 20,
+                    }}
+                    title={el.type === 'text' ? (lang === 'bn' ? 'ডাবল-ক্লিক করে সরাসরি এডিট করুন' : 'Double-click to edit text directly') : undefined}
+                  >
+                    {/* TEXT LAYERS */}
+                    {el.type === 'text' && (
+                      editingTextId === el.id ? (
+                        <textarea
+                          value={tempEditText}
+                          onChange={(e) => {
+                            setTempEditText(e.target.value);
+                            updateElementProp(el.id, 'content', e.target.value);
+                          }}
+                          onBlur={() => setEditingTextId(null)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              setEditingTextId(null);
+                            }
+                          }}
+                          className="bg-slate-900/95 text-white border-2 border-cyan-400 rounded px-2 py-1 text-center font-sans focus:outline-none min-w-[220px] max-w-[320px]"
+                          style={{
+                            fontSize: `${el.fontSize ?? 14}px`,
+                            fontFamily: el.fontFamily,
+                            lineHeight: el.lineHeight ?? 1.25,
+                          }}
+                          autoFocus
+                        />
+                      ) : (
+                        <div
+                          style={{
+                            fontFamily: el.fontFamily,
+                            fontSize: `${el.fontSize ?? 14}px`,
+                            color: el.color,
+                            fontWeight: el.fontWeight,
+                            textAlign: el.align ?? 'center',
+                            textShadow: el.shadow ? '2px 2px 4px rgba(0,0,0,0.75)' : 'none',
+                            letterSpacing: el.letterSpacing ? `${el.letterSpacing}px` : 'normal',
+                            whiteSpace: 'pre-wrap',
+                            lineHeight: el.lineHeight ?? 1.25,
+                            padding: '4px 8px',
+                            borderRadius: el.borderRadius ? `${el.borderRadius}px` : undefined,
+                          }}
+                        >
+                          {el.content}
+                        </div>
+                      )
+                    )}
+
+                    {/* SHAPE LAYERS */}
+                    {el.type === 'shape' && (
+                      <div className="w-full h-full flex items-center justify-center pointer-events-none">
+                        {el.content === 'rect_horizontal' && (
+                          <div 
+                            className="w-full h-2.5 bg-cyan-500 rounded-full border border-cyan-400"
+                            style={{
+                              backgroundColor: el.color || '#06b6d4',
+                              borderRadius: `${el.borderRadius || 4}px`
+                            }}
+                          />
+                        )}
+                        {el.content === 'border_ring' && (
+                          <div 
+                            className="w-full h-full border-[3px] border-amber-400 bg-transparent"
+                            style={{
+                              borderColor: el.color || '#f59e0b',
+                              borderRadius: `${el.borderRadius || 4}px`
+                            }}
+                          />
+                        )}
+                      </div>
+                    )}
+
+                    {/* IMAGE LAYERS */}
+                    {el.type === 'image' && (
+                      <img 
+                        src={el.content} 
+                        alt="sticker asset" 
+                        className="w-full h-full object-cover pointer-events-none select-none"
+                        style={{ borderRadius: `${el.borderRadius || 8}px` }}
+                        referrerPolicy="no-referrer"
+                      />
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* Region Selection Masking overlay boundary box */}
+              {regionMask.active && regionMask.width > 0 && regionMask.height > 0 && (
+                <div
+                  className="absolute border-2 border-dashed border-yellow-400 bg-yellow-400/10 pointer-events-none z-40 flex items-start justify-start animate-pulse"
+                  style={{
+                    left: `${regionMask.x}%`,
+                    top: `${regionMask.y}%`,
+                    width: `${regionMask.width}%`,
+                    height: `${regionMask.height}%`
+                  }}
+                >
+                  <div className="bg-yellow-400 text-slate-950 font-bold font-mono text-[8px] px-1 py-0.5 rounded-br uppercase tracking-widest shadow">
+                    {lang === 'bn' ? 'সম্পাদনা অঞ্চল' : 'Edit Region'}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+          </div>
+
+          {/* Bottom Zoom & Guide tools */}
+          <div className="w-full max-w-lg mt-4 shrink-0 bg-slate-950 p-2 rounded-2xl border border-slate-800/80 flex items-center justify-between px-4">
+            {/* Quick Alignment Matrix (Canva Style) */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-[9px] font-mono text-slate-500 uppercase tracking-widest">{lang === 'bn' ? 'সরাসরি অ্যালাইনমেন্ট:' : 'QUICK ALIGN:'}</span>
+              {activeElement && (
+                <div className="flex gap-1">
+                  {[
+                    { label: 'L', title: 'Align Left', x: 10, y: undefined },
+                    { label: 'C', title: 'Align H-Center', x: 50, y: undefined },
+                    { label: 'R', title: 'Align Right', x: 90, y: undefined },
+                    { label: 'T', title: 'Align Top', x: undefined, y: 10 },
+                    { label: 'M', title: 'Align V-Center', x: undefined, y: 50 },
+                    { label: 'B', title: 'Align Bottom', x: undefined, y: 90 },
+                  ].map((btn) => (
+                    <button
+                      key={btn.label}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (btn.x !== undefined) updateElementProp(activeElement.id, 'x', btn.x);
+                        if (btn.y !== undefined) updateElementProp(activeElement.id, 'y', btn.y);
+                      }}
+                      className="px-2 py-0.5 bg-slate-900 border border-slate-800 hover:border-cyan-500 text-[10px] font-mono text-slate-300 hover:text-white rounded transition-colors cursor-pointer"
+                      title={btn.title}
+                    >
+                      {btn.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-[9px] font-mono text-slate-400 uppercase">SCALE:</span>
+              <button 
+                onClick={() => setCanvasScale(prev => Math.max(50, prev - 10))}
+                className="p-1 bg-slate-900 rounded text-slate-400 hover:text-white cursor-pointer"
+              >
+                -
+              </button>
+              <span className="text-[10px] font-mono text-cyan-400 font-bold w-10 text-center">{canvasScale}%</span>
+              <button 
+                onClick={() => setCanvasScale(prev => Math.min(150, prev + 10))}
+                className="p-1 bg-slate-900 rounded text-slate-400 hover:text-white cursor-pointer"
+              >
+                +
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+      {/* ROADMAP MODAL */}
+      {showRoadmapModal && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl">
+            <div className="p-4 border-b border-slate-800 bg-slate-950/20 flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-mono font-black text-cyan-400 uppercase tracking-widest block">
+                  1,000+ CUSTOM WORKFLOW FEATURES
+                </span>
+                <h3 className="text-base font-bold text-white mt-0.5">
+                  Neora Graphics Copilot Scaling Target
+                </h3>
+              </div>
+              <button 
+                onClick={() => { setShowRoadmapModal(false); setRoadmapSearch(''); setRoadmapCategory('all'); }}
+                className="p-1 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 bg-slate-950 border-b border-slate-850 flex flex-col sm:flex-row gap-3">
+              <div className="flex gap-1.5 bg-slate-900 p-0.5 rounded-lg border border-slate-800">
+                {ROADMAP_CATEGORIES.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => setRoadmapCategory(c.id)}
+                    className={`px-3 py-1 text-[10px] font-bold font-mono rounded-md uppercase transition-colors ${
+                      roadmapCategory === c.id
+                        ? 'bg-cyan-500 text-slate-950 font-black'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {lang === 'bn' ? c.labelBn : c.label}
                   </button>
                 ))}
               </div>
-            </div>
 
-            {/* 2. Background and Styling options */}
-            <div>
-              <label className="block text-[11px] font-bold font-mono text-slate-400 uppercase tracking-wider mb-2">
-                {lang === 'bn' ? '২. ব্যাকগ্রাউন্ড ডিজাইন কাস্টমাইজ করুন' : '2. BACKGROUND AND CANVAS STYLING'}
-              </label>
-              <div className="space-y-3 bg-slate-950/40 p-3 rounded-xl border border-slate-800/40">
-                {/* Background type buttons */}
-                <div className="flex gap-1.5 bg-slate-900 p-1 rounded-lg">
-                  <button
-                    onClick={() => setCanvasBg({ type: 'color', value: '#ffffff' })}
-                    className={`flex-1 py-1 rounded text-[10px] font-mono font-bold ${canvasBg.type === 'color' ? 'bg-slate-800 text-white' : 'text-slate-500'}`}
-                  >
-                    SOLID
-                  </button>
-                  <button
-                    onClick={() => setCanvasBg({ type: 'gradient', value: GRADIENTS[0].value })}
-                    className={`flex-1 py-1 rounded text-[10px] font-mono font-bold ${canvasBg.type === 'gradient' ? 'bg-slate-800 text-white' : 'text-slate-500'}`}
-                  >
-                    GRADIENT
-                  </button>
-                  <button
-                    onClick={() => setCanvasBg({ type: 'image', value: 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?q=80&w=1024', overlayOpacity: 0.3 })}
-                    className={`flex-1 py-1 rounded text-[10px] font-mono font-bold ${canvasBg.type === 'image' ? 'bg-slate-800 text-white' : 'text-slate-500'}`}
-                  >
-                    IMAGE
-                  </button>
-                </div>
-
-                {/* Solid color input */}
-                {canvasBg.type === 'color' && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-mono text-slate-400">PICK COLOR:</span>
-                    <input
-                      type="color"
-                      value={canvasBg.value.startsWith('#') ? canvasBg.value : '#ffffff'}
-                      onChange={(e) => setCanvasBg({ type: 'color', value: e.target.value })}
-                      className="w-10 h-7 rounded border border-slate-700 bg-transparent cursor-pointer"
-                    />
-                    <input
-                      type="text"
-                      value={canvasBg.value}
-                      onChange={(e) => setCanvasBg({ type: 'color', value: e.target.value })}
-                      className="flex-1 bg-slate-900 border border-slate-800 text-[11px] font-mono text-slate-300 rounded px-2 py-1 focus:outline-none"
-                    />
-                  </div>
-                )}
-
-                {/* Gradient selector */}
-                {canvasBg.type === 'gradient' && (
-                  <div className="grid grid-cols-4 gap-1">
-                    {GRADIENTS.map((g, i) => (
-                      <button
-                        key={i}
-                        onClick={() => setCanvasBg({ type: 'gradient', value: g.value })}
-                        className="h-6 rounded border border-slate-800"
-                        style={{ background: g.value }}
-                        title={g.name}
-                      />
-                    ))}
-                  </div>
-                )}
-
-                {/* Image backdrop options */}
-                {canvasBg.type === 'image' && (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-mono text-slate-400">URL:</span>
-                      <input
-                        type="text"
-                        value={canvasBg.value}
-                        onChange={(e) => setCanvasBg({ ...canvasBg, value: e.target.value })}
-                        className="flex-1 bg-slate-900 border border-slate-800 text-[10px] font-mono text-slate-300 rounded px-2 py-1 focus:outline-none"
-                      />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-mono text-slate-400">OVERLAY OPACITY:</span>
-                      <input
-                        type="range"
-                        min="0"
-                        max="1"
-                        step="0.05"
-                        value={canvasBg.overlayOpacity ?? 0.3}
-                        onChange={(e) => setCanvasBg({ ...canvasBg, overlayOpacity: parseFloat(e.target.value) })}
-                        className="flex-1 accent-cyan-400"
-                      />
-                      <span className="text-[10px] font-mono text-slate-300 w-8 text-right">{Math.round((canvasBg.overlayOpacity ?? 0.3) * 100)}%</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* 3. AI Graphic Asset Generator layer (FREE Pollinations integration!) */}
-            <div className="border border-cyan-500/10 bg-slate-950/30 p-3 rounded-xl">
-              <div className="flex items-center gap-1.5 mb-2">
-                <Sparkles className="w-4 h-4 text-cyan-400 animate-pulse" />
-                <span className="text-[11px] font-bold font-mono text-slate-300 tracking-wider">
-                  {lang === 'bn' ? '৩. এআই ইমেজ জেনারেটর (ফ্রি)' : '3. AI IMAGE GENERATOR (FREE)'}
-                </span>
-              </div>
-              <div className="space-y-2">
-                <textarea
-                  value={aiPrompt}
-                  onChange={(e) => setAiPrompt(e.target.value)}
-                  placeholder={lang === 'bn' ? 'যেমন: সুন্দর সবুজ বন নদী সূর্যোদয়, অথবা লাল ব্যাকগ্রাউন্ড গোল্ডেন ফ্রেম...' : 'e.g., beautiful golden certificate border background...'}
-                  className="w-full h-16 bg-slate-950/80 border border-slate-800 text-xs text-slate-200 placeholder-slate-600 rounded-lg p-2 resize-none focus:outline-none focus:border-cyan-500/40"
-                />
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex gap-1">
-                    <button
-                      onClick={() => setAiImageType('background')}
-                      className={`px-2 py-1 rounded text-[9px] font-mono font-bold ${aiImageType === 'background' ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/20' : 'bg-slate-900 text-slate-500'}`}
-                    >
-                      BG IMAGE
-                    </button>
-                    <button
-                      onClick={() => setAiImageType('sticker')}
-                      className={`px-2 py-1 rounded text-[9px] font-mono font-bold ${aiImageType === 'sticker' ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/20' : 'bg-slate-900 text-slate-500'}`}
-                    >
-                      STICKER
-                    </button>
-                  </div>
-                  <button
-                    onClick={generateAiAsset}
-                    disabled={isGeneratingAi || !aiPrompt.trim()}
-                    className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 disabled:bg-slate-800 disabled:text-slate-600 text-slate-950 text-[10px] font-bold font-mono uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-all"
-                  >
-                    {isGeneratingAi ? (
-                      <>
-                        <RefreshCw className="w-3 h-3 animate-spin" />
-                        GENERATING...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="w-3 h-3" />
-                        GENERATE IMAGE
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* 4. Add Custom Text / Layer Controls */}
-            <div>
-              <label className="block text-[11px] font-bold font-mono text-slate-400 uppercase tracking-wider mb-2">
-                {lang === 'bn' ? '৪. কাস্টম টেক্সট ও আকৃতি যোগ করুন' : '4. ADD CUSTOM LAYER'}
-              </label>
-              <div className="space-y-2">
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={newTextVal}
-                    onChange={(e) => setNewTextVal(e.target.value)}
-                    placeholder={lang === 'bn' ? 'লিখুন...' : 'Type text layer content...'}
-                    className="flex-1 bg-slate-950 border border-slate-800 text-xs text-slate-200 placeholder-slate-600 rounded-lg px-3 py-1.5 focus:outline-none focus:border-cyan-500/40"
-                  />
-                  <button
-                    onClick={addNewText}
-                    className="px-3 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
-                    title="Add Text Element"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    TEXT
-                  </button>
-                </div>
-
-                {/* Quick Shape inserts */}
-                <div className="flex gap-1.5">
-                  <button
-                    onClick={() => addNewShape('rect_horizontal')}
-                    className="flex-1 py-1 rounded bg-slate-950/60 border border-slate-800 hover:border-slate-700 text-[10px] font-mono text-slate-300 flex items-center justify-center gap-1 cursor-pointer"
-                  >
-                    <Plus className="w-3 h-3 text-cyan-400" /> HORIZ BAR
-                  </button>
-                  <button
-                    onClick={() => addNewShape('border_ring')}
-                    className="flex-1 py-1 rounded bg-slate-950/60 border border-slate-800 hover:border-slate-700 text-[10px] font-mono text-slate-300 flex items-center justify-center gap-1 cursor-pointer"
-                  >
-                    <Plus className="w-3 h-3 text-cyan-400" /> BORDER RING
-                  </button>
-                  <button
-                    onClick={() => {
-                      setAiImageType('sticker');
-                      fileInputRef.current?.click();
-                    }}
-                    className="flex-1 py-1 rounded bg-slate-950/60 border border-slate-800 hover:border-slate-700 text-[10px] font-mono text-slate-300 flex items-center justify-center gap-1 cursor-pointer"
-                    title="Upload Photo/Logo Layer"
-                  >
-                    <Upload className="w-3 h-3 text-amber-400" /> LOGO/PHOTO
-                  </button>
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleImageUpload}
-                    accept="image/*"
-                    className="hidden"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-      </div>
-
-      {/* CENTER COLUMN: Canvas Area / Visual Editor */}
-      <div className="flex-1 flex flex-col gap-4 items-center justify-center bg-slate-950/60 border border-slate-800/50 p-6 rounded-3xl relative overflow-hidden">
-        
-        {/* Help label */}
-        <div className="text-center mb-1">
-          <h3 className="text-sm font-semibold text-slate-300">
-            {lang === 'bn' ? 'সরাসরি ক্যানভাস প্রিভিউ' : 'Direct Canvas Preview'}
-          </h3>
-          <p className="text-[10px] font-mono text-slate-500 uppercase tracking-tight">
-            {lang === 'bn' ? 'ক্যানভাসের এলিমেন্টে ক্লিক করে এডিট ও পজিশন করুন' : 'Click any element to edit position, typography and details'}
-          </p>
-        </div>
-
-        {/* One-click professional photo presets */}
-        <div className="w-full max-w-lg bg-slate-900/60 border border-slate-800/60 rounded-2xl p-4 mb-2 shadow-lg">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-3 border-b border-slate-800/60 pb-2">
-            <span className="text-[11px] font-bold font-mono text-cyan-400 uppercase tracking-wider flex items-center gap-1.5">
-              <Camera className="w-4 h-4 text-cyan-400" />
-              {lang === 'bn' ? '১-ক্লিক প্রফেশনাল ফটো প্রিসেট' : '1-Click Photo Presets'}
-            </span>
-            <div className="flex items-center gap-2">
-              {/* Undo Filter Button */}
-              <button
-                onClick={() => setActiveFilterId('none')}
-                disabled={activeFilterId === 'none'}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[10px] font-bold font-mono uppercase transition-all cursor-pointer ${
-                  activeFilterId === 'none'
-                    ? 'bg-slate-950/20 border-slate-800/40 text-slate-600 cursor-not-allowed'
-                    : 'bg-rose-500/15 border-rose-500 text-rose-300 hover:bg-rose-500/25 shadow-[0_0_8px_rgba(239,68,68,0.15)] animate-pulse'
-                }`}
-                title={lang === 'bn' ? 'ফিল্টার বাতিল করুন' : 'Undo Filter - revert to original state immediately'}
-              >
-                <RotateCcw className="w-3 h-3" />
-                <span>{lang === 'bn' ? 'Undo ফিল্টার' : 'Undo Filter'}</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Toggleable Folders */}
-          <div className="space-y-2">
-            {(['Landscape', 'Portrait', 'Abstract'] as const).map((category) => {
-              const isOpen = openFolders[category];
-              const categoryPresets = PHOTO_PRESETS.filter((p) => p.category === category);
-              const categoryIcon = category === 'Landscape' ? '🌄' : category === 'Portrait' ? '👤' : '🎨';
-              const categoryNameBn = category === 'Landscape' ? 'ল্যান্ডস্কেপ' : category === 'Portrait' ? 'পোর্ট্রেট' : 'অ্যাবস্ট্রাক্ট';
-              
-              return (
-                <div 
-                  key={category} 
-                  className={`border rounded-xl transition-all ${
-                    isOpen 
-                      ? 'border-slate-800 bg-slate-950/40 shadow-inner' 
-                      : 'border-slate-800/60 bg-slate-950/15 hover:bg-slate-950/30'
-                  }`}
-                >
-                  <button
-                    onClick={() => setOpenFolders(prev => ({ ...prev, [category]: !prev[category] }))}
-                    className="w-full flex items-center justify-between px-3 py-2 text-[11px] font-semibold text-slate-300 font-mono focus:outline-none cursor-pointer"
-                  >
-                    <div className="flex items-center gap-2">
-                      {isOpen ? (
-                        <FolderOpen className="w-4 h-4 text-amber-500 fill-amber-500/10" />
-                      ) : (
-                        <Folder className="w-4 h-4 text-amber-600 fill-amber-600/10" />
-                      )}
-                      <span className="text-sm">{categoryIcon}</span>
-                      <span className="tracking-wide">
-                        {lang === 'bn' ? categoryNameBn : category}
-                      </span>
-                      <span className="text-[9px] text-slate-500 font-normal">
-                        ({categoryPresets.length} {lang === 'bn' ? 'টি ফিল্টার' : 'presets'})
-                      </span>
-                    </div>
-                    <span className="text-[10px] text-slate-500 font-mono">
-                      {isOpen ? '▼' : '▼'}
-                    </span>
-                  </button>
-
-                  {isOpen && (
-                    <div className="p-2 border-t border-slate-800/40 bg-slate-950/25">
-                      <div className="flex gap-2 overflow-x-auto scrollbar-none py-1 items-center">
-                        {/* Inline Undo Filter option inside the folder list */}
-                        {activeFilterId !== 'none' && (
-                          <button
-                            onClick={() => setActiveFilterId('none')}
-                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border text-[11px] font-bold font-mono uppercase transition-all shrink-0 cursor-pointer bg-rose-500/10 border-rose-500/40 text-rose-300 hover:bg-rose-500/20"
-                            title={lang === 'bn' ? 'ফিল্টার বাতিল' : 'Undo Filter'}
-                          >
-                            <RotateCcw className="w-3 h-3" />
-                            <span>{lang === 'bn' ? 'বাতিল' : 'Undo'}</span>
-                          </button>
-                        )}
-                        {categoryPresets.map((preset) => {
-                          const isActive = activeFilterId === preset.id;
-                          return (
-                            <button
-                              key={preset.id}
-                              onClick={() => setActiveFilterId(preset.id)}
-                              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[11px] font-medium transition-all shrink-0 cursor-pointer ${
-                                isActive
-                                  ? 'bg-cyan-500/15 border-cyan-500 text-cyan-200 font-bold shadow-[0_0_10px_rgba(6,182,212,0.15)]'
-                                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
-                              }`}
-                              title={lang === 'bn' ? preset.descriptionBn : preset.description}
-                            >
-                              <span className="text-sm">{preset.icon}</span>
-                              <span>{lang === 'bn' ? preset.nameBn : preset.name}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Dynamic Aspect Ratio Canvas wrapper */}
-        <div
-          className="relative shadow-[0_12px_44px_rgba(0,0,0,0.85)] border border-slate-800 rounded-xl overflow-hidden cursor-default group"
-          style={{
-            width: '100%',
-            maxWidth: `${selectedTemplate.width}px`,
-            aspectRatio: `${selectedTemplate.width} / ${selectedTemplate.height}`,
-            backgroundColor: canvasBg.type === 'color' ? canvasBg.value : 'transparent'
-          }}
-        >
-          {/* Main design print zone capturing ref */}
-          <div
-            ref={canvasRef}
-            id="print-canvas-area"
-            className="absolute inset-0 w-full h-full"
-            style={{
-              backgroundImage: canvasBg.type === 'gradient' 
-                ? canvasBg.value 
-                : (canvasBg.type === 'image' ? `url(${canvasBg.value})` : undefined),
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-              backgroundColor: canvasBg.type === 'color' ? canvasBg.value : undefined,
-              filter: PHOTO_PRESETS.find(p => p.id === activeFilterId)?.filter || 'none',
-              transition: 'filter 0.3s ease-in-out'
-            }}
-          >
-            {/* Dark image overlay layer */}
-            {canvasBg.type === 'image' && canvasBg.overlayOpacity && (
-              <div
-                className="absolute inset-0 bg-black pointer-events-none"
-                style={{ opacity: canvasBg.overlayOpacity }}
-              />
-            )}
-
-            {/* Render editable element layers */}
-            {elements.map((el) => {
-              const isSelected = el.id === selectedElementId;
-              
-              return (
-                <div
-                  key={el.id}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSelectedElementId(el.id);
-                  }}
-                  className={`absolute group-hover:cursor-pointer ${
-                    isSelected ? 'ring-2 ring-cyan-400 ring-offset-2 ring-offset-slate-950 rounded z-30' : ''
-                  }`}
-                  style={{
-                    left: `${el.x}%`,
-                    top: `${el.y}%`,
-                    transform: `translate(-50%, -50%) rotate(${el.rotation ?? 0}deg)`,
-                    width: el.width ? `${el.width}%` : undefined,
-                    height: el.height ? `${el.height}%` : undefined,
-                    opacity: el.opacity ?? 1,
-                    zIndex: isSelected ? 30 : 20,
-                  }}
-                >
-                  {/* TEXT LAYERS */}
-                  {el.type === 'text' && (
-                    <div
-                      style={{
-                        fontFamily: el.fontFamily,
-                        fontSize: `${el.fontSize ?? 14}px`,
-                        color: el.color,
-                        fontWeight: el.fontWeight,
-                        textAlign: el.align ?? 'center',
-                        textShadow: el.shadow ? '2px 2px 4px rgba(0,0,0,0.75)' : 'none',
-                        letterSpacing: el.letterSpacing ?? 'normal',
-                        whiteSpace: 'pre-wrap',
-                        lineHeight: 1.25,
-                        padding: '4px 8px'
-                      }}
-                    >
-                      {el.content}
-                    </div>
-                  )}
-
-                  {/* SHAPE LAYERS */}
-                  {el.type === 'shape' && (
-                    <div className="w-full h-full flex items-center justify-center pointer-events-none">
-                      {el.content === 'rect_horizontal' && (
-                        <div
-                          className="w-full rounded"
-                          style={{
-                            height: `${el.height ?? 4}px`,
-                            backgroundColor: el.color,
-                          }}
-                        />
-                      )}
-                      {el.content === 'circle' && (
-                        <div
-                          className="rounded-full border"
-                          style={{
-                            width: '40px',
-                            height: '40px',
-                            backgroundColor: el.color,
-                            borderColor: el.color,
-                          }}
-                        />
-                      )}
-                      {el.content === 'border_ring' && (
-                        <div
-                          className="w-full h-full rounded border-2"
-                          style={{
-                            borderColor: el.color,
-                            borderStyle: 'solid'
-                          }}
-                        />
-                      )}
-                    </div>
-                  )}
-
-                  {/* IMAGE/LOGO LAYERS */}
-                  {el.type === 'image' && (
-                    <img
-                      src={el.content}
-                      alt="graphic art layer"
-                      className="w-full h-full object-cover rounded shadow"
-                      referrerPolicy="no-referrer"
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Global actions row */}
-        <div className="flex gap-3 mt-4">
-          <button
-            onClick={handleDownload}
-            className="px-4 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 rounded-xl text-xs font-bold font-mono flex items-center gap-1.5 shadow-[0_0_20px_rgba(6,182,212,0.35)] cursor-pointer transition-all"
-          >
-            <Download className="w-4 h-4" />
-            {lang === 'bn' ? 'এইচডি ইমেজ ডাউনলোড করুন (PNG)' : 'DOWNLOAD HD IMAGE (PNG)'}
-          </button>
-          <button
-            onClick={handlePrint}
-            className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold font-mono flex items-center gap-1.5 cursor-pointer transition-colors"
-          >
-            <Printer className="w-4 h-4 text-emerald-400" />
-            {lang === 'bn' ? 'মুদ্রণ বা প্রিন্ট করুন' : 'PRINT DESIGN'}
-          </button>
-          <button
-            onClick={() => {
-              setElements(JSON.parse(JSON.stringify(selectedTemplate.elements)));
-              setCanvasBg(JSON.parse(JSON.stringify(selectedTemplate.background)));
-              setSelectedElementId(null);
-              setActiveFilterId('none');
-            }}
-            className="px-4 py-2.5 bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white rounded-xl text-xs font-bold font-mono flex items-center gap-1.5 cursor-pointer transition-all"
-            title="Reset Canvas Design"
-          >
-            <RotateCcw className="w-4 h-4" />
-            {lang === 'bn' ? 'রিসেট' : 'RESET'}
-          </button>
-        </div>
-
-      </div>
-
-      {/* RIGHT COLUMN: Layer Editor Sidebar */}
-      {activeElement ? (
-        <div className="w-full lg:w-80 flex flex-col gap-4 bg-slate-900/45 border border-slate-800/80 p-5 rounded-2xl backdrop-blur-xl shadow-xl transition-all duration-300">
-          
-          <div className="flex items-center justify-between border-b border-slate-800/60 pb-2">
-            <div className="flex items-center gap-1.5">
-              <Sliders className="w-4 h-4 text-cyan-400" />
-              <span className="text-xs font-bold text-white uppercase tracking-wider font-mono">
-                {lang === 'bn' ? 'স্তর সম্পাদনা' : 'EDIT SELECTED LAYER'}
-              </span>
-            </div>
-            <button
-              onClick={() => setSelectedElementId(null)}
-              className="text-[10px] font-mono text-slate-500 hover:text-white cursor-pointer"
-            >
-              CLOSE
-            </button>
-          </div>
-
-          {/* Text Content Editor */}
-          {activeElement.type === 'text' && (
-            <div className="space-y-3">
-              <div>
-                <label className="block text-[10px] font-bold font-mono text-slate-400 mb-1 uppercase">TEXT VALUE:</label>
-                <textarea
-                  value={activeElement.content}
-                  onChange={(e) => updateElementProp(activeElement.id, 'content', e.target.value)}
-                  className="w-full h-20 bg-slate-950 border border-slate-850 rounded-lg p-2 text-xs font-sans text-slate-100 focus:outline-none"
-                />
-              </div>
-
-              {/* Font Family */}
-              <div>
-                <label className="block text-[10px] font-bold font-mono text-slate-400 mb-1 uppercase">FONT FAMILY:</label>
-                <select
-                  value={activeElement.fontFamily ?? 'Inter'}
-                  onChange={(e) => updateElementProp(activeElement.id, 'fontFamily', e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg text-xs p-1.5 text-slate-200 focus:outline-none"
-                >
-                  {FONT_FAMILIES.map((f) => (
-                    <option key={f.value} value={f.value}>{f.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Size Slider */}
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label className="text-[10px] font-bold font-mono text-slate-400 uppercase">FONT SIZE:</label>
-                  <span className="text-[10px] font-mono text-slate-300 font-bold">{activeElement.fontSize ?? 14}px</span>
-                </div>
-                <input
-                  type="range"
-                  min="8"
-                  max="120"
-                  value={activeElement.fontSize ?? 14}
-                  onChange={(e) => updateElementProp(activeElement.id, 'fontSize', parseInt(e.target.value))}
-                  className="w-full accent-cyan-400"
-                />
-              </div>
-
-              {/* Text Color */}
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold font-mono text-slate-400">COLOR:</span>
-                <input
-                  type="color"
-                  value={activeElement.color?.startsWith('#') ? activeElement.color : '#ffffff'}
-                  onChange={(e) => updateElementProp(activeElement.id, 'color', e.target.value)}
-                  className="w-9 h-6 rounded cursor-pointer bg-transparent border border-slate-700"
-                />
+              <div className="flex-1 relative">
+                <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
                 <input
                   type="text"
-                  value={activeElement.color}
-                  onChange={(e) => updateElementProp(activeElement.id, 'color', e.target.value)}
-                  className="flex-1 bg-slate-950 border border-slate-800 text-[10px] font-mono text-slate-300 rounded px-2 py-0.5 focus:outline-none"
+                  value={roadmapSearch}
+                  onChange={(e) => setRoadmapSearch(e.target.value)}
+                  placeholder={lang === 'bn' ? 'ফিচার খুঁজুন...' : 'Search roadmap scales...'}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/50"
                 />
               </div>
-
-              {/* Alignment & Weight */}
-              <div className="flex items-center justify-between border-t border-b border-slate-850 py-2">
-                <div className="flex gap-1">
-                  <button
-                    onClick={() => updateElementProp(activeElement.id, 'align', 'left')}
-                    className={`p-1.5 rounded hover:bg-slate-800 ${activeElement.align === 'left' ? 'text-cyan-400 bg-slate-900' : 'text-slate-500'}`}
-                  >
-                    <AlignLeft className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => updateElementProp(activeElement.id, 'align', 'center')}
-                    className={`p-1.5 rounded hover:bg-slate-800 ${activeElement.align === 'center' ? 'text-cyan-400 bg-slate-900' : 'text-slate-500'}`}
-                  >
-                    <AlignCenter className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => updateElementProp(activeElement.id, 'align', 'right')}
-                    className={`p-1.5 rounded hover:bg-slate-800 ${activeElement.align === 'right' ? 'text-cyan-400 bg-slate-900' : 'text-slate-500'}`}
-                  >
-                    <AlignRight className="w-4 h-4" />
-                  </button>
-                </div>
-
-                <div className="flex gap-1.5">
-                  <button
-                    onClick={() => updateElementProp(activeElement.id, 'fontWeight', activeElement.fontWeight === 'bold' ? 'normal' : 'bold')}
-                    className={`px-2 py-1 rounded text-[10px] font-mono font-bold hover:bg-slate-800 ${activeElement.fontWeight === 'bold' ? 'text-cyan-400 bg-slate-900' : 'text-slate-500'}`}
-                  >
-                    <Bold className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => updateElementProp(activeElement.id, 'shadow', !activeElement.shadow)}
-                    className={`px-2 py-1 rounded text-[10px] font-mono font-bold hover:bg-slate-800 ${activeElement.shadow ? 'text-cyan-400 bg-slate-900' : 'text-slate-500'}`}
-                    title="Toggle Text Shadow"
-                  >
-                    SHADOW
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Common Size / Position parameters */}
-          <div className="space-y-3.5">
-            {/* Position inputs */}
-            <div>
-              <span className="block text-[10px] font-bold font-mono text-slate-400 mb-1 uppercase">POSITION OFFSET:</span>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <div className="flex justify-between text-[9px] text-slate-500 font-mono"><span>X-Pos:</span> <span>{activeElement.x}%</span></div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={activeElement.x}
-                    onChange={(e) => updateElementProp(activeElement.id, 'x', parseInt(e.target.value))}
-                    className="w-full accent-cyan-400"
-                  />
-                </div>
-                <div>
-                  <div className="flex justify-between text-[9px] text-slate-500 font-mono"><span>Y-Pos:</span> <span>{activeElement.y}%</span></div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={activeElement.y}
-                    onChange={(e) => updateElementProp(activeElement.id, 'y', parseInt(e.target.value))}
-                    className="w-full accent-cyan-400"
-                  />
-                </div>
-              </div>
             </div>
 
-            {/* Shape parameters */}
-            {(activeElement.type === 'shape' || activeElement.type === 'image') && (
-              <div>
-                <span className="block text-[10px] font-bold font-mono text-slate-400 mb-1 uppercase">BOUNDING DIMENSIONS:</span>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <div className="flex justify-between text-[9px] text-slate-500 font-mono"><span>Width:</span> <span>{activeElement.width ?? 30}%</span></div>
-                    <input
-                      type="range"
-                      min="1"
-                      max="100"
-                      value={activeElement.width ?? 30}
-                      onChange={(e) => updateElementProp(activeElement.id, 'width', parseInt(e.target.value))}
-                      className="w-full accent-cyan-400"
-                    />
-                  </div>
-                  <div>
-                    <div className="flex justify-between text-[9px] text-slate-500 font-mono"><span>Height:</span> <span>{activeElement.height ?? 20}%</span></div>
-                    <input
-                      type="range"
-                      min="1"
-                      max="100"
-                      value={activeElement.height ?? 20}
-                      onChange={(e) => updateElementProp(activeElement.id, 'height', parseInt(e.target.value))}
-                      className="w-full accent-cyan-400"
-                    />
-                  </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-thin">
+              {filteredRoadmapItems.length === 0 ? (
+                <div className="p-8 border border-dashed border-slate-850 rounded-xl text-center text-xs text-slate-500 font-mono uppercase tracking-widest">
+                  No features found matching "${roadmapSearch}"
                 </div>
-              </div>
-            )}
-
-            {/* Rotation slider */}
-            <div>
-              <div className="flex justify-between text-[9px] text-slate-500 font-mono mb-1">
-                <span className="uppercase">ROTATION ANGLE:</span>
-                <span>{activeElement.rotation ?? 0}°</span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="360"
-                value={activeElement.rotation ?? 0}
-                onChange={(e) => updateElementProp(activeElement.id, 'rotation', parseInt(e.target.value))}
-                className="w-full accent-cyan-400"
-              />
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {filteredRoadmapItems.map((item) => {
+                    const statusColors = {
+                      planned: 'bg-slate-950 text-slate-500 border-slate-850',
+                      progress: 'bg-amber-500/15 border-amber-500/20 text-amber-400',
+                      complete: 'bg-emerald-500/15 border-emerald-500/20 text-emerald-400'
+                    };
+                    return (
+                      <div key={item.id} className="p-3 border border-slate-850 bg-slate-950/25 rounded-xl hover:border-slate-800 transition-colors flex flex-col justify-between gap-2">
+                        <div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[8px] font-mono text-cyan-400 font-black uppercase tracking-wider">{item.category}</span>
+                            <span className={`px-1.5 py-0.5 rounded text-[8px] font-black font-mono border uppercase ${statusColors[item.status]}`}>
+                              {item.status}
+                            </span>
+                          </div>
+                          <h4 className="text-xs font-bold text-white mt-1">
+                            {lang === 'bn' ? item.featureNameBn : item.featureName}
+                          </h4>
+                          <p className="text-[10px] text-slate-400 mt-1 leading-normal">
+                            {lang === 'bn' ? item.descriptionBn : item.description}
+                          </p>
+                        </div>
+                        <div className="flex items-center justify-between border-t border-slate-900 pt-1.5">
+                          <span className="text-[8px] font-mono text-slate-500">SCALE METRIC:</span>
+                          <span className="text-[9px] font-mono text-cyan-400 font-bold">{lang === 'bn' ? item.scaleMetricBn : item.scaleMetric}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
-            {/* Layer arrangement buttons */}
-            <div>
-              <span className="block text-[10px] font-bold font-mono text-slate-400 mb-1.5 uppercase">LAYER CONTROLS:</span>
-              <div className="flex gap-1.5">
-                <button
-                  onClick={() => bringToFront(activeElement.id)}
-                  className="flex-1 py-1 rounded bg-slate-950/60 hover:bg-slate-900 border border-slate-800 text-[10px] font-mono text-slate-300 flex items-center justify-center gap-1 cursor-pointer"
-                  title="Bring to Front"
-                >
-                  <ArrowUp className="w-3 h-3 text-cyan-400" /> FRONT
-                </button>
-                <button
-                  onClick={() => sendToBack(activeElement.id)}
-                  className="flex-1 py-1 rounded bg-slate-950/60 hover:bg-slate-900 border border-slate-800 text-[10px] font-mono text-slate-300 flex items-center justify-center gap-1 cursor-pointer"
-                  title="Send to Back"
-                >
-                  <ArrowDown className="w-3 h-3 text-slate-500" /> BACK
-                </button>
-              </div>
-            </div>
-
-            {/* Actions list */}
-            <div className="flex gap-2 border-t border-slate-850 pt-3">
+            <div className="p-4 border-t border-slate-800 bg-slate-900/30 flex items-center justify-between">
+              <span className="text-[10px] text-slate-500 font-mono uppercase">
+                © {new Date().getFullYear()} Neora Design Studio Engine v2.4.0 • 1,024 Features Scaling Target
+              </span>
               <button
-                onClick={() => duplicateElement(activeElement)}
-                className="flex-1 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-mono font-bold flex items-center justify-center gap-1 cursor-pointer"
+                onClick={() => { setShowRoadmapModal(false); setRoadmapSearch(''); setRoadmapCategory('all'); }}
+                className="px-4 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold font-sans cursor-pointer transition-colors"
               >
-                <Copy className="w-3.5 h-3.5 text-cyan-400" /> DUPLICATE
-              </button>
-              <button
-                onClick={() => deleteElement(activeElement.id)}
-                className="flex-1 py-2 rounded-xl bg-red-950/40 hover:bg-red-900 border border-red-900/40 text-red-200 text-xs font-mono font-bold flex items-center justify-center gap-1 cursor-pointer"
-              >
-                <Trash2 className="w-3.5 h-3.5 text-red-400" /> DELETE
+                {lang === 'bn' ? 'ঠিক আছে' : 'Close Studio Roadmap'}
               </button>
             </div>
 
           </div>
-
-        </div>
-      ) : (
-        <div className="w-full lg:w-80 flex flex-col items-center justify-center bg-slate-900/25 border border-slate-800/40 p-5 rounded-2xl text-center">
-          <Layers className="w-8 h-8 text-slate-700 mb-2 animate-pulse" />
-          <p className="text-xs text-slate-500">
-            {lang === 'bn' ? 'কোনো ক্যানভাস উপাদান নির্বাচিত নেই' : 'No canvas element selected.'}
-          </p>
-          <p className="text-[10px] text-slate-600 mt-1 max-w-[200px]">
-            {lang === 'bn' ? 'ক্যানভাসের যেকোনো লেখা বা ছবিতে ক্লিক করে এডিটিং শুরু করুন' : 'Click any word or artwork inside the preview container to begin modifications.'}
-          </p>
         </div>
       )}
 

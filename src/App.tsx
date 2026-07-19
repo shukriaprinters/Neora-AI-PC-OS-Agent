@@ -135,6 +135,10 @@ const GraphicDesignerStudio = lazyRetry<any>(
   () => import("./components/GraphicDesignerStudio"),
   "GraphicDesignerStudio",
 );
+const NeoraDesignerOS = lazyRetry<any>(
+  () => import("./components/designer-os/NeoraDesignerOS"),
+  "NeoraDesignerOS",
+);
 import { usePredictiveLayout } from "./components/DashboardManager";
 import { AgentIntelligenceWidget } from "./components/AgentIntelligenceWidget";
 import { CommandHistoryDrawer } from "./components/CommandHistoryDrawer";
@@ -187,7 +191,9 @@ import {
   Trash,
   Play,
   SlidersHorizontal,
-  Camera
+  Camera,
+  Mic,
+  Square
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -864,6 +870,7 @@ export default function App() {
     | "evolution"
     | "builder"
     | "graphicStudio"
+    | "designerOS"
   >(() => {
     const saved = localStorage.getItem("neora_active_tab") || "home";
     return (saved === "pcController" ? "osAgent" : saved) as any;
@@ -1193,6 +1200,7 @@ export default function App() {
   });
   const [selectedDashboardDateRange, setSelectedDashboardDateRange] = useState<"ALL" | "TODAY" | "WEEK" | "OVERDUE">("ALL");
   const [expandedTaskIds, setExpandedTaskIds] = useState<string[]>([]);
+  const [subTaskSorts, setSubTaskSorts] = useState<Record<string, 'default' | 'status' | 'alpha'>>({});
   const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
   const [isCategorizing, setIsCategorizing] = useState(false);
 
@@ -1556,6 +1564,27 @@ export default function App() {
     });
   };
 
+  const duplicateTask = (taskId: string) => {
+    const original = tasks.find(t => t.id === taskId);
+    if (!original) return;
+    const clone: Task = {
+      ...original,
+      id: `task_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      title: `${original.title} (Copy)`,
+      subTasks: original.subTasks ? original.subTasks.map(st => ({
+        ...st,
+        id: `subtask_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+        completed: false
+      })) : [],
+      createdAt: new Date().toISOString(),
+      completed: false,
+      completedAt: undefined,
+      archived: false
+    };
+    setTasks(prev => [clone, ...prev]);
+    triggerDbSyncAnimation();
+  };
+
   const handleThemeChange = (theme: 'cyber' | 'retro' | 'matrix' | 'sunset' | 'solarized') => {
     setVisualTheme(theme);
     localStorage.setItem('neora_visual_theme', theme);
@@ -1575,6 +1604,7 @@ export default function App() {
   const [isPlusRotating, setIsPlusRotating] = useState(false);
   const [selectedDashboardTag, setSelectedDashboardTag] = useState<string>("ALL");
   const [isTagDropdownOpen, setIsTagDropdownOpen] = useState(false);
+  const [archiveConfirm, setArchiveConfirm] = useState<{ id: string; title: string } | null>(null);
   const [contextMenuTask, setContextMenuTask] = useState<{
     id: string;
     x: number;
@@ -1756,6 +1786,53 @@ export default function App() {
   // Skill notifications & Drag & Drop layout state (Tasks 4, 7)
   const { notification: skillNotification, clearNotification: clearSkillNotification } = useSkillNotification();
   const [draggedWidgetId, setDraggedWidgetId] = useState<string | null>(null);
+  
+  // Dashboard Task Drag & Drop States & Handlers
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [dragOverTaskId, setDragOverTaskId] = useState<string | null>(null);
+
+  const handleTaskDragStart = (e: any, taskId: string) => {
+    e.stopPropagation();
+    setDraggedTaskId(taskId);
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", taskId);
+    }
+  };
+
+  const handleTaskDragOver = (e: any, taskId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (draggedTaskId && draggedTaskId !== taskId) {
+      setDragOverTaskId(taskId);
+    }
+  };
+
+  const handleTaskDragLeave = (e: any) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverTaskId(null);
+  };
+
+  const handleTaskDrop = (e: any, targetTaskId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverTaskId(null);
+    if (!draggedTaskId || draggedTaskId === targetTaskId) return;
+
+    const sourceIdx = tasks.findIndex((t) => t.id === draggedTaskId);
+    const targetIdx = tasks.findIndex((t) => t.id === targetTaskId);
+
+    if (sourceIdx !== -1 && targetIdx !== -1) {
+      const updatedTasks = [...tasks];
+      const [draggedItem] = updatedTasks.splice(sourceIdx, 1);
+      updatedTasks.splice(targetIdx, 0, draggedItem);
+      setTasks(updatedTasks);
+      playSystemChirp("beep");
+      triggerDbSyncAnimation();
+    }
+    setDraggedTaskId(null);
+  };
 
   const handleDragStart = (e: any, widgetId: string) => {
     setDraggedWidgetId(widgetId);
@@ -1956,6 +2033,77 @@ export default function App() {
   });
   const [notesUnsaved, setNotesUnsaved] = useState(false);
   const [showNotesSaved, setShowNotesSaved] = useState(false);
+
+  const [scratchpadIsRecording, setScratchpadIsRecording] = useState(false);
+  const [scratchpadIsTranscribing, setScratchpadIsTranscribing] = useState(false);
+  const scratchpadMediaRecorderRef = React.useRef<MediaRecorder | null>(null);
+  const scratchpadAudioChunksRef = React.useRef<Blob[]>([]);
+
+  const startScratchpadRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      let mediaRecorder;
+      try {
+        mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      } catch (e) {
+        mediaRecorder = new MediaRecorder(stream);
+      }
+      
+      scratchpadAudioChunksRef.current = [];
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          scratchpadAudioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(scratchpadAudioChunksRef.current, { type: 'audio/webm' });
+        stream.getTracks().forEach(track => track.stop());
+        
+        setScratchpadIsTranscribing(true);
+        try {
+          const formData = new FormData();
+          formData.append('file', audioBlob, 'audio.webm');
+          
+          const res = await fetch('/api/transcribe', {
+            method: 'POST',
+            body: formData,
+          });
+          const data = await res.json();
+          if (data.status === 'success' && data.text) {
+            setScratchpadDraft(prev => {
+              const separator = prev ? '\n\n' : '';
+              return prev + separator + `🎤 [Voice Memo]: ${data.text}`;
+            });
+            setNotesUnsaved(true);
+          } else if (data.status === 'api_key_missing') {
+            alert('OpenAI API Key is not configured in env. Please provide OPENAI_API_KEY for Whisper STT.');
+          } else {
+            alert('Transcription failed: ' + (data.error || 'Unknown error'));
+          }
+        } catch (err) {
+          console.error('Error transcribing audio:', err);
+          alert('Transcription network request failed.');
+        } finally {
+          setScratchpadIsTranscribing(false);
+        }
+      };
+
+      scratchpadMediaRecorderRef.current = mediaRecorder;
+      mediaRecorder.start();
+      setScratchpadIsRecording(true);
+    } catch (err) {
+      console.error('Failed to start microphone:', err);
+      alert('Microphone access denied or unsupported.');
+    }
+  };
+
+  const stopScratchpadRecording = () => {
+    if (scratchpadMediaRecorderRef.current && scratchpadIsRecording) {
+      scratchpadMediaRecorderRef.current.stop();
+      setScratchpadIsRecording(false);
+    }
+  };
 
   // Debounce scratchpad
   React.useEffect(() => {
@@ -3158,6 +3306,12 @@ export default function App() {
                       color: "#00ff88",
                     },
                     {
+                      id: "designerOS",
+                      label: t.navDesignerOS,
+                      icon: Sparkles,
+                      color: "#ec4899",
+                    },
+                    {
                       id: "evolution",
                       label: lang === "bn" ? "ইভোলিউশন" : "EVOLUTION",
                       icon: Cpu,
@@ -4102,7 +4256,14 @@ export default function App() {
                                                 initial={{ opacity: 1, height: "auto" }}
                                                 exit={{ opacity: 0, height: 0, marginTop: 0, marginBottom: 0, padding: 0 }}
                                                 transition={{ duration: 0.25, ease: "easeInOut" }}
-                                                className="relative overflow-hidden rounded"
+                                                className={`relative overflow-hidden rounded cursor-grab active:cursor-grabbing transition-all ${
+                                                  dragOverTaskId === tk.id ? "border border-dashed border-cyan-400 bg-cyan-950/20 scale-[0.98]" : ""
+                                                } ${draggedTaskId === tk.id ? "opacity-40" : ""}`}
+                                                draggable
+                                                onDragStart={(e) => handleTaskDragStart(e, tk.id)}
+                                                onDragOver={(e) => handleTaskDragOver(e, tk.id)}
+                                                onDragLeave={handleTaskDragLeave}
+                                                onDrop={(e) => handleTaskDrop(e, tk.id)}
                                               >
                                                 {/* Swipe Action Indicator under the card */}
                                                 <div className="absolute inset-0 bg-gradient-to-l from-rose-600/20 via-rose-500/5 to-transparent flex items-center justify-end pr-3 pointer-events-none rounded border border-transparent">
@@ -4288,6 +4449,48 @@ export default function App() {
                                                           </div>
                                                         );
                                                       })()}
+
+                                                      {/* Sub-Task Circular Progress Indicator */}
+                                                      {(() => {
+                                                        const subTasksCount = tk.subTasks?.length || 0;
+                                                        const completedSubTasksCount = tk.subTasks?.filter(s => s.completed).length || 0;
+                                                        const ratioPercent = subTasksCount > 0 
+                                                          ? Math.round((completedSubTasksCount / subTasksCount) * 100) 
+                                                          : (tk.completed ? 100 : 0);
+
+                                                        const radius = 5;
+                                                        const circumference = 2 * Math.PI * radius;
+                                                        const strokeDashoffset = circumference - (circumference * ratioPercent) / 100;
+
+                                                        return (
+                                                          <div className="relative w-4 h-4 flex items-center justify-center shrink-0 cursor-help" title={`Sub-tasks Progress: ${completedSubTasksCount}/${subTasksCount} completed (${ratioPercent}%)`}>
+                                                            <svg className="w-4 h-4 -rotate-90" viewBox="0 0 14 14">
+                                                              <circle
+                                                                cx="7"
+                                                                cy="7"
+                                                                r={radius}
+                                                                className="stroke-slate-800 fill-none"
+                                                                strokeWidth="1.8"
+                                                              />
+                                                              <circle
+                                                                cx="7"
+                                                                cy="7"
+                                                                r={radius}
+                                                                className="stroke-emerald-400 fill-none transition-all duration-300"
+                                                                strokeWidth="1.8"
+                                                                strokeDasharray={circumference}
+                                                                strokeDashoffset={strokeDashoffset}
+                                                                strokeLinecap="round"
+                                                              />
+                                                            </svg>
+                                                            {ratioPercent === 100 ? (
+                                                              <div className="absolute w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                                            ) : ratioPercent > 0 ? (
+                                                              <span className="absolute text-[5px] font-mono font-black text-emerald-300">{Math.floor(ratioPercent / 10)}</span>
+                                                            ) : null}
+                                                          </div>
+                                                        );
+                                                      })()}
                                                       
                                                       {/* Colored priority badge */}
                                                       {tk.priority === "critical" || tk.priority === "high" ? (
@@ -4458,57 +4661,150 @@ export default function App() {
 
                                                       {/* NESTED SUB-TASKS SECTION */}
                                                       <div className="space-y-1.5 pt-1.5 border-t border-slate-900/40" onClick={e => e.stopPropagation()}>
-                                                        <div className="flex justify-between items-center mb-1">
-                                                          <span className="font-mono text-[7px] text-cyan-500 uppercase tracking-wider">Sub-Objectives:</span>
-                                                          <span className="text-[7px] font-mono text-slate-500">
+                                                        <div className="flex justify-between items-center mb-1 gap-2">
+                                                          <div className="flex items-center gap-1.5 flex-wrap">
+                                                            <span className="font-mono text-[7px] text-cyan-500 uppercase tracking-wider shrink-0">Sub-Objectives:</span>
+                                                            <div className="flex items-center gap-1 bg-slate-900 px-1 py-0.2 rounded border border-slate-850/60 shrink-0">
+                                                              <button
+                                                                onClick={(e) => {
+                                                                  e.stopPropagation();
+                                                                  setSubTaskSorts(prev => ({ ...prev, [tk.id]: 'default' }));
+                                                                }}
+                                                                className={`px-1 py-0.2 rounded text-[5.5px] font-mono font-bold uppercase transition-colors ${
+                                                                  (subTaskSorts[tk.id] || 'default') === 'default' ? 'bg-cyan-500 text-slate-950 font-black' : 'text-slate-400 hover:text-white'
+                                                                }`}
+                                                                title="Original order"
+                                                              >
+                                                                Default
+                                                              </button>
+                                                              <button
+                                                                onClick={(e) => {
+                                                                  e.stopPropagation();
+                                                                  setSubTaskSorts(prev => ({ ...prev, [tk.id]: 'status' }));
+                                                                }}
+                                                                className={`px-1 py-0.2 rounded text-[5.5px] font-mono font-bold uppercase transition-colors ${
+                                                                  (subTaskSorts[tk.id] || 'default') === 'status' ? 'bg-cyan-500 text-slate-950 font-black' : 'text-slate-400 hover:text-white'
+                                                                }`}
+                                                                title="Automatic Sort by Status (Incomplete first)"
+                                                              >
+                                                                Status
+                                                              </button>
+                                                              <button
+                                                                onClick={(e) => {
+                                                                  e.stopPropagation();
+                                                                  setSubTaskSorts(prev => ({ ...prev, [tk.id]: 'alpha' }));
+                                                                }}
+                                                                className={`px-1 py-0.2 rounded text-[5.5px] font-mono font-bold uppercase transition-colors ${
+                                                                  (subTaskSorts[tk.id] || 'default') === 'alpha' ? 'bg-cyan-500 text-slate-950 font-black' : 'text-slate-400 hover:text-white'
+                                                                }`}
+                                                                title="Automatic Sort Alphabetically"
+                                                              >
+                                                                A-Z
+                                                              </button>
+                                                            </div>
+                                                          </div>
+                                                          <span className="text-[7px] font-mono text-slate-500 shrink-0">
                                                             {(tk.subTasks || []).filter(s => s.completed).length}/{(tk.subTasks || []).length} done
                                                           </span>
                                                         </div>
-                                                        {(tk.subTasks || []).map(st => (
-                                                          <div key={st.id} className="flex items-center gap-1.5 py-0.5">
-                                                            <input
-                                                              type="checkbox"
-                                                              checked={st.completed}
-                                                              onChange={(e) => {
-                                                                e.stopPropagation();
-                                                                setTasks(prev => prev.map(t => {
-                                                                  if (t.id === tk.id) {
-                                                                    return {
-                                                                      ...t,
-                                                                      subTasks: (t.subTasks || []).map(s => s.id === st.id ? { ...s, completed: !s.completed } : s)
-                                                                    };
-                                                                  }
-                                                                  return t;
-                                                                }));
-                                                                playSystemChirp("success");
-                                                                triggerDbSyncAnimation();
-                                                              }}
-                                                              className="w-3 h-3 text-cyan-500 rounded border-slate-800 bg-slate-900 cursor-pointer shrink-0 focus:ring-0"
-                                                            />
-                                                            <span className={`text-[8px] font-sans flex-1 truncate ${st.completed ? "line-through text-slate-600 opacity-60" : "text-slate-300"}`}>
-                                                              {st.title}
-                                                            </span>
-                                                            <button
-                                                              onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setTasks(prev => prev.map(t => {
-                                                                  if (t.id === tk.id) {
-                                                                    return {
-                                                                      ...t,
-                                                                      subTasks: (t.subTasks || []).filter(s => s.id !== st.id)
-                                                                    };
-                                                                  }
-                                                                  return t;
-                                                                }));
-                                                                playSystemChirp("click");
-                                                                triggerDbSyncAnimation();
-                                                              }}
-                                                              className="text-slate-600 hover:text-rose-400 font-mono text-[8px] px-1"
-                                                            >
-                                                              ✕
-                                                            </button>
-                                                          </div>
-                                                        ))}
+
+                                                        {(() => {
+                                                          const sortMode = subTaskSorts[tk.id] || 'default';
+                                                          const subTasksList = [...(tk.subTasks || [])];
+                                                          if (sortMode === 'status') {
+                                                            subTasksList.sort((a, b) => {
+                                                              if (a.completed !== b.completed) {
+                                                                return a.completed ? 1 : -1;
+                                                              }
+                                                              const order = { critical: 0, high: 1, medium: 2, low: 3 };
+                                                              return (order[a.priority || 'medium'] || 2) - (order[b.priority || 'medium'] || 2);
+                                                            });
+                                                          } else if (sortMode === 'alpha') {
+                                                            subTasksList.sort((a, b) => a.title.localeCompare(b.title));
+                                                          }
+
+                                                          return subTasksList.map(st => {
+                                                            const sPrio = st.priority || 'medium';
+                                                            const prioColors = {
+                                                              low: "bg-slate-900/60 text-slate-400 border-slate-800/80 hover:text-slate-200",
+                                                              medium: "bg-cyan-950/40 text-cyan-400 border-cyan-800/30 hover:text-cyan-200",
+                                                              high: "bg-amber-950/40 text-amber-300 border-amber-800/30 hover:text-amber-100",
+                                                              critical: "bg-rose-950/40 text-rose-300 border-rose-800/40 font-extrabold hover:text-rose-100 animate-pulse",
+                                                            }[sPrio];
+
+                                                            return (
+                                                              <div key={st.id} className="flex items-center gap-1.5 py-0.5 border-b border-slate-900/10 hover:bg-slate-900/10 px-1 rounded transition-colors">
+                                                                <input
+                                                                  type="checkbox"
+                                                                  checked={st.completed}
+                                                                  onChange={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setTasks(prev => prev.map(t => {
+                                                                      if (t.id === tk.id) {
+                                                                        return {
+                                                                          ...t,
+                                                                          subTasks: (t.subTasks || []).map(s => s.id === st.id ? { ...s, completed: !s.completed } : s)
+                                                                        };
+                                                                      }
+                                                                      return t;
+                                                                    }));
+                                                                    playSystemChirp("success");
+                                                                    triggerDbSyncAnimation();
+                                                                  }}
+                                                                  className="w-3 h-3 text-cyan-500 rounded border-slate-800 bg-slate-900 cursor-pointer shrink-0 focus:ring-0"
+                                                                />
+                                                                <span className={`text-[8px] font-sans flex-1 truncate ${st.completed ? "line-through text-slate-600 opacity-50" : "text-slate-300"}`}>
+                                                                  {st.title}
+                                                                </span>
+
+                                                                {/* Clickable Sub-task Priority Badge */}
+                                                                <button
+                                                                  onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    const priorities: ('low' | 'medium' | 'high' | 'critical')[] = ['low', 'medium', 'high', 'critical'];
+                                                                    const currentIndex = priorities.indexOf(sPrio);
+                                                                    const nextPriority = priorities[(currentIndex + 1) % priorities.length];
+                                                                    setTasks(prev => prev.map(t => {
+                                                                      if (t.id === tk.id) {
+                                                                        return {
+                                                                          ...t,
+                                                                          subTasks: (t.subTasks || []).map(s => s.id === st.id ? { ...s, priority: nextPriority } : s)
+                                                                        };
+                                                                      }
+                                                                      return t;
+                                                                    }));
+                                                                    playSystemChirp("click");
+                                                                    triggerDbSyncAnimation();
+                                                                  }}
+                                                                  className={`px-1 py-0.2 text-[5.5px] font-mono font-bold uppercase rounded border transition-all ${prioColors}`}
+                                                                  title={`Urgency: ${sPrio.toUpperCase()} (Click to change)`}
+                                                                >
+                                                                  {sPrio}
+                                                                </button>
+
+                                                                <button
+                                                                  onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setTasks(prev => prev.map(t => {
+                                                                      if (t.id === tk.id) {
+                                                                        return {
+                                                                          ...t,
+                                                                          subTasks: (t.subTasks || []).filter(s => s.id !== st.id)
+                                                                        };
+                                                                      }
+                                                                      return t;
+                                                                    }));
+                                                                    playSystemChirp("click");
+                                                                    triggerDbSyncAnimation();
+                                                                  }}
+                                                                  className="text-slate-600 hover:text-rose-400 font-mono text-[8px] px-1 transition-colors"
+                                                                >
+                                                                  ✕
+                                                                </button>
+                                                              </div>
+                                                            );
+                                                          });
+                                                        })()}
                                                         
                                                         <div className="flex gap-1.5 items-center pt-0.5">
                                                           <input
@@ -4519,11 +4815,13 @@ export default function App() {
                                                               if (e.key === 'Enter') {
                                                                 const val = e.currentTarget.value.trim();
                                                                 if (val) {
+                                                                  const prioritySelect = document.getElementById(`new-subtask-priority-${tk.id}`) as HTMLSelectElement;
+                                                                  const sPrio = (prioritySelect?.value || 'medium') as 'low' | 'medium' | 'high' | 'critical';
                                                                   setTasks(prev => prev.map(t => {
                                                                     if (t.id === tk.id) {
                                                                       return {
                                                                         ...t,
-                                                                        subTasks: [...(t.subTasks || []), { id: Math.random().toString(), title: val, completed: false }]
+                                                                        subTasks: [...(t.subTasks || []), { id: Math.random().toString(), title: val, completed: false, priority: sPrio }]
                                                                       };
                                                                     }
                                                                     return t;
@@ -4536,17 +4834,30 @@ export default function App() {
                                                             }}
                                                             className="flex-1 bg-slate-900 border border-slate-850 focus:border-cyan-500/40 rounded px-1.5 py-0.5 text-[8px] text-slate-200 placeholder-slate-600 focus:outline-none font-sans"
                                                           />
+                                                          <select
+                                                            id={`new-subtask-priority-${tk.id}`}
+                                                            defaultValue="medium"
+                                                            className="bg-slate-900 border border-slate-850 text-[7px] text-slate-300 rounded px-1 py-0.5 focus:outline-none font-sans cursor-pointer focus:border-cyan-500/40"
+                                                            title="Subtask Urgency"
+                                                          >
+                                                            <option value="low">Low</option>
+                                                            <option value="medium">Medium</option>
+                                                            <option value="high">High</option>
+                                                            <option value="critical">Critical</option>
+                                                          </select>
                                                           <button
                                                             onClick={(e) => {
                                                               e.stopPropagation();
                                                               const input = document.getElementById(`new-subtask-input-${tk.id}`) as HTMLInputElement;
                                                               const val = input?.value.trim();
                                                               if (val) {
+                                                                const prioritySelect = document.getElementById(`new-subtask-priority-${tk.id}`) as HTMLSelectElement;
+                                                                const sPrio = (prioritySelect?.value || 'medium') as 'low' | 'medium' | 'high' | 'critical';
                                                                 setTasks(prev => prev.map(t => {
                                                                   if (t.id === tk.id) {
                                                                     return {
                                                                       ...t,
-                                                                      subTasks: [...(t.subTasks || []), { id: Math.random().toString(), title: val, completed: false }]
+                                                                      subTasks: [...(t.subTasks || []), { id: Math.random().toString(), title: val, completed: false, priority: sPrio }]
                                                                     };
                                                                   }
                                                                   return t;
@@ -4556,7 +4867,7 @@ export default function App() {
                                                                 triggerDbSyncAnimation();
                                                               }
                                                             }}
-                                                            className="px-1.5 py-0.5 bg-cyan-950 hover:bg-cyan-900/40 text-cyan-400 rounded border border-cyan-800/30 text-[7.5px] font-bold"
+                                                            className="px-1.5 py-0.5 bg-cyan-950 hover:bg-cyan-900/40 text-cyan-400 rounded border border-cyan-800/30 text-[7.5px] font-bold shrink-0"
                                                           >
                                                             ADD
                                                           </button>
@@ -5272,12 +5583,49 @@ export default function App() {
                               />
 
                               <div className="flex items-center justify-between mb-1.5">
-                                <span
-                                  className="jarvis-label"
-                                  style={{ color: "rgba(236,72,153,0.7)" }}
-                                >
-                                  SYSTEM SCRATCHPAD
-                                </span>
+                                <div className="flex items-center gap-2">
+                                  <span
+                                    className="jarvis-label"
+                                    style={{ color: "rgba(236,72,153,0.7)" }}
+                                  >
+                                    SYSTEM SCRATCHPAD
+                                  </span>
+                                  {/* Voice Memo Button */}
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (scratchpadIsRecording) {
+                                        stopScratchpadRecording();
+                                      } else {
+                                        startScratchpadRecording();
+                                      }
+                                    }}
+                                    disabled={scratchpadIsTranscribing}
+                                    className={`p-1 rounded-full border transition-all cursor-pointer ${
+                                      scratchpadIsRecording
+                                        ? "bg-red-500/20 border-red-500 text-red-400 animate-pulse"
+                                        : "bg-pink-950/40 border-pink-500/20 text-pink-400 hover:bg-pink-500/10"
+                                    }`}
+                                    title={scratchpadIsRecording ? "Stop Recording" : "Record Voice Memo"}
+                                  >
+                                    {scratchpadIsRecording ? (
+                                      <Square className="w-3 h-3" />
+                                    ) : (
+                                      <Mic className="w-3 h-3" />
+                                    )}
+                                  </button>
+                                  {scratchpadIsTranscribing && (
+                                    <span className="text-[8px] font-mono text-cyan-400 animate-pulse flex items-center gap-1">
+                                      <span className="w-1.5 h-1.5 border border-cyan-400 border-t-transparent rounded-full animate-spin"></span>
+                                      Transcribing...
+                                    </span>
+                                  )}
+                                  {scratchpadIsRecording && (
+                                    <span className="text-[8px] font-mono text-red-400 animate-pulse">
+                                      ● REC
+                                    </span>
+                                  )}
+                                </div>
                                 {showNotesSaved && (
                                   <span className="text-[9px] font-mono text-pink-400 animate-pulse flex items-center gap-1">
                                     <span>●</span>{" "}
@@ -5656,6 +6004,8 @@ export default function App() {
                     {activeTab === "builder" && <BuilderView lang={lang} onChangeLang={setLang} />}
 
                     {activeTab === "graphicStudio" && <GraphicDesignerStudio lang={lang} />}
+
+                    {activeTab === "designerOS" && <NeoraDesignerOS lang={lang} />}
                   </motion.div>
                 </AnimatePresence>
               </main>
@@ -6027,6 +6377,55 @@ export default function App() {
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {/* ===== ARCHIVE SAFETY NET MODAL ===== */}
+            <AnimatePresence>
+              {archiveConfirm && (
+                <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className="w-full max-w-sm bg-slate-950 border border-amber-500/30 rounded-xl p-5 text-center shadow-[0_0_35px_rgba(245,158,11,0.15)] flex flex-col gap-4 font-mono text-xs"
+                  >
+                    <div className="mx-auto w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 text-xl animate-pulse">
+                      ⚠️
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-100 uppercase tracking-wide">
+                        {lang === 'bn' ? 'টাস্ক আর্কাইভ নিশ্চিত করুন' : 'Confirm Archive Task'}
+                      </h3>
+                      <p className="text-[10px] text-slate-400 mt-2 leading-relaxed text-left">
+                        {lang === 'bn' 
+                          ? `আপনি কি নিশ্চিত যে আপনি "${archiveConfirm.title}" টাস্কটি আর্কাইভে পাঠাতে চান? এটি একটি গুরুত্বপূর্ণ কাজ হতে পারে!`
+                          : `Are you sure you want to archive the task "${archiveConfirm.title}"? This is a safeguard to prevent accidental data loss of significant work items.`
+                        }
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 mt-2">
+                      <button
+                        onClick={() => setArchiveConfirm(null)}
+                        className="py-2.5 bg-slate-900 border border-slate-800 text-slate-300 font-bold rounded-lg uppercase tracking-wider hover:bg-slate-850 transition-colors cursor-pointer text-[10px]"
+                      >
+                        {lang === 'bn' ? 'না, বাতিল করুন' : 'No, Keep It'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setTasks(prev => prev.map(t => t.id === archiveConfirm.id ? { ...t, archived: true } : t));
+                          triggerDbSyncAnimation();
+                          setArchiveConfirm(null);
+                          playSystemChirp("success");
+                        }}
+                        className="py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-lg uppercase tracking-wider transition-colors cursor-pointer text-[10px]"
+                      >
+                        {lang === 'bn' ? 'হ্যাঁ, আর্কাইভ করুন' : 'Yes, Archive'}
+                      </button>
+                    </div>
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
+
             {/* ===== HOLOGRAPHIC VOICE COMMAND TOAST ===== */}
             <AnimatePresence>
               {voiceToast && (
@@ -6291,6 +6690,33 @@ export default function App() {
                         ))}
                       </div>
                     </div>
+
+                    {/* DUPLICATE TASK */}
+                    <button
+                      onClick={() => {
+                        duplicateTask(contextMenuTask.id);
+                        setContextMenuTask(null);
+                      }}
+                      className="w-full text-left px-2 py-1.5 rounded text-slate-350 hover:bg-cyan-950/50 hover:text-cyan-400 transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Zap className="w-3 h-3 text-cyan-400 animate-pulse" />
+                      <span>DUPLICATE TASK</span>
+                    </button>
+
+                    {/* MANUAL ARCHIVE TASK */}
+                    <button
+                      onClick={() => {
+                        const tk = tasks.find(t => t.id === contextMenuTask.id);
+                        if (tk) {
+                          setArchiveConfirm({ id: tk.id, title: tk.title });
+                        }
+                        setContextMenuTask(null);
+                      }}
+                      className="w-full text-left px-2 py-1.5 rounded text-rose-450 hover:bg-rose-950/30 hover:text-rose-400 transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Trash className="w-3 h-3 text-rose-500" />
+                      <span>ARCHIVE TASK</span>
+                    </button>
                   </motion.div>
                 );
               })()}

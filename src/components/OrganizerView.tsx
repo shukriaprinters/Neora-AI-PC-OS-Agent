@@ -3,7 +3,7 @@ import { Task, Reminder, Note, Memory } from '../types';
 import { TRANSLATIONS } from '../translations';
 import {
   CheckSquare, Plus, Trash2, Bell, Clipboard, MessageSquare, BookOpen, Volume2,
-  Calendar, Star, AlertCircle, FileText, CheckCircle, Lightbulb, Search, ArrowUpDown, ShieldAlert, Sparkles, AlertTriangle, TrendingUp
+  Calendar, Star, AlertCircle, FileText, CheckCircle, Lightbulb, Search, ArrowUpDown, ShieldAlert, Sparkles, AlertTriangle, TrendingUp, Hash
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
@@ -26,6 +26,8 @@ interface OrganizerViewProps {
   onDeleteMemory: (id: string) => void;
   onUpdateTask?: (id: string, updates: Partial<Task>) => void;
   onUpdateTaskOrder?: (tasks: Task[]) => void;
+  onDuplicateTask?: (id: string) => void;
+  onArchiveTask?: (id: string) => void;
 }
 
 export const OrganizerView = React.memo(function OrganizerView({
@@ -45,7 +47,9 @@ export const OrganizerView = React.memo(function OrganizerView({
   onDeleteNote,
   onDeleteMemory,
   onUpdateTask,
-  onUpdateTaskOrder
+  onUpdateTaskOrder,
+  onDuplicateTask,
+  onArchiveTask
 }: OrganizerViewProps) {
   const t = TRANSLATIONS[lang];
   const [activeSubTab, setActiveSubTab] = useState<'briefing' | 'tasks' | 'reminders' | 'notes' | 'memories'>('briefing');
@@ -86,6 +90,94 @@ export const OrganizerView = React.memo(function OrganizerView({
   const [customTagInput, setCustomTagInput] = useState('');
   const [selectedCompletedHistoryIds, setSelectedCompletedHistoryIds] = useState<string[]>([]);
   const [expandedTaskIds, setExpandedTaskIds] = useState<string[]>([]);
+
+  // Function to gather unique tags from tasks, notes, and memories
+  const getAllUniqueTags = () => {
+    const tagsSet = new Set<string>();
+    
+    // 1. From tasks
+    tasks.forEach(tk => {
+      if (tk.tags) {
+        tk.tags.forEach(t => tagsSet.add(t));
+      }
+      if (tk.notes) {
+        const hashtags = tk.notes.match(/#([a-zA-Z0-9_\-]+)/g);
+        if (hashtags) {
+          hashtags.forEach(h => tagsSet.add(h.substring(1)));
+        }
+      }
+      if (tk.title) {
+        const hashtags = tk.title.match(/#([a-zA-Z0-9_\-]+)/g);
+        if (hashtags) {
+          hashtags.forEach(h => tagsSet.add(h.substring(1)));
+        }
+      }
+    });
+
+    // 2. From notes
+    notes.forEach(nt => {
+      if (nt.tags) {
+        nt.tags.forEach(t => tagsSet.add(t));
+      }
+      if (nt.content) {
+        const hashtags = nt.content.match(/#([a-zA-Z0-9_\-]+)/g);
+        if (hashtags) {
+          hashtags.forEach(h => tagsSet.add(h.substring(1)));
+        }
+      }
+      if (nt.title) {
+        const hashtags = nt.title.match(/#([a-zA-Z0-9_\-]+)/g);
+        if (hashtags) {
+          hashtags.forEach(h => tagsSet.add(h.substring(1)));
+        }
+      }
+    });
+
+    // 3. From memories
+    memories.forEach(m => {
+      if (m.tags) {
+        m.tags.forEach(t => tagsSet.add(t));
+      }
+      if (m.value) {
+        const hashtags = m.value.match(/#([a-zA-Z0-9_\-]+)/g);
+        if (hashtags) {
+          hashtags.forEach(h => tagsSet.add(h.substring(1)));
+        }
+      }
+      if (m.key) {
+        const hashtags = m.key.match(/#([a-zA-Z0-9_\-]+)/g);
+        if (hashtags) {
+          hashtags.forEach(h => tagsSet.add(h.substring(1)));
+        }
+      }
+    });
+
+    return Array.from(tagsSet).sort();
+  };
+
+  const taskMatchesTag = (tk: Task) => {
+    if (activeTagFilter === 'all') return true;
+    if (tk.tags && tk.tags.includes(activeTagFilter)) return true;
+    const lowerFilter = activeTagFilter.toLowerCase();
+    return (tk.title || '').toLowerCase().includes('#' + lowerFilter) || 
+           (tk.notes || '').toLowerCase().includes('#' + lowerFilter);
+  };
+
+  const noteMatchesTag = (nt: Note) => {
+    if (activeTagFilter === 'all') return true;
+    if (nt.tags && nt.tags.includes(activeTagFilter)) return true;
+    const lowerFilter = activeTagFilter.toLowerCase();
+    return (nt.title || '').toLowerCase().includes('#' + lowerFilter) || 
+           (nt.content || '').toLowerCase().includes('#' + lowerFilter);
+  };
+
+  const memoryMatchesTag = (m: Memory) => {
+    if (activeTagFilter === 'all') return true;
+    if (m.tags && m.tags.includes(activeTagFilter)) return true;
+    const lowerFilter = activeTagFilter.toLowerCase();
+    return (m.key || '').toLowerCase().includes('#' + lowerFilter) || 
+           (m.value || '').toLowerCase().includes('#' + lowerFilter);
+  };
 
   // Virtualized List pagination thresholds to minimize memory bloat on large datasets
   const [visibleActiveLimit, setVisibleActiveLimit] = useState(20);
@@ -176,6 +268,7 @@ export const OrganizerView = React.memo(function OrganizerView({
   // Drag and drop ordering states
   const [dragReorderedIds, setDragReorderedIds] = useState<string[]>([]);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
 
   // Bulk Selection States
   const [checkedTaskIds, setCheckedTaskIds] = useState<string[]>([]);
@@ -212,7 +305,7 @@ export const OrganizerView = React.memo(function OrganizerView({
   const activeTasksListFiltered = useMemo(() => {
     return tasks.filter(tk => {
       const matchesSearch = tk.title.toLowerCase().includes(organizerSearch.toLowerCase());
-      const matchesTag = activeTagFilter === 'all' || (tk.tags && tk.tags.includes(activeTagFilter));
+      const matchesTag = taskMatchesTag(tk);
       return !tk.completed && matchesSearch && matchesTag;
     });
   }, [tasks, organizerSearch, activeTagFilter]);
@@ -263,15 +356,26 @@ export const OrganizerView = React.memo(function OrganizerView({
 
   const handleDragStart = (e: React.DragEvent, id: string) => {
     setDraggingId(id);
-    e.dataTransfer.setData('text/plain', id);
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData('text/plain', id);
+    }
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
+  const handleDragOver = (e: React.DragEvent, id: string) => {
     e.preventDefault();
+    if (draggingId && draggingId !== id) {
+      setDragOverId(id);
+    }
+  };
+
+  const handleDragLeave = () => {
+    setDragOverId(null);
   };
 
   const handleDrop = (e: React.DragEvent, targetId: string) => {
     e.preventDefault();
+    setDragOverId(null);
     const sourceId = e.dataTransfer.getData('text/plain') || draggingId;
     if (!sourceId || sourceId === targetId) return;
 
@@ -433,8 +537,64 @@ export const OrganizerView = React.memo(function OrganizerView({
         </div>
       </div>
 
-      {/* Main interactive sub-tab view area */}
-      <div id="subtab-pane" className="flex-1 overflow-y-auto p-5">
+      {/* Outer Flex container to support Left Tag Sidebar & Right Content Area */}
+      <div className="flex-1 flex overflow-hidden">
+        
+        {/* Real-time Filter by Tag Sidebar */}
+        <div className="w-52 bg-slate-900/40 border-r border-slate-800/80 p-4 shrink-0 flex flex-col overflow-y-auto">
+          <div className="flex items-center gap-2 mb-4 shrink-0 select-none">
+            <Hash className="w-4 h-4 text-cyan-400" />
+            <span className="text-[10px] font-mono font-bold uppercase text-slate-300 tracking-wider">
+              {lang === 'bn' ? 'ট্যাগ ফিল্টার' : 'FILTER BY TAG'}
+            </span>
+          </div>
+
+          <div className="space-y-1">
+            <button
+              onClick={() => setActiveTagFilter('all')}
+              className={`w-full text-left px-2.5 py-1.5 rounded text-xs font-mono transition-all flex items-center justify-between cursor-pointer ${
+                activeTagFilter === 'all'
+                  ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-bold'
+                  : 'text-slate-400 hover:bg-slate-800/40 hover:text-slate-200'
+              }`}
+            >
+              <span>{lang === 'bn' ? 'সব ট্যাগ' : 'ALL TAGS'}</span>
+              <span className="text-[10px] opacity-70">
+                {tasks.length + notes.length + memories.length}
+              </span>
+            </button>
+
+            {/* Unique tags list */}
+            {getAllUniqueTags().map(tag => {
+              const isActive = activeTagFilter === tag;
+              // calculate tag occurrence count for badges
+              const taskCount = tasks.filter(tk => (tk.tags && tk.tags.includes(tag)) || (tk.title || '').includes('#' + tag) || (tk.notes || '').includes('#' + tag)).length;
+              const noteCount = notes.filter(nt => (nt.tags && nt.tags.includes(tag)) || (nt.title || '').includes('#' + tag) || (nt.content || '').includes('#' + tag)).length;
+              const memoryCount = memories.filter(m => (m.tags && m.tags.includes(tag)) || (m.key || '').includes('#' + tag) || (m.value || '').includes('#' + tag)).length;
+              const totalCount = taskCount + noteCount + memoryCount;
+
+              return (
+                <button
+                  key={tag}
+                  onClick={() => setActiveTagFilter(tag)}
+                  className={`w-full text-left px-2.5 py-1.5 rounded text-xs font-mono transition-all flex items-center justify-between truncate cursor-pointer ${
+                    isActive
+                      ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 font-bold shadow-[0_0_10px_rgba(6,182,212,0.1)]'
+                      : 'text-slate-400 hover:bg-slate-800/40 hover:text-slate-200'
+                  }`}
+                >
+                  <span className="truncate">#{tag}</span>
+                  <span className="text-[9px] bg-slate-950 border border-slate-850 px-1.5 py-0.5 rounded text-slate-500 shrink-0 ml-1.5">
+                    {totalCount}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Main interactive sub-tab view area */}
+        <div id="subtab-pane" className="flex-1 overflow-y-auto p-5">
         
         {/* TAB 1: MORNING BRIEFING COMPONENT */}
         {activeSubTab === 'briefing' && (
@@ -824,7 +984,8 @@ export const OrganizerView = React.memo(function OrganizerView({
                     key={tk.id}
                     draggable
                     onDragStart={(e: any) => handleDragStart(e, tk.id)}
-                    onDragOver={(e: any) => handleDragOver(e)}
+                    onDragOver={(e: any) => handleDragOver(e, tk.id)}
+                    onDragLeave={handleDragLeave}
                     onDrop={(e: any) => handleDrop(e, tk.id)}
                     onContextMenu={(e) => {
                       e.preventDefault();
@@ -835,10 +996,12 @@ export const OrganizerView = React.memo(function OrganizerView({
                       });
                     }}
                     className={`p-3 rounded-lg flex flex-col gap-1 hover:border-slate-800 transition-all cursor-grab active:cursor-grabbing ${
-                      tk.priority === 'critical'
+                      dragOverId === tk.id
+                        ? 'border border-dashed border-cyan-400 bg-cyan-950/20 scale-[0.98]'
+                        : tk.priority === 'critical'
                         ? 'bg-slate-900 border border-red-500/50 shadow-[0_0_12px_rgba(239,68,68,0.25)] animate-pulse'
                         : 'bg-slate-900 border border-slate-855'
-                    }`}
+                    } ${draggingId === tk.id ? 'opacity-40' : ''}`}
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex flex-col gap-1 flex-1">
@@ -1004,7 +1167,7 @@ export const OrganizerView = React.memo(function OrganizerView({
 
               {/* Batch selection and CSV Export controls */}
               {(() => {
-                const completedTasks = tasks.filter(tk => tk.completed && (activeTagFilter === 'all' || (tk.tags && tk.tags.includes(activeTagFilter))));
+                const completedTasks = tasks.filter(tk => tk.completed && taskMatchesTag(tk));
                 
                 const handleCSVExport = () => {
                   if (selectedCompletedHistoryIds.length === 0) return;
@@ -1073,10 +1236,10 @@ export const OrganizerView = React.memo(function OrganizerView({
               })()}
 
               <div className="space-y-2 max-h-[250px] overflow-y-auto pr-1">
-                {tasks.filter(t => t.completed && (activeTagFilter === 'all' || (t.tags && t.tags.includes(activeTagFilter)))).length > 0 ? (
+                {tasks.filter(t => t.completed && taskMatchesTag(t)).length > 0 ? (
                   <>
                     {[...tasks]
-                      .filter(tk => tk.completed && (activeTagFilter === 'all' || (tk.tags && tk.tags.includes(activeTagFilter))))
+                      .filter(tk => tk.completed && taskMatchesTag(tk))
                       .sort((a, b) => (b.completedAt || '').localeCompare(a.completedAt || ''))
                       .slice(0, visibleHistoryLimit)
                       .map(tk => {
@@ -1327,9 +1490,9 @@ export const OrganizerView = React.memo(function OrganizerView({
 
             {/* Notes Cards output */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {notes.filter(nt => nt.title.toLowerCase().includes(organizerSearch.toLowerCase()) || nt.content.toLowerCase().includes(organizerSearch.toLowerCase())).length > 0 ? (
+              {notes.filter(nt => (nt.title.toLowerCase().includes(organizerSearch.toLowerCase()) || nt.content.toLowerCase().includes(organizerSearch.toLowerCase())) && noteMatchesTag(nt)).length > 0 ? (
                 notes
-                  .filter(nt => nt.title.toLowerCase().includes(organizerSearch.toLowerCase()) || nt.content.toLowerCase().includes(organizerSearch.toLowerCase()))
+                  .filter(nt => (nt.title.toLowerCase().includes(organizerSearch.toLowerCase()) || nt.content.toLowerCase().includes(organizerSearch.toLowerCase())) && noteMatchesTag(nt))
                   .map(nt => (
                     <motion.div
                       layout
@@ -1447,9 +1610,9 @@ export const OrganizerView = React.memo(function OrganizerView({
 
             {/* List memories */}
             <div className="space-y-2">
-              {memories.filter(m => m.key.toLowerCase().includes(organizerSearch.toLowerCase()) || m.value.toLowerCase().includes(organizerSearch.toLowerCase())).length > 0 ? (
+              {memories.filter(m => (m.key.toLowerCase().includes(organizerSearch.toLowerCase()) || m.value.toLowerCase().includes(organizerSearch.toLowerCase())) && memoryMatchesTag(m)).length > 0 ? (
                 memories
-                  .filter(m => m.key.toLowerCase().includes(organizerSearch.toLowerCase()) || m.value.toLowerCase().includes(organizerSearch.toLowerCase()))
+                  .filter(m => (m.key.toLowerCase().includes(organizerSearch.toLowerCase()) || m.value.toLowerCase().includes(organizerSearch.toLowerCase())) && memoryMatchesTag(m))
                   .map(m => (
                     <motion.div
                       layout
@@ -1497,6 +1660,8 @@ export const OrganizerView = React.memo(function OrganizerView({
         )}
 
       </div>
+
+    </div>
 
       {/* Dynamic Bilingual Accidental Erasure Confirmation Dialog Modal */}
       <AnimatePresence>

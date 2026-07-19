@@ -335,8 +335,21 @@ Simulate container execution with \`DATABASE_URL\` set to an empty string. Attem
 Script end-to-end user navigation flow: Chat → Voice Trigger → Open Code Studio → Trigger Plan → Execute Reversible Script → Complete Earning Invoice. Ensure that page transitions perform under 150ms.`
   },
   {
-    id: "dod",
+    id: "layout-intelligence",
     number: 15,
+    title: "Layout Intelligence & Composition",
+    description: "Layout Reasoning Intelligence Engine Subsystem & Visual Canvas Ocular Analyzer.",
+    tags: ["Layout", "Design", "Vision", "Grid"],
+    iconName: "Compass",
+    content: `Neora's visual intelligence stack includes the LayoutIntelligenceEngine, offering:
+1. **Grid Matching & Snapping**: Audits adherence to modular, baseline-grid, and golden ratio rules.
+2. **Whitespace Heuristics**: Computes density ratios of positive space vs negative breathing room.
+3. **Typographical & Ocular Hierarchy**: Predicts reading flows (Z-pattern, F-pattern) and visual priorities.
+4. **Print Safe boundaries**: Verifies content safety margins and bleed zones for physical press layouts.`
+  },
+  {
+    id: "dod",
+    number: 16,
     title: "Definition of Done (DoD)",
     description: "Pristine compile status, secure routes, typography audits, and PWA scores.",
     tags: ["DoD", "Quality", "Ship"],
@@ -602,4 +615,14 @@ Every repository merge or workspace delivery is fully complete only when it meet
 - [ ] **Dynamic Responsiveness**: All 20 application pages load flawlessly on both ultra-wide screens and compact touch devices.
 - [ ] **Polished Typography & Theming**: Zero plain standard browser styling. Typography matches Space Grotesk display headings paired with JetBrains Mono, styled in Cosmic Dark Slate colors.
 - [ ] **PWA Audit Standards**: Google Lighthouse scores exceed 90 points across performance, accessibility, SEO, and PWA criteria.
+
+---
+
+### SECTION 18 — LAYOUT INTELLIGENCE & COMPOSITION ANALYZER
+Neora's layout analyzer evaluates structural grid lines and reads composition balances:
+1. **Grid Guidelines Snapping**: Aligns layers horizontally and vertically to classical margins.
+2. **Reading Path Traversal Vector**: Computes the sequence order of user eye tracking paths.
+3. **Focal Typographical Weight**: Prioritizes attention vectors on headlines.
+4. **Print Bleed Verification**: Warns if layout coordinates bleed past standard print lines.
+5. **REST API endpoints**: Supports real-time layout analyze, compare, and reconstruct.
 `;

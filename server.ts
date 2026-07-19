@@ -13,6 +13,8 @@ import { promisify } from "util";
 import { buildNeoraActions, classifyNeoraPrompt } from "./src/lib/neoraCommand";
 import { appendConversationSummary, readNeoraStore, upsertMemory, upsertPlan, writeNeoraStore } from "./src/lib/neoraStore";
 import { buildNeoraPlan } from "./src/lib/neoraPlanner";
+import neoraDesignerOSRouter from "./src/lib/neoraDesignerOSRouter";
+import neoraV2Router from "./src/backend/presentation/routes";
 const exec = promisify(execCb);
 const fsp = fs.promises;
 
@@ -552,6 +554,10 @@ const PORT = process.env.NODE_ENV === "production" ? Number(process.env.PORT || 
 // Enable JSON body parsing with increased size limit to handle large prompts and mockups
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
+
+// Register Neora AI Designer OS modular APIs (Clean Architecture V2 with transactional persistence)
+app.use("/api/v2/designer-os", neoraV2Router);
+app.use("/api/designer-os", neoraV2Router);
 
 // Configure multer storage
 const upload = multer({ storage: multer.memoryStorage() });
@@ -1391,6 +1397,504 @@ app.post("/api/chat-gemini", async (req, res) => {
     console.error("Error conducting Gemini API request:", err);
     const cleaned = getCleanErrorMessage(err);
     return res.status(500).json({ status: "error", error: cleaned });
+  }
+});
+
+// MULTIMODAL AI DESIGN STUDIO: Generate Brand New Designs based on Text and Reference Images
+app.post("/api/ai-design/generate", async (req, res) => {
+  try {
+    const { prompt, referenceImage, lang, geminiKey, styleWeights, styleProfile, regionMask, userRatings } = req.body;
+    if (!prompt) {
+      return res.status(400).json({ error: "Missing prompt in request body" });
+    }
+
+    const apiKey = geminiKey || process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.json({
+        status: "api_key_missing",
+        message: "Gemini API Key is not configured."
+      });
+    }
+
+    const client = getGeminiClient(apiKey);
+    const parts: any[] = [];
+
+    if (referenceImage) {
+      let base64Data = referenceImage;
+      let mimeType = "image/png";
+      if (referenceImage.startsWith("data:")) {
+        const matches = referenceImage.match(/^data:([^;]+);base64,(.+)$/);
+        if (matches) {
+          mimeType = matches[1];
+          base64Data = matches[2];
+        }
+      }
+      parts.push({
+        inlineData: {
+          data: base64Data,
+          mimeType: mimeType
+        }
+      });
+    }
+
+    let weightsInstructions = "";
+    if (styleWeights) {
+      weightsInstructions = `
+CRITICAL INFLUENCE BIAS (WEIGHTS):
+Strictly respect the following user-configured visual influence weights:
+- Color Palette Influence: ${styleWeights.color || 50}% (Higher means match the colors of the reference image more closely)
+- Composition/Layout Influence: ${styleWeights.composition || 50}% (Higher means preserve structural layout and positioning)
+- Typography/Accent Influence: ${styleWeights.typography || 50}% (Higher means use matching fonts and stylization)
+- Texture/Detail Influence: ${styleWeights.texture || 50}% (Higher means preserve borders, shadows, and subtle detailing)`;
+    }
+
+    let profileInstructions = "";
+    if (styleProfile) {
+      profileInstructions = `
+EXPLICIT STYLE PROFILE DIRECTIVES:
+Adhere to the following detected/modified style rules:
+- Brush Stroke/Texture Category: ${styleProfile.brushStroke || 'medium'}
+- Lighting Contrast Style: ${styleProfile.lightingContrast || 'soft'}
+- Subject-Background Hierarchy: ${styleProfile.subjectHierarchy || 'layered'}`;
+    }
+
+    let regionInstructions = "";
+    if (regionMask && regionMask.active) {
+      regionInstructions = `
+LOCALIZED INPAINTING/REGION SELECTION RESTRICTION:
+The user has drawn an active region bounding mask:
+- Horizontal Bounds (X): from ${regionMask.x}% to ${regionMask.x + regionMask.width}% of the canvas width.
+- Vertical Bounds (Y): from ${regionMask.y}% to ${regionMask.y + regionMask.height}% of the canvas height.
+You MUST ONLY modify, place, or focus your new decorative elements or changes inside this bounding box! Keep all parts of the design outside of these bounds completely clean or matching standard layout. The user wants this specific edit in this region: "${regionMask.prompt}".`;
+    }
+
+    let ratingInstructions = "";
+    if (userRatings && Array.isArray(userRatings) && userRatings.length > 0) {
+      ratingInstructions = `
+USER PREFERENCE HISTORY FEEDBACK (LEARNING ENGINE):
+Adapt to user feedback from current session ratings:
+${userRatings.map((r: any) => `- Option Name: "${r.name}", Feedback: ${r.rating === 'keep' ? 'USER LIKES THIS (replicate/keep color tones, font choices and layout balance)' : 'USER DISLIKES THIS (avoid these color choices, heavy shadows, or layout structure)'}`).join('\n')}`;
+    }
+
+    const systemPrompt = `You are a legendary expert graphic designer, professional design layout architect, and style replication specialist.
+Analyze the user's design text prompt, and the uploaded reference image (if provided) to capture its aesthetic style, colors, fonts, margins, and overall composition guidelines.
+${weightsInstructions}
+${profileInstructions}
+${regionInstructions}
+${ratingInstructions}
+
+CRITICAL REQUIREMENT FOR REFERENCE IMAGES:
+If a reference style image is provided, you MUST behave like an expert human designer replicating a visual structure:
+1. SKELETON & GRID: Analyze the spacing, elements, placement, cards, borders, and margins of the reference image. Replicate this layout structure.
+2. COLOR MAPPING: Extract the color palette, accent neon colors, shadow glows, and gradients from the reference image.
+3. ADAPTATION: Do NOT generate a generic design. You MUST map the visual style, composition, colors, lighting, and decorative shapes of the reference image directly onto your generated designs, while substituting the text contents with what the user requested in their prompt.
+4. If the prompt is in Bengali or Bengali-themed, use Bengali texts in the elements and names. Make sure the fonts are suitable (e.g. 'Galada' for calligraphy, 'Hind Siliguri' for clean modern sans, 'Noto Sans Bengali' for standard body text).
+
+Generate exactly 3 completely distinct design options/variations. Each option represents a structured template layout that can be loaded on a digital canvas.
+Each option must include:
+1. name (in English, e.g. "Golden Wedding Invite")
+2. nameBn (in Bengali, e.g. "স্বর্ণালী বিবাহ নিমন্ত্রণ")
+3. description (brief sentence)
+4. background: of type 'color' or 'gradient'. Value must be a valid hex color code (e.g. "#1e1e24") or a simple CSS linear gradient (e.g., "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)").
+5. elements: an array of ElementLayers representing text strings or shape overlays.
+   Each element layer MUST conform to this schema:
+   - type: 'text' or 'shape'
+   - content: for text, the actual visual text string (e.g. "শুভ নববর্ষ" or "Congratulations"). For shape, a valid shape type (e.g., 'rect_horizontal', 'border_ring', 'rect_vertical', 'ellipse').
+   - x: number (percentage from left, 0 to 100)
+   - y: number (percentage from top, 0 to 100)
+   - fontSize: number (standard pixel size: e.g., 14, 18, 24, 36, 48) - ONLY for text type.
+   - fontFamily: string, choose ONLY from these: "Inter", "Space Grotesk", "Playfair Display", "JetBrains Mono", "Hind Siliguri", "Noto Sans Bengali", "Galada". Note: Choose Hind Siliguri, Noto Sans Bengali, or Galada for Bengali texts!
+   - color: string, valid hex code. Must have high contrast with background!
+   - fontWeight: "normal", "semibold", or "bold".
+   - align: "left", "center", or "right" (default is "center").
+   - shadow: boolean (optional shadow overlay for legibility).
+   - width: number (optional, percentage 0 to 100, mandatory for shape type).
+   - height: number (optional, percentage 0 to 100, mandatory for shape type).
+
+Return ONLY a valid JSON object matching this schema:
+{
+  "options": [
+    {
+      "name": "string",
+      "nameBn": "string",
+      "description": "string",
+      "background": {
+        "type": "color" | "gradient",
+        "value": "string"
+      },
+      "elements": [
+        {
+          "type": "text" | "shape",
+          "content": "string",
+          "x": number,
+          "y": number,
+          "fontSize": number,
+          "fontFamily": "string",
+          "color": "string",
+          "fontWeight": "string",
+          "align": "string",
+          "shadow": boolean,
+          "width": number,
+          "height": number
+        }
+      ]
+    }
+  ]
+}
+Ensure the output contains NO markdown blocks, backticks, or extra explanation text outside.`;
+
+    parts.push({
+      text: `User Design Prompt: "${prompt}"\n\nGenerate the 3 options now following the system rules. Output pure valid JSON.`
+    });
+
+    const response = await generateGeminiContentWithFallback(client, {
+      model: "gemini-3.5-flash",
+      contents: parts,
+      config: {
+        systemInstruction: systemPrompt,
+        temperature: 0.4,
+        responseMimeType: "application/json"
+      }
+    });
+
+    let text = response.text?.trim() || "";
+    if (text.startsWith("```json")) {
+      text = text.substring(7);
+    } else if (text.startsWith("```")) {
+      text = text.substring(3);
+    }
+    if (text.endsWith("```")) {
+      text = text.substring(0, text.length - 3);
+    }
+    text = text.trim();
+
+    const parsed = JSON.parse(text);
+    return res.json({ status: "success", options: parsed.options || [] });
+  } catch (err: any) {
+    console.error("Error generating design options:", err);
+    return res.status(500).json({ status: "error", error: err.message });
+  }
+});
+
+// INTERACTIVE CANVAS REFINEMENT: Update layers list and styling based on conversational instructions
+app.post("/api/ai-design/refine", async (req, res) => {
+  try {
+    const { instruction, elements, background, lang, geminiKey } = req.body;
+    if (!instruction) {
+      return res.status(400).json({ error: "Missing instruction in request body" });
+    }
+
+    const apiKey = geminiKey || process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.json({
+        status: "api_key_missing",
+        message: "Gemini API Key is not configured."
+      });
+    }
+
+    const client = getGeminiClient(apiKey);
+
+    const systemPrompt = `You are an expert graphic design assistant editing a live digital canvas.
+The canvas currently has a background and an array of element layers.
+You will receive the user's conversational instruction, and your job is to modify, delete, resize, reposition, or add new layers to satisfy their request perfectly.
+
+Current Background: ${JSON.stringify(background)}
+Current Elements Array: ${JSON.stringify(elements)}
+
+User Edit Instruction: "${instruction}"
+
+Follow these rules:
+1. Make logical edits. If they say "make title green", find the element that represents the title (typically text at the top, high fontSize) and update its color property to green.
+2. If they say "add text 'Hello'", add a new element layer with content "Hello" and default styled properties, positioned nicely so it does not overlap.
+3. If they say "move sub-text to the top", update its y coordinate.
+4. Keep all coordinates as percentages (0 to 100).
+5. Support Bengali/English commands interchangeably.
+6. Make sure all fonts used are from the allowed list: "Inter", "Space Grotesk", "Playfair Display", "JetBrains Mono", "Hind Siliguri", "Noto Sans Bengali", "Galada".
+7. Make sure each element has a unique id if you are adding new ones (e.g. "layer_refine_12345").
+
+Return ONLY a valid JSON object of the following format:
+{
+  "background": {
+    "type": "color" | "gradient" | "image",
+    "value": "string"
+  },
+  "elements": [
+    ... updated elements array ...
+  ]
+}
+Return raw JSON, no markdown, no backticks, no extra text.`;
+
+    const response = await generateGeminiContentWithFallback(client, {
+      model: "gemini-3.5-flash",
+      contents: `Please apply the instruction: "${instruction}" and return the updated design. Output pure valid JSON.`,
+      config: {
+        systemInstruction: systemPrompt,
+        temperature: 0.2,
+        responseMimeType: "application/json"
+      }
+    });
+
+    let text = response.text?.trim() || "";
+    if (text.startsWith("```json")) {
+      text = text.substring(7);
+    } else if (text.startsWith("```")) {
+      text = text.substring(3);
+    }
+    if (text.endsWith("```")) {
+      text = text.substring(0, text.length - 3);
+    }
+    text = text.trim();
+
+    const parsed = JSON.parse(text);
+    return res.json({ status: "success", background: parsed.background, elements: parsed.elements });
+  } catch (err: any) {
+    console.error("Error refining design:", err);
+    return res.status(500).json({ status: "error", error: err.message });
+  }
+});
+
+// APPLY AI STYLING: Detect reference image style and map palette/glow overlays to active canvas
+app.post("/api/ai-design/apply-styling", async (req, res) => {
+  try {
+    const { elements, background, referenceImage, geminiKey } = req.body;
+    if (!referenceImage) {
+      return res.status(400).json({ error: "Missing referenceImage in request body" });
+    }
+
+    const apiKey = geminiKey || process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.json({ status: "api_key_missing", message: "Gemini API Key is not configured." });
+    }
+
+    const client = getGeminiClient(apiKey);
+    const parts: any[] = [];
+
+    let base64Data = referenceImage;
+    let mimeType = "image/png";
+    if (referenceImage.startsWith("data:")) {
+      const matches = referenceImage.match(/^data:([^;]+);base64,(.+)$/);
+      if (matches) {
+        mimeType = matches[1];
+        base64Data = matches[2];
+      }
+    }
+
+    parts.push({
+      inlineData: {
+        data: base64Data,
+        mimeType: mimeType
+      }
+    });
+
+    const currentCanvasJson = JSON.stringify({ background, elements });
+    parts.push({
+      text: `Here is the current canvas state: ${currentCanvasJson}\n\nPlease analyze the provided reference image's visual composition. Then, map its:
+1. Color palette (background colors, text colors)
+2. Lighting style, glows, drop shadows (set shadow: true/false on layers)
+3. Border colors and shape colors
+onto this current canvas state. Keep the original text contents and coordinates (x, y) exactly the same, but update their color, shadow, and background styles to perfectly replicate the reference image's aesthetic look and feel.
+Return ONLY a valid JSON object matching this schema:
+{
+  "background": { "type": "color" | "gradient", "value": "string" },
+  "elements": [ ... updated elements array with new color, shadow, etc ... ]
+}
+Return pure raw JSON, no markdown blocks, no backticks, no extra text.`
+    });
+
+    const response = await generateGeminiContentWithFallback(client, {
+      model: "gemini-3.5-flash",
+      contents: parts,
+      config: {
+        temperature: 0.2,
+        responseMimeType: "application/json"
+      }
+    });
+
+    let text = response.text?.trim() || "";
+    if (text.startsWith("```json")) {
+      text = text.substring(7);
+    } else if (text.startsWith("```")) {
+      text = text.substring(3);
+    }
+    if (text.endsWith("```")) {
+      text = text.substring(0, text.length - 3);
+    }
+    text = text.trim();
+
+    const parsed = JSON.parse(text);
+    return res.json({ status: "success", background: parsed.background, elements: parsed.elements });
+  } catch (err: any) {
+    console.error("Error applying AI styling:", err);
+    return res.status(500).json({ status: "error", error: err.message });
+  }
+});
+
+// ANALYZE REFERENCE IMAGE: Extract style profiles and build a visual semantic map of layers
+app.post("/api/ai-design/analyze", async (req, res) => {
+  try {
+    const { referenceImage, geminiKey } = req.body;
+    if (!referenceImage) {
+      return res.status(400).json({ error: "Missing referenceImage in request body" });
+    }
+
+    const apiKey = geminiKey || process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      // Return high-quality defaults when Gemini is not configured
+      return res.json({
+        status: "success",
+        styleProfile: {
+          brushStroke: "textured",
+          lightingContrast: "dramatic",
+          subjectHierarchy: "depth"
+        },
+        semanticMap: {
+          objects: ["Decorative Background Canvas", "Branded Header Frame", "Accent Ribbon Badge"],
+          style: "Modern Cyberpunk Retro",
+          layout: "Asymmetrical Focal Weight"
+        }
+      });
+    }
+
+    const client = getGeminiClient(apiKey);
+    const parts: any[] = [];
+
+    let base64Data = referenceImage;
+    let mimeType = "image/png";
+    if (referenceImage.startsWith("data:")) {
+      const matches = referenceImage.match(/^data:([^;]+);base64,(.+)$/);
+      if (matches) {
+        mimeType = matches[1];
+        base64Data = matches[2];
+      }
+    }
+
+    parts.push({
+      inlineData: {
+        data: base64Data,
+        mimeType: mimeType
+      }
+    });
+
+    parts.push({
+      text: `Analyze this reference graphic design image. Perform semantic feature detection and extract:
+1. 'brush stroke texture' (classify as: fine, medium, textured, or none)
+2. 'lighting contrast' (classify as: high, soft, dramatic, or ambient)
+3. 'subject-background hierarchy' (classify as: flat, layered, symmetrical, or depth)
+4. 'semantic map': Identify the objects, decorative shapes, and components visible in this layout (e.g. ["Header frame", "Center circular logo", "Neon footer border"]).
+5. 'aesthetic style name' (e.g. "Vintage Art Deco", "Neon Cyberpunk", "Minimalist Tech")
+6. 'composition layout type' (e.g. "Asymmetrical Central Weight", "Symmetrical Border Grid")
+
+Return ONLY a valid JSON object matching this schema:
+{
+  "styleProfile": {
+    "brushStroke": "fine" | "medium" | "textured" | "none",
+    "lightingContrast": "high" | "soft" | "dramatic" | "ambient",
+    "subjectHierarchy": "flat" | "layered" | "symmetrical" | "depth"
+  },
+  "semanticMap": {
+    "objects": ["string", "string", ...],
+    "style": "string",
+    "layout": "string"
+  }
+}
+Return pure raw JSON, no markdown blocks, no backticks, no extra text.`
+    });
+
+    const response = await generateGeminiContentWithFallback(client, {
+      model: "gemini-3.5-flash",
+      contents: parts,
+      config: {
+        temperature: 0.1,
+        responseMimeType: "application/json"
+      }
+    });
+
+    let text = response.text?.trim() || "";
+    if (text.startsWith("```json")) {
+      text = text.substring(7);
+    } else if (text.startsWith("```")) {
+      text = text.substring(3);
+    }
+    if (text.endsWith("```")) {
+      text = text.substring(0, text.length - 3);
+    }
+    text = text.trim();
+
+    const parsed = JSON.parse(text);
+    return res.json({ status: "success", styleProfile: parsed.styleProfile, semanticMap: parsed.semanticMap });
+  } catch (err: any) {
+    console.error("Error analyzing image:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// RECONSTRUCT DESIGN: Build a structured vector canvas to match the detected semantic layout
+app.post("/api/ai-design/reconstruct", async (req, res) => {
+  try {
+    const { semanticMap, styleProfile, prompt, geminiKey } = req.body;
+    if (!semanticMap) {
+      return res.status(400).json({ error: "Missing semanticMap in request body" });
+    }
+
+    const apiKey = geminiKey || process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.status(400).json({ error: "Gemini API key is required for visual layout reconstruction." });
+    }
+
+    const client = getGeminiClient(apiKey);
+    const systemPrompt = `You are a professional design reconstruction system.
+Given a detected semantic map layout and style profile of a reference image, construct a fully vectorized digital canvas matching this layout.
+The design should also respect the user's custom text prompt: "${prompt || 'Elegant Welcome Template'}".
+
+The canvas must include:
+1. background: { type: "color" | "gradient", value: "string" }
+2. elements: array of ElementLayer objects:
+   - type: 'text' or 'shape'
+   - content: text content (e.g., heading or sub-text) or shape type (e.g., 'rect_horizontal', 'border_ring', 'ellipse')
+   - x, y: coordinates in percentage (0 to 100)
+   - width, height: mandatory for shape type
+   - color: hex color code
+   - fontSize, fontFamily: for text type
+   - shadow: boolean
+
+Map the detected semantic objects: ${JSON.stringify(semanticMap.objects)}
+Style Name: "${semanticMap.style}"
+Layout Type: "${semanticMap.layout}"
+Brush Texture Style: "${styleProfile?.brushStroke || 'medium'}"
+
+Return ONLY a valid JSON object matching this schema:
+{
+  "background": { "type": "color" | "gradient", "value": "string" },
+  "elements": [ ... reconstruct layers matching the semantic map layout ... ]
+}
+Return pure raw JSON, no markdown, no backticks, no extra text.`;
+
+    const response = await generateGeminiContentWithFallback(client, {
+      model: "gemini-3.5-flash",
+      contents: "Construct the digital canvas elements based on the semantic map. Output pure valid JSON.",
+      config: {
+        systemInstruction: systemPrompt,
+        temperature: 0.3,
+        responseMimeType: "application/json"
+      }
+    });
+
+    let text = response.text?.trim() || "";
+    if (text.startsWith("```json")) {
+      text = text.substring(7);
+    } else if (text.startsWith("```")) {
+      text = text.substring(3);
+    }
+    if (text.endsWith("```")) {
+      text = text.substring(0, text.length - 3);
+    }
+    text = text.trim();
+
+    const parsed = JSON.parse(text);
+    return res.json({ status: "success", background: parsed.background, elements: parsed.elements });
+  } catch (err: any) {
+    console.error("Error reconstructing design:", err);
+    return res.status(500).json({ error: err.message });
   }
 });
 

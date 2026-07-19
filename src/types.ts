@@ -19,6 +19,7 @@ export interface SubTask {
   id: string;
   title: string;
   completed: boolean;
+  priority?: 'low' | 'medium' | 'high' | 'critical';
 }
 
 export interface Task {
@@ -52,6 +53,7 @@ export interface Note {
   title: string;
   content: string;
   createdAt: string;
+  tags?: string[];
 }
 
 export interface Memory {
@@ -60,6 +62,7 @@ export interface Memory {
   value: string;
   category: 'personal' | 'work' | 'preference' | 'skill';
   importance: number;
+  tags?: string[];
 }
 
 export interface InvoiceItem {
