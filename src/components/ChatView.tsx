@@ -2,43 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Message, Task, Reminder, Note } from '../types';
 import { TRANSLATIONS } from '../translations';
-import {
-  Send, 
-  Volume2, 
-  Mic, 
-  MicOff, 
-  Bot, 
-  User, 
-  CheckSquare, 
-  Bell, 
-  Calendar, 
-  HelpCircle, 
-  Sparkles, 
-  Trash2, 
-  Cpu, 
-  Layers, 
-  Compass, 
-  RefreshCw,
-  Settings,
-  Wand2,
-  Plus,
-  ArrowUp,
-  ChevronDown,
-  Database,
-  Info,
-  Check,
-  X,
-  Zap,
-  Copy,
-  Edit3,
-  Download,
-  Palette,
-  History,
-  Gauge,
-  VolumeX,
-  ChevronLeft,
-  ChevronRight
-} from 'lucide-react';
+import { Send, Volume2, Mic, MicOff, Bot, User, SquareCheck as CheckSquare, Bell, Calendar, Circle as HelpCircle, Sparkles, Trash2, Cpu, Layers, Compass, RefreshCw, Settings, Wand as Wand2, Plus, ArrowUp, ChevronDown, Database, Info, Check, X, Zap, Copy, CreditCard as Edit3, Download, Palette, History, Gauge, VolumeX, ChevronLeft, ChevronRight } from 'lucide-react';
 import { classifyNeoraInput, isLikelyOsCommand } from '../lib/neoraCommand';
 import { NeoraApiError, neoraGet, neoraPost, neoraUpload, neoraChatWithFallback } from '../lib/neoraApi';
 import { aiSkillsList, AISkill } from './skillsData';
@@ -1806,7 +1770,11 @@ ${uniqueSkills.length > 0 ? uniqueSkills.map((sk, index) => `${index + 1}. ${sk}
                   gemini: parsed.rateLimits.gemini ? { ...prev.gemini, ...parsed.rateLimits.gemini } : prev.gemini
                 }));
               }
-            } catch (e) {
+            } catch (e: any) {
+              // Re-throw real server errors so the outer handler triggers provider fallback cascade
+              if (e && e.message && !/Unexpected token|JSON\.parse|Unexpected non-whitespace|Unterminated/i.test(String(e.message))) {
+                throw e;
+              }
               // Gracefully handle partial data blocks
             }
           }
@@ -1814,6 +1782,11 @@ ${uniqueSkills.length > 0 ? uniqueSkills.map((sk, index) => `${index + 1}. ${sk}
       }
 
       // Capture final streaming feedback
+      // If we received no text at all, treat as failure so provider cascade / offline reply kicks in
+      if (!accumulatedContent.trim()) {
+        onFailure(new Error(`Empty response from ${targetProvider}`));
+        return;
+      }
       onSuccess(accumulatedContent, targetProvider);
 
     } catch (err: any) {

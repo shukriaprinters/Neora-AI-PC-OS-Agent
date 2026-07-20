@@ -4,10 +4,9 @@ import {
   Layers, Activity, Sparkles, Sliders, Wand2, Eraser, ShieldCheck, History,
   Undo2, Redo2, Scissors, Crop, Lock, Unlock, Eye, EyeOff, Type, Image as ImageIcon,
   Search, Download, RefreshCw, SlidersHorizontal, Check, Plus, Trash2, HelpCircle,
-  Maximize2, Play, Info, AlertCircle, AlertTriangle, Heart, Brush, Compass, Database
+  Maximize2, Play, Info, AlertCircle, Heart, Brush, Compass, Database
 } from "lucide-react";
 import { NGEP, NgepProjectState, NgepLayer, NgepEvent, NgepTelemetry, NgepQualityAudit, NgepAdjustment } from "../../lib/ai/cognitive/NGEP";
-import { EnterpriseKernel } from "../../lib/ai/cognitive/EnterpriseKernel";
 
 interface Props {
   lang: "en" | "bn";
@@ -16,8 +15,6 @@ interface Props {
 
 export function NGEPDashboard({ lang, onAddSystemLog }: Props) {
   const ngep = NGEP.getInstance();
-  const kernel = EnterpriseKernel.getInstance();
-  const [serviceStatus, setServiceStatus] = useState<string>("running");
 
   // Primary Workspace State binding
   const [state, setState] = useState<NgepProjectState>(ngep.getProjectState());
@@ -57,40 +54,11 @@ export function NGEPDashboard({ lang, onAddSystemLog }: Props) {
   // Custom named snapshot
   const [snapshotName, setSnapshotName] = useState("");
 
-  // ==========================================
-  // AEIGEP UI STATES
-  // ==========================================
-  const [semanticPrompt, setSemanticPrompt] = useState("Move traditional calligraphy accent upward and apply gold luxury palette");
-  const [isProcessingSemantic, setIsProcessingSemantic] = useState(false);
-  const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
-  const [analysisPanelActive, setAnalysisPanelActive] = useState(false);
-  const [activeBrushType, setActiveBrushType] = useState<"healing" | "remove" | "replace" | "shadow" | "reflection">("healing");
-  const [brushSize, setBrushSize] = useState(24);
-  const [brushHardness, setBrushHardness] = useState(75);
-  const [brushStrength, setBrushStrength] = useState(90);
-  const [liquifyMode, setLiquifyMode] = useState<"face" | "object" | "mesh" | "perspective">("mesh");
-  const [liquifyStrength, setLiquifyStrength] = useState(25);
-  const [newRefName, setNewRefName] = useState("");
-  const [newRefType, setNewRefType] = useState<"image" | "sketch" | "brand_guide" | "moodboard" | "logo" | "palette">("moodboard");
-
   useEffect(() => {
     // Subscribe to state mutators
     const unsubscribe = ngep.subscribe((freshState) => {
       setState(freshState);
       setHistoryEvents(ngep.getEventHistory());
-    });
-
-    const handleKernelUpdate = () => {
-      const status = kernel.getServices().find(s => s.id === "nge")?.status || "running";
-      setServiceStatus(status);
-    };
-
-    handleKernelUpdate();
-
-    const unsubscribeKernel = kernel.subscribe((ev) => {
-      if (ev.topic === "ServiceStatusChanged") {
-        handleKernelUpdate();
-      }
     });
 
     // Auto load current audit
@@ -103,7 +71,6 @@ export function NGEPDashboard({ lang, onAddSystemLog }: Props) {
 
     return () => {
       unsubscribe();
-      unsubscribeKernel();
       clearInterval(timer);
     };
   }, []);
@@ -281,110 +248,7 @@ export function NGEPDashboard({ lang, onAddSystemLog }: Props) {
     setQualityAudit(ngep.runQualityAudit());
   };
 
-  // ==========================================
-  // AEIGEP PLATFORM ACTION HANDLERS
-  // ==========================================
-  const triggerAnalyzeImage = async () => {
-    if (!state.activeLayerId) return;
-    setIsAnalyzingImage(true);
-    setAnalysisPanelActive(true);
-    if (onAddSystemLog) {
-      onAddSystemLog(`NGEP: Scanning layer pixels for visual objects, brand DNA, and lighting harmony.`);
-    }
-    await ngep.analyzeImage(state.activeLayerId);
-    setIsAnalyzingImage(false);
-    if (onAddSystemLog) {
-      onAddSystemLog(`NGEP: Successfully extracted comprehensive scene graphs and design DNA.`);
-    }
-    setQualityAudit(ngep.runQualityAudit());
-  };
-
-  const triggerSemanticEdit = async () => {
-    if (!state.activeLayerId || !semanticPrompt.trim()) return;
-    setIsProcessingSemantic(true);
-    if (onAddSystemLog) {
-      onAddSystemLog(`NGEP: Natural language semantic query dispatched to AI parser.`);
-    }
-    await ngep.understandPromptAndApply(state.activeLayerId, semanticPrompt);
-    setIsProcessingSemantic(false);
-    setSemanticPrompt("");
-    if (onAddSystemLog) {
-      onAddSystemLog(`NGEP: Non-destructive layout & style layers recalculated.`);
-    }
-    setQualityAudit(ngep.runQualityAudit());
-  };
-
-  const triggerApplyBrush = () => {
-    if (!state.activeLayerId) return;
-    ngep.applyAiBrush(
-      state.activeLayerId,
-      activeBrushType,
-      [{ x: 150, y: 150 }, { x: 180, y: 190 }, { x: 250, y: 220 }],
-      brushSize,
-      brushStrength
-    );
-    if (onAddSystemLog) {
-      onAddSystemLog(`NGEP: Applied brush stroke using [${activeBrushType}] brush at size ${brushSize}px.`);
-    }
-  };
-
-  const triggerApplyLiquify = () => {
-    if (!state.activeLayerId) return;
-    ngep.applyAiLiquify(state.activeLayerId, liquifyMode, liquifyStrength);
-    if (onAddSystemLog) {
-      onAddSystemLog(`NGEP: Executed non-destructive [${liquifyMode.toUpperCase()}] liquify deforming grids.`);
-    }
-  };
-
-  const triggerAddReference = () => {
-    if (!newRefName.trim()) return;
-    ngep.addReference({
-      name: newRefName,
-      type: newRefType,
-      active: true
-    });
-    setNewRefName("");
-    if (onAddSystemLog) {
-      onAddSystemLog(`NGEP: Dynamic multi-reference reference file attached: "${newRefName}"`);
-    }
-  };
-
-  const triggerToggleReference = (id: string) => {
-    ngep.toggleReference(id);
-  };
-
-  const triggerRemoveReference = (id: string) => {
-    ngep.removeReference(id);
-  };
-
   const activeLayerObj = state.layers.find(l => l.id === state.activeLayerId);
-
-  if (serviceStatus === "stopped") {
-    return (
-      <div className="p-8 bg-slate-950 text-slate-100 rounded-xl border border-red-900/30 space-y-6 flex flex-col items-center justify-center text-center min-h-[400px]">
-        <div className="p-4 bg-red-500/10 text-red-400 rounded-full border border-red-500/20 animate-pulse">
-          <AlertTriangle className="w-12 h-12" />
-        </div>
-        <div className="space-y-2 max-w-md">
-          <h2 className="text-xl font-bold tracking-tight text-white">
-            {lang === "bn" ? "নিওরা ওএস জেনারেটিভ এডিটিং সার্ভিস অফলাইন" : "Generative Editing & Image Processing Service Offline"}
-          </h2>
-          <p className="text-xs text-slate-400">
-            {lang === "bn" 
-              ? "নিওরা NGE ডোমেন সার্ভিসটি সেন্ট্রাল অপারেটিং কার্নেলে বন্ধ করা হয়েছে। লেয়ার প্রসেসিং, অ্যাডজাস্টমেন্ট ফিল্টার এবং জেনারেটিভ এআই ইমেজ ইনপেইন্টিং সাময়িকভাবে বন্ধ আছে।" 
-              : "The Neora NGE domain service has been stopped in the central Enterprise Kernel. Non-destructive layer processing, color adjustment filters, and generative AI image inpainting are temporarily offline."}
-          </p>
-        </div>
-        <button
-          onClick={() => kernel.startService("nge")}
-          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-xs font-bold text-white rounded transition flex items-center gap-2 cursor-pointer"
-        >
-          <Play className="w-4 h-4" />
-          {lang === "bn" ? "সার্ভিস পুনরায় চালু করুন" : "Start Graphics Service"}
-        </button>
-      </div>
-    );
-  }
 
   return (
     <div className="flex flex-col h-full bg-slate-950 border border-slate-900 rounded-2xl overflow-hidden shadow-2xl" id="ngep-root-container">
@@ -524,96 +388,6 @@ export function NGEPDashboard({ lang, onAddSystemLog }: Props) {
 
           {/* VIEWPORT STAGE */}
           <div className="flex-1 overflow-auto flex items-center justify-center p-6 relative bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px]">
-            
-            {/* FLOATING DESIGN DNA SCANNER REPORT OVERLAY */}
-            {activeTab === "canvas" && analysisPanelActive && (
-              <div className="absolute top-4 left-4 w-72 max-h-[85%] overflow-y-auto bg-slate-950/95 border border-slate-800 rounded-2xl p-4 shadow-2xl z-50 space-y-3.5 font-sans text-xs backdrop-blur-md">
-                <div className="flex items-center justify-between border-b border-slate-900 pb-2">
-                  <div className="flex items-center gap-1.5">
-                    <Search className="w-4 h-4 text-cyan-400 animate-pulse" />
-                    <span className="font-mono font-bold text-slate-200 uppercase tracking-wide text-[10px]">Multimodal Design DNA Map</span>
-                  </div>
-                  <button onClick={() => setAnalysisPanelActive(false)} className="text-slate-500 hover:text-slate-300">
-                    ✕
-                  </button>
-                </div>
-
-                {activeLayerObj?.sceneGraph ? (
-                  <div className="space-y-3">
-                    <div className="p-2.5 rounded-lg bg-slate-900/60 border border-slate-850 space-y-1">
-                      <span className="text-[8px] font-mono text-slate-500 uppercase tracking-widest block font-bold">Aesthetic Intent & Genre</span>
-                      <p className="text-slate-200 text-[11px] font-semibold leading-snug">{activeLayerObj.sceneGraph.designDNA.style}</p>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <span className="text-[8px] font-mono text-slate-500 uppercase tracking-widest block font-bold">Detected Design Entities ({activeLayerObj.sceneGraph.objects.length})</span>
-                      <div className="space-y-1">
-                        {activeLayerObj.sceneGraph.objects.map((obj, i) => (
-                          <div key={i} className="flex items-center justify-between p-1.5 rounded bg-slate-900 border border-slate-850/60 font-mono text-[9.5px]">
-                            <span className="text-slate-300 font-semibold">{obj.label}</span>
-                            <span className="text-cyan-400 font-bold">{Math.round(obj.confidence * 100)}%</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <span className="text-[8px] font-mono text-slate-500 uppercase tracking-widest block font-bold">Semantic Color Blueprint</span>
-                      <div className="grid grid-cols-2 gap-1.5 font-mono text-[9px]">
-                        {activeLayerObj.sceneGraph.colorPalette.map((palette, i) => (
-                          <div key={i} className="col-span-2 grid grid-cols-2 gap-1.5">
-                            <div className="flex items-center gap-1.5 p-1 bg-slate-900 rounded border border-slate-850">
-                              <span className="w-3.5 h-3.5 rounded border border-white/10 shrink-0" style={{ backgroundColor: palette.primary }} />
-                              <div className="overflow-hidden">
-                                <span className="text-slate-200 block truncate font-bold">{palette.primary}</span>
-                                <span className="text-[7.5px] text-slate-500 block truncate">Primary</span>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-1.5 p-1 bg-slate-900 rounded border border-slate-850">
-                              <span className="w-3.5 h-3.5 rounded border border-white/10 shrink-0" style={{ backgroundColor: palette.secondary }} />
-                              <div className="overflow-hidden">
-                                <span className="text-slate-200 block truncate font-bold">{palette.secondary}</span>
-                                <span className="text-[7.5px] text-slate-500 block truncate">Secondary</span>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-1.5 p-1 bg-slate-900 rounded border border-slate-850 col-span-2">
-                              <span className="w-3.5 h-3.5 rounded border border-white/10 shrink-0" style={{ backgroundColor: palette.accent }} />
-                              <div className="overflow-hidden">
-                                <span className="text-slate-200 block truncate font-bold">{palette.accent}</span>
-                                <span className="text-[7.5px] text-slate-500 block truncate">Accent ({palette.harmony} / {palette.accessibility})</span>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="p-2.5 rounded-lg bg-slate-900/60 border border-slate-850 space-y-1 text-[10px]">
-                      <div className="flex justify-between font-mono text-[8.5px]">
-                        <span className="text-slate-500 uppercase">Lighting Vector</span>
-                        <span className="text-cyan-400 font-bold">{activeLayerObj.sceneGraph.lighting.direction}</span>
-                      </div>
-                      <div className="flex justify-between font-mono text-[8.5px]">
-                        <span className="text-slate-500 uppercase">Alignment Grid</span>
-                        <span className="text-cyan-400 font-bold">{activeLayerObj.sceneGraph.layout.alignment}</span>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-6 text-slate-500 font-mono text-[10px] space-y-2">
-                    <p>No active DNA map found for this layer.</p>
-                    <button
-                      onClick={triggerAnalyzeImage}
-                      disabled={isAnalyzingImage}
-                      className="px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-[9px] uppercase tracking-wider"
-                    >
-                      Extract DNA Now
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-
             {activeTab === "canvas" && (
               <div 
                 className="relative bg-slate-900 border border-slate-800 shadow-2xl overflow-hidden transition-all duration-300"
@@ -832,69 +606,6 @@ export function NGEPDashboard({ lang, onAddSystemLog }: Props) {
         {/* COLUMN 3: MIDDLE CONTROLS PANEL (RESPONSIVE TO ACTIVE TOOL) */}
         <div className="col-span-4 bg-slate-900 border-l border-slate-900 flex flex-col overflow-y-auto">
           
-          {/* SEMANTIC BRAIN & NEURAL SCANNER ACTION BOARD */}
-          <div className="p-4 border-b border-slate-850 bg-slate-950/40 space-y-3.5">
-            <div className="flex items-center justify-between">
-              <span className="text-[9px] font-mono font-bold text-fuchsia-400 uppercase tracking-widest flex items-center gap-1">
-                <Compass className="w-3 h-3 text-fuchsia-400" />
-                AEIGEP AI Editing Brain
-              </span>
-              <span className="text-[8px] font-mono text-slate-500 uppercase tracking-widest">Enterprise V24</span>
-            </div>
-
-            {/* SEMANTIC NATURAL LANGUAGE INTERPRETER */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-semibold text-slate-300">Semantic AI Prompter</span>
-                <span className="text-[8px] font-mono text-slate-500">Multi-Lang (Bangla, EN, Arabic, Urdu)</span>
-              </div>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={semanticPrompt}
-                  onChange={(e) => setSemanticPrompt(e.target.value)}
-                  placeholder="e.g. Move title upward, apply luxury palette..."
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-3 pr-10 py-2 text-[11px] font-sans text-slate-200 outline-none focus:border-fuchsia-500/50"
-                />
-                <button
-                  onClick={triggerSemanticEdit}
-                  disabled={isProcessingSemantic || !state.activeLayerId}
-                  className="absolute right-1.5 top-1.5 p-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-fuchsia-400 hover:text-fuchsia-300 disabled:opacity-50 transition-all"
-                  title="Run Semantic Parser"
-                >
-                  {isProcessingSemantic ? (
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Play className="w-3.5 h-3.5" />
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* NEURAL ANALYSIS DNA SCANNER TRIGGER */}
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={triggerAnalyzeImage}
-                disabled={isAnalyzingImage || !state.activeLayerId}
-                className="w-full py-1.5 rounded-lg bg-slate-950/90 hover:bg-slate-900 text-cyan-400 border border-slate-850 text-[10px] font-bold font-mono flex items-center justify-center gap-1.5 transition-all disabled:opacity-50"
-              >
-                <Search className="w-3.5 h-3.5" />
-                {isAnalyzingImage ? "ANALYZING..." : "EXTRACT DESIGN DNA"}
-              </button>
-              <button
-                onClick={() => setAnalysisPanelActive(!analysisPanelActive)}
-                className={`w-full py-1.5 rounded-lg border text-[10px] font-bold font-mono flex items-center justify-center gap-1.5 transition-all ${
-                  analysisPanelActive 
-                    ? "bg-fuchsia-500/10 text-fuchsia-400 border-fuchsia-500/30" 
-                    : "bg-slate-950/90 hover:bg-slate-900 text-slate-400 border-slate-850"
-                }`}
-              >
-                <Info className="w-3.5 h-3.5" />
-                {analysisPanelActive ? "HIDE DESIGN MAP" : "VIEW DESIGN MAP"}
-              </button>
-            </div>
-          </div>
-
           {/* ACTIVE TOOL PARAMETERS COMPOSITION BOX */}
           <div className="p-4 border-b border-slate-850 bg-slate-900/60">
             <span className="text-[10px] font-mono font-bold text-cyan-400 uppercase tracking-widest block mb-1">
@@ -1268,7 +979,7 @@ export function NGEPDashboard({ lang, onAddSystemLog }: Props) {
               </div>
             )}
 
-            {/* 7. WARP MESH & AI LIQUIFY SETTINGS */}
+            {/* 7. WARP MESH SETTINGS */}
             {state.activeTool === "warp" && (
               <div className="space-y-4 text-xs font-mono">
                 <span className="text-[9px] text-slate-500 block uppercase font-bold">Interactive Mesh Resolution</span>
@@ -1292,241 +1003,11 @@ export function NGEPDashboard({ lang, onAddSystemLog }: Props) {
                     5 x 5 grid
                   </button>
                 </div>
-
-                <div className="pt-3 border-t border-slate-850 space-y-3">
-                  <span className="text-[9px] text-slate-400 block uppercase font-bold">AI Liquify & Mesh Warp</span>
-                  <div className="space-y-1">
-                    <label className="text-[10px] text-slate-500 block font-bold">Liquify Mode</label>
-                    <select
-                      value={liquifyMode}
-                      onChange={(e: any) => setLiquifyMode(e.target.value)}
-                      className="w-full p-2 rounded-lg bg-slate-950 border border-slate-850 text-slate-300 text-[11px]"
-                    >
-                      <option value="mesh">Symmetrical Mesh Warp</option>
-                      <option value="face">Intelligent Face Liquify</option>
-                      <option value="object">Focal Object Alignment</option>
-                      <option value="perspective">Horizon Perspective Distortion</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-1">
-                    <div className="flex justify-between">
-                      <span className="text-[9px] text-slate-500 uppercase font-bold">Warp Intensity</span>
-                      <span className="text-cyan-400">{liquifyStrength}%</span>
-                    </div>
-                    <input
-                      type="range" min="5" max="100"
-                      value={liquifyStrength}
-                      onChange={(e) => setLiquifyStrength(Number(e.target.value))}
-                      className="w-full accent-cyan-400 bg-slate-950 h-1 rounded"
-                    />
-                  </div>
-
-                  <button
-                    onClick={triggerApplyLiquify}
-                    disabled={!state.activeLayerId}
-                    className="w-full py-2 bg-gradient-to-r from-yellow-600 to-amber-600 hover:from-yellow-500 hover:to-amber-500 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 shadow-lg border border-yellow-500/20"
-                  >
-                    <Maximize2 className="w-3.5 h-3.5" />
-                    RUN AI LIQUIFY DEFORMATION
-                  </button>
+                <div className="p-2.5 rounded bg-amber-500/5 text-[9px] text-amber-400 border border-amber-500/10 leading-relaxed">
+                  Notice: Non-destructive warp grid control nodes can be dragged within the viewport to control canvas alignment.
                 </div>
               </div>
             )}
-
-            {/* 8. AI BRUSH ENGINE SETTINGS */}
-            {state.activeTool === "retouch" && (
-              <div className="space-y-4 text-xs font-mono">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] text-slate-400 uppercase font-bold">Intelligent Brush Mode</label>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {[
-                      { id: "healing", label: "Healing Brush" },
-                      { id: "remove", label: "Remove Brush" },
-                      { id: "replace", label: "Replace Brush" },
-                      { id: "shadow", label: "Shadow Brush" },
-                      { id: "reflection", label: "Reflection Brush" }
-                    ].map(brush => (
-                      <button
-                        key={brush.id}
-                        onClick={() => setActiveBrushType(brush.id as any)}
-                        className={`px-2 py-1 rounded border text-[10px] font-mono text-left font-semibold ${
-                          activeBrushType === brush.id 
-                            ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/35" 
-                            : "bg-slate-950 text-slate-400 border-slate-850 hover:bg-slate-900"
-                        }`}
-                      >
-                        {brush.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* BRUSH SIZE */}
-                <div className="space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-[9px] text-slate-400 uppercase font-bold">Brush Size</span>
-                    <span className="text-cyan-400">{brushSize}px</span>
-                  </div>
-                  <input
-                    type="range" min="5" max="100"
-                    value={brushSize}
-                    onChange={(e) => setBrushSize(Number(e.target.value))}
-                    className="w-full accent-cyan-400 bg-slate-950 h-1 rounded"
-                  />
-                </div>
-
-                {/* BRUSH HARDNESS */}
-                <div className="space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-[9px] text-slate-400 uppercase font-bold">Brush Hardness</span>
-                    <span className="text-cyan-400">{brushHardness}%</span>
-                  </div>
-                  <input
-                    type="range" min="0" max="100"
-                    value={brushHardness}
-                    onChange={(e) => setBrushHardness(Number(e.target.value))}
-                    className="w-full accent-cyan-400 bg-slate-950 h-1 rounded"
-                  />
-                </div>
-
-                {/* BRUSH STRENGTH */}
-                <div className="space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-[9px] text-slate-400 uppercase font-bold">Stroke Flow / Strength</span>
-                    <span className="text-cyan-400">{brushStrength}%</span>
-                  </div>
-                  <input
-                    type="range" min="10" max="100"
-                    value={brushStrength}
-                    onChange={(e) => setBrushStrength(Number(e.target.value))}
-                    className="w-full accent-cyan-400 bg-slate-950 h-1 rounded"
-                  />
-                </div>
-
-                <button
-                  onClick={triggerApplyBrush}
-                  disabled={!state.activeLayerId}
-                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-rose-950/40 border border-pink-500/20"
-                >
-                  <Brush className="w-3.5 h-3.5" />
-                  STROKE CANVAS WITH AI BRUSH
-                </button>
-              </div>
-            )}
-
-            {/* 9. AI REASONING BOARD */}
-            {activeLayerObj && activeLayerObj.aiReasoning && (
-              <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-850 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[9px] font-mono font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-1">
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                    AI Reasoning Explainability
-                  </span>
-                  <div className="flex items-center gap-1">
-                    <span className="text-[8px] font-mono text-slate-500">Confidence:</span>
-                    <span className="text-[10px] font-mono font-bold text-emerald-400">{Math.round(activeLayerObj.aiReasoning.confidence * 100)}%</span>
-                  </div>
-                </div>
-
-                <div className="space-y-1.5 font-sans text-[10px] text-slate-300 leading-relaxed">
-                  <p className="p-2 rounded bg-slate-900/60 border border-slate-800 text-slate-200">
-                    <span className="text-emerald-500 font-semibold font-mono block text-[8px] uppercase tracking-wide">Primary Explanation</span>
-                    {activeLayerObj.aiReasoning.explanation}
-                  </p>
-
-                  {activeLayerObj.aiReasoning.whyMoved && (
-                    <div>
-                      <span className="text-slate-500 font-mono text-[8px] uppercase block">Layout Alignment Vector Adjustment</span>
-                      <p className="pl-2 border-l border-emerald-500/40 text-slate-300">{activeLayerObj.aiReasoning.whyMoved}</p>
-                    </div>
-                  )}
-
-                  {activeLayerObj.aiReasoning.whyColorsChanged && (
-                    <div>
-                      <span className="text-slate-500 font-mono text-[8px] uppercase block">Color Palette Harmony Matching</span>
-                      <p className="pl-2 border-l border-cyan-500/40 text-slate-300">{activeLayerObj.aiReasoning.whyColorsChanged}</p>
-                    </div>
-                  )}
-
-                  {activeLayerObj.aiReasoning.whyLightingChanged && (
-                    <div>
-                      <span className="text-slate-500 font-mono text-[8px] uppercase block">Illumination Vector Balancing</span>
-                      <p className="pl-2 border-l border-amber-500/40 text-slate-300">{activeLayerObj.aiReasoning.whyLightingChanged}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* 10. MULTI-REFERENCE STYLE DOCK */}
-            <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-850 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-[9px] font-mono font-bold text-cyan-400 uppercase tracking-widest flex items-center gap-1.5">
-                  <Database className="w-3.5 h-3.5 text-cyan-400" />
-                  Multi-Reference Guide Dock
-                </span>
-                <span className="px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-400 text-[8px] font-mono">
-                  {state.references.filter(r => r.active).length} Active
-                </span>
-              </div>
-
-              {/* LIST OF REFERENCES */}
-              <div className="space-y-1.5">
-                {state.references.map(ref => (
-                  <div key={ref.id} className="flex items-center justify-between p-2 rounded bg-slate-900 border border-slate-800 text-[10px]">
-                    <div className="flex items-center gap-2 overflow-hidden">
-                      <input
-                        type="checkbox"
-                        checked={ref.active}
-                        onChange={() => triggerToggleReference(ref.id)}
-                        className="accent-cyan-400 w-3 h-3 cursor-pointer"
-                      />
-                      <div className="overflow-hidden">
-                        <span className="font-semibold text-slate-200 block truncate">{ref.name}</span>
-                        <span className="text-[7.5px] font-mono text-slate-500 uppercase tracking-wider">{ref.type}</span>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => triggerRemoveReference(ref.id)}
-                      className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-slate-950/40"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              {/* ADD REFERENCE FORM */}
-              <div className="pt-2 border-t border-slate-850 space-y-2">
-                <div className="flex gap-1.5">
-                  <input
-                    type="text"
-                    placeholder="Ref name..."
-                    value={newRefName}
-                    onChange={(e) => setNewRefName(e.target.value)}
-                    className="flex-1 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-[10px] outline-none text-slate-300"
-                  />
-                  <select
-                    value={newRefType}
-                    onChange={(e: any) => setNewRefType(e.target.value)}
-                    className="bg-slate-900 border border-slate-800 rounded px-1 text-[9px] text-slate-300"
-                  >
-                    <option value="image">Image</option>
-                    <option value="sketch">Sketch</option>
-                    <option value="brand_guide">Brand Guide</option>
-                    <option value="moodboard">Moodboard</option>
-                    <option value="palette">Palette</option>
-                  </select>
-                  <button
-                    onClick={triggerAddReference}
-                    className="p-1 bg-slate-800 hover:bg-slate-750 border border-slate-700 rounded text-slate-300"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            </div>
 
           </div>
 

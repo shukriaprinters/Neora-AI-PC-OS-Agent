@@ -6,7 +6,7 @@
       "name": "Shukria Admin",
       "avatarUrl": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
       "role": "lead-designer",
-      "createdAt": "2026-07-20T08:33:19.272Z"
+      "createdAt": "2026-07-19T12:19:59.937Z"
     }
   ],
   "sessions": [],
@@ -18,8 +18,8 @@
       "userId": "usr_admin",
       "width": 1200,
       "height": 800,
-      "createdAt": "2026-07-20T08:33:19.272Z",
-      "updatedAt": "2026-07-20T08:33:19.272Z"
+      "createdAt": "2026-07-19T12:19:59.937Z",
+      "updatedAt": "2026-07-19T12:19:59.937Z"
     }
   ],
   "pages": [
@@ -30,8 +30,8 @@
       "title": "Hero Banner",
       "backgroundType": "gradient",
       "backgroundValue": "linear-gradient(135deg, #09090b 0%, #1c0f30 100%)",
-      "createdAt": "2026-07-20T08:33:19.272Z",
-      "updatedAt": "2026-07-20T08:33:19.272Z"
+      "createdAt": "2026-07-19T12:19:59.937Z",
+      "updatedAt": "2026-07-19T12:19:59.937Z"
     }
   ],
   "layers": [
@@ -53,8 +53,8 @@
       "content": "circle",
       "color": "rgb(6, 182, 212)",
       "borderRadius": 9999,
-      "createdAt": "2026-07-20T08:33:19.272Z",
-      "updatedAt": "2026-07-20T08:33:19.272Z"
+      "createdAt": "2026-07-19T12:19:59.937Z",
+      "updatedAt": "2026-07-19T12:19:59.937Z"
     },
     {
       "id": "layer_f1_logo_img",
@@ -73,8 +73,8 @@
       "locked": false,
       "content": "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400",
       "borderRadius": 16,
-      "createdAt": "2026-07-20T08:33:19.272Z",
-      "updatedAt": "2026-07-20T08:33:19.272Z"
+      "createdAt": "2026-07-19T12:19:59.937Z",
+      "updatedAt": "2026-07-19T12:19:59.937Z"
     },
     {
       "id": "layer_f1_title_text",
@@ -99,8 +99,8 @@
       "align": "center",
       "letterSpacing": "0.15em",
       "rotation": 0,
-      "createdAt": "2026-07-20T08:33:19.272Z",
-      "updatedAt": "2026-07-20T08:33:19.272Z"
+      "createdAt": "2026-07-19T12:19:59.937Z",
+      "updatedAt": "2026-07-19T12:19:59.937Z"
     },
     {
       "id": "layer_f1_desc_text",
@@ -125,8 +125,8 @@
       "align": "center",
       "letterSpacing": "0.2em",
       "rotation": 0,
-      "createdAt": "2026-07-20T08:33:19.272Z",
-      "updatedAt": "2026-07-20T08:33:19.272Z"
+      "createdAt": "2026-07-19T12:19:59.937Z",
+      "updatedAt": "2026-07-19T12:19:59.937Z"
     }
   ],
   "assets": [
@@ -138,7 +138,7 @@
       "sizeBytes": 254120,
       "mimeType": "image/jpeg",
       "userId": "usr_admin",
-      "createdAt": "2026-07-20T08:33:19.272Z"
+      "createdAt": "2026-07-19T12:19:59.937Z"
     },
     {
       "id": "asset_sample_2",
@@ -148,7 +148,7 @@
       "sizeBytes": 154800,
       "mimeType": "image/jpeg",
       "userId": "usr_admin",
-      "createdAt": "2026-07-20T08:33:19.272Z"
+      "createdAt": "2026-07-19T12:19:59.937Z"
     }
   ],
   "fonts": [
@@ -158,7 +158,7 @@
       "category": "sans-serif",
       "provider": "google",
       "isPremium": false,
-      "createdAt": "2026-07-20T08:33:19.272Z"
+      "createdAt": "2026-07-19T12:19:59.937Z"
     },
     {
       "id": "font_space",
@@ -166,7 +166,7 @@
       "category": "display",
       "provider": "google",
       "isPremium": false,
-      "createdAt": "2026-07-20T08:33:19.272Z"
+      "createdAt": "2026-07-19T12:19:59.937Z"
     },
     {
       "id": "font_playfair",
@@ -174,7 +174,7 @@
       "category": "serif",
       "provider": "google",
       "isPremium": false,
-      "createdAt": "2026-07-20T08:33:19.272Z"
+      "createdAt": "2026-07-19T12:19:59.937Z"
     },
     {
       "id": "font_mono",
@@ -182,7 +182,7 @@
       "category": "monospace",
       "provider": "google",
       "isPremium": false,
-      "createdAt": "2026-07-20T08:33:19.272Z"
+      "createdAt": "2026-07-19T12:19:59.937Z"
     },
     {
       "id": "font_siliguri",
@@ -190,7 +190,7 @@
       "category": "bengali",
       "provider": "google",
       "isPremium": false,
-      "createdAt": "2026-07-20T08:33:19.272Z"
+      "createdAt": "2026-07-19T12:19:59.937Z"
     },
     {
       "id": "font_galada",
@@ -198,7 +198,7 @@
       "category": "calligraphy",
       "provider": "google",
       "isPremium": false,
-      "createdAt": "2026-07-20T08:33:19.272Z"
+      "createdAt": "2026-07-19T12:19:59.937Z"
     }
   ],
   "templates": [
@@ -215,7 +215,7 @@
       },
       "elements": [],
       "isPremium": false,
-      "createdAt": "2026-07-20T08:33:19.272Z"
+      "createdAt": "2026-07-19T12:19:59.938Z"
     },
     {
       "id": "tmpl_vcard_1",
@@ -230,7 +230,7 @@
       },
       "elements": [],
       "isPremium": true,
-      "createdAt": "2026-07-20T08:33:19.272Z"
+      "createdAt": "2026-07-19T12:19:59.938Z"
     }
   ],
   "exports": [],
@@ -247,7 +247,7 @@
         "importer",
         "layer-effects"
       ],
-      "createdAt": "2026-07-20T08:33:19.272Z"
+      "createdAt": "2026-07-19T12:19:59.938Z"
     },
     {
       "id": "plugin_magic_morph",
@@ -261,7 +261,7 @@
         "generator",
         "tool"
       ],
-      "createdAt": "2026-07-20T08:33:19.272Z"
+      "createdAt": "2026-07-19T12:19:59.938Z"
     },
     {
       "id": "neora_palette_gen",
@@ -275,7 +275,7 @@
         "tool",
         "palette-generator"
       ],
-      "createdAt": "2026-07-20T08:33:21.047Z"
+      "createdAt": "2026-07-19T12:44:36.214Z"
     },
     {
       "id": "neora_design_critic",
@@ -289,7 +289,7 @@
         "tool",
         "validator"
       ],
-      "createdAt": "2026-07-20T08:33:21.054Z"
+      "createdAt": "2026-07-19T12:44:36.229Z"
     },
     {
       "id": "neora_poster_generator",
@@ -303,7 +303,7 @@
         "tool",
         "scaffolder"
       ],
-      "createdAt": "2026-07-20T08:33:21.075Z"
+      "createdAt": "2026-07-19T12:44:36.234Z"
     }
   ],
   "workflowHistory": [],
@@ -315,7 +315,7 @@
       "key": "brand_core_color",
       "value": "Electric Cyan (rgb(6,182,212))",
       "importance": 5,
-      "createdAt": "2026-07-20T08:33:19.272Z"
+      "createdAt": "2026-07-19T12:19:59.938Z"
     }
   ]
 }

@@ -275,89 +275,24 @@ export class DesignBrain {
     let isPrintReady = false;
     let languagePreference: LanguageCode = "en";
 
-    // 1. Script & Language Heuristics
-    const hasBengali = /[\u0980-\u09FF]/.test(req);
-    const hasArabicUrdu = /[\u0600-\u06FF]/.test(req);
-    
-    // Check specific language tokens
-    const banglishTokens = ["banao", "koro", "ekta", "shob", "sesh", "amar", "boishakh", "bangla", "alpona"];
-    const hasBanglish = banglishTokens.some(tok => r.includes(tok));
-
-    const urduTokens = ["مبارک", "نستعلیق", "خوشخطی", "پیغام", "اشتہار"];
-    const hasUrdu = urduTokens.some(tok => r.includes(tok));
-
-    if (hasBengali || hasBanglish) {
-      languagePreference = "bn";
-    } else if (hasUrdu) {
-      languagePreference = "ur";
-    } else if (hasArabicUrdu) {
-      languagePreference = "ar";
-    }
-
-    // 2. Goal Categorization
-    if (r.includes("eid") || r.includes("ramadan") || r.includes("shab") || r.includes("puja") || r.includes("boishakh") || r.includes("festive") || r.includes("traditional")) {
+    if (r.includes("eid") || r.includes("boishakh") || r.includes("traditional") || r.includes("bangla")) {
       primaryGoal = "Religious Communication";
-    } else if (r.includes("card") || r.includes("flyer") || r.includes("poster") || r.includes("brochure") || r.includes("print")) {
+      languagePreference = r.includes("boishakh") || r.includes("bangla") ? "bn" : "en";
+    } else if (r.includes("card") || r.includes("flyer") || r.includes("print")) {
       primaryGoal = "Product Promotion";
       isPrintReady = true;
-    } else if (r.includes("banner") || r.includes("facebook") || r.includes("cover") || r.includes("social") || r.includes("post")) {
+      width = 1050; // A4 scaled
+      height = 1485;
+      aspectRatio = "A4 Portrait";
+      targetPlatform = "Print Press standard";
+    } else if (r.includes("banner") || r.includes("facebook") || r.includes("social")) {
       primaryGoal = "Event Promotion";
-    } else if (r.includes("corporate") || r.includes("brand") || r.includes("identity") || r.includes("presentation") || r.includes("business")) {
+      width = 1200;
+      height = 630;
+      aspectRatio = "1.91:1 Landscape";
+      targetPlatform = "Facebook Banner";
+    } else if (r.includes("corporate") || r.includes("brand") || r.includes("identity")) {
       primaryGoal = "Corporate Branding";
-    } else if (r.includes("education") || r.includes("course") || r.includes("school") || r.includes("learn")) {
-      primaryGoal = "Education";
-    } else if (r.includes("sale") || r.includes("discount") || r.includes("offer") || r.includes("deal")) {
-      primaryGoal = "Sales Conversion";
-    }
-
-    // 3. Dimensional Dimension Parsing (e.g. 1920x1080, 800 * 600, 1080 x 1080)
-    const dimMatch = req.match(/(\d+)\s*[xX*×]\s*(\d+)/);
-    if (dimMatch) {
-      const parsedW = parseInt(dimMatch[1], 10);
-      const parsedH = parseInt(dimMatch[2], 10);
-      if (parsedW > 100 && parsedW < 8000 && parsedH > 100 && parsedH < 8000) {
-        width = parsedW;
-        height = parsedH;
-        const gcd = (a: number, b: number): number => b === 0 ? a : gcd(b, a % b);
-        const divisor = gcd(width, height);
-        aspectRatio = `${width / divisor}:${height / divisor} Custom`;
-        targetPlatform = "Custom Bounding Box";
-      }
-    } else {
-      // Platform-specific defaults
-      if (r.includes("insta") || r.includes("instagram") || r.includes("square")) {
-        width = 1080;
-        height = 1080;
-        aspectRatio = "1:1 Square";
-        targetPlatform = "Instagram Grid";
-      } else if (r.includes("facebook banner") || r.includes("fb cover") || r.includes("facebook cover")) {
-        width = 1200;
-        height = 630;
-        aspectRatio = "1.91:1 Landscape";
-        targetPlatform = "Facebook Cover";
-      } else if (r.includes("fb post") || r.includes("facebook post")) {
-        width = 1200;
-        height = 1200;
-        aspectRatio = "1:1 Square";
-        targetPlatform = "Facebook Feed Post";
-      } else if (r.includes("a4") || r.includes("flyer")) {
-        width = 1050; // scaled A4
-        height = 1485;
-        aspectRatio = "1:1.41 A4 Portrait";
-        targetPlatform = "Print standard A4 Flyer";
-        isPrintReady = true;
-      } else if (r.includes("business card")) {
-        width = 1050;
-        height = 600;
-        aspectRatio = "3.5:2 Landscape";
-        targetPlatform = "Print Business Card";
-        isPrintReady = true;
-      } else if (r.includes("hero") || r.includes("web banner") || r.includes("desktop")) {
-        width = 1920;
-        height = 1080;
-        aspectRatio = "16:9 Landscape";
-        targetPlatform = "Web Hero Slide";
-      }
     }
 
     return {
@@ -372,41 +307,35 @@ export class DesignBrain {
       },
       languagePreference,
       editableRequired: true,
-      extraConstraints: isPrintReady 
-        ? ["Add 3mm printing bleed margins", "Enforce full CMYK spectrum gamut limits", "Isolate critical print safety buffers"] 
-        : ["WCAG AAA Display Contrast Compliance", "Maintain high negative space buffers (45%+)", "Snap to standard modular baseline grid system"]
+      extraConstraints: isPrintReady ? ["Add 3mm printing bleed", "CMYK color boundaries verification"] : ["High display contrast", "Under 45% spatial density"]
     };
   }
 
   // AUDIENCE ANALYZER
   private static analyzeAudience(intent: DesignIntent): DesignPlanReport["audienceAnalysis"] {
     const goal = intent.primaryGoal;
-    let targetDemographic = "General Digital Consumer";
-    let readingAbility = "High speed scrolling scan patterns";
-    const culturalPreferences = ["Minimal modern vector motifs"];
+    let targetDemographic = "General Public";
+    let readingAbility = "High speed scrolling readability required";
+    const culturalPreferences = ["Modern visual metaphors"];
 
-    if (intent.languagePreference === "bn") {
-      targetDemographic = "Bengali Cultural Community";
-      readingAbility = "Fluent reading with traditional typography rhythm";
-      culturalPreferences.push("Intricate Alpona symmetric curves", "Rich heritage warm tones");
-    } else if (intent.languagePreference === "ar" || intent.languagePreference === "ur") {
-      targetDemographic = "Middle Eastern & South Asian Community";
-      readingAbility = "Right-to-Left (RTL) calligraphic baseline pacing";
-      culturalPreferences.push("Elegant geometric arabesque ornaments", "Islamic thuluth/nastaliq calligraphic flourishes");
+    if (goal === "Religious Communication" || intent.languagePreference === "bn") {
+      targetDemographic = "Cultural Community & Festive Audience";
+      readingAbility = "Clear typographic callout, decorative reading blocks";
+      culturalPreferences.push("Symmetrical traditional ornaments", "Warm welcoming palettes");
     } else if (goal === "Corporate Branding") {
-      targetDemographic = "Business Executives, Decision Makers, & Investors";
-      readingAbility = "Detailed dense scan lines, executive layout hierarchy";
-      culturalPreferences.push("Sleek corporate rational geometry", "Neutral trustworthy color tones");
-    } else if (goal === "Sales Conversion") {
-      targetDemographic = "Active Shopping Browsers";
-      readingAbility = "High urgency focal points, striking price label scanners";
+      targetDemographic = "Business Executives & B2B Leads";
+      readingAbility = "Professional dense charts, baseline editorial text alignment";
+      culturalPreferences.push("Cool rational corporate tones", "Swiss grid structures");
+    } else if (goal === "Product Promotion") {
+      targetDemographic = "Consumer Buyers";
+      readingAbility = "Vibrant highlight scanning, bold price contrast";
     }
 
     return {
       targetDemographic,
       readingAbility,
       culturalPreferences,
-      confidence: 95
+      confidence: 88
     };
   }
 
@@ -416,134 +345,87 @@ export class DesignBrain {
     audience: DesignPlanReport["audienceAnalysis"],
     preferredStyle?: string
   ): CreativeConcept[] {
-    const lang = intent.languagePreference;
-    const isTraditional = lang === "bn" || lang === "ar" || lang === "ur" || intent.primaryGoal === "Religious Communication";
+    const isTraditional = intent.languagePreference === "bn" || intent.primaryGoal === "Religious Communication";
     
-    // Typography pairing mappings based on language
-    const getTypographyForLanguage = (strategy: string) => {
-      if (lang === "bn") {
-        return {
-          headingFont: strategy === "Traditional" ? "Atma" : "Hind Siliguri",
-          bodyFont: "Noto Sans Bengali",
-          scalingRatio: "Major Third (1.25x)"
-        };
-      } else if (lang === "ar") {
-        return {
-          headingFont: "Amiri",
-          bodyFont: "Cairo",
-          scalingRatio: "Golden Ratio (1.618x)"
-        };
-      } else if (lang === "ur") {
-        return {
-          headingFont: "Mehr Nastaliq",
-          bodyFont: "Noto Sans Arabic",
-          scalingRatio: "Golden Ratio (1.618x)"
-        };
-      } else {
-        // English defaults
-        if (strategy === "Minimal") {
-          return { headingFont: "Inter", bodyFont: "Inter", scalingRatio: "Minor Third (1.2x)" };
-        } else if (strategy === "Luxury") {
-          return { headingFont: "Playfair Display", bodyFont: "Inter", scalingRatio: "Golden Ratio (1.618x)" };
-        } else {
-          return { headingFont: "Space Grotesk", bodyFont: "Inter", scalingRatio: "Major Third (1.25x)" };
-        }
-      }
-    };
-
     const candidates: CreativeConcept[] = [];
 
-    // Concept A - The Primary Strategy
-    const primaryStrategy: CreativeConcept["strategyType"] = preferredStyle as any || (isTraditional ? (lang === "bn" ? "Traditional" : "Islamic") : "Modern");
-    const typographyA = getTypographyForLanguage(primaryStrategy);
-    
+    // Concept A (High Rank Standard)
     candidates.push({
       conceptId: "concept-a",
-      themeName: lang === "bn" 
-        ? "Heritage Festive Alpona Harmony" 
-        : lang === "ar" || lang === "ur" 
-          ? "Symmetrical Islamic Calligraphy & Geometric Arabesque" 
-          : "Modern High-Contrast Cyber Grid",
-      strategyType: primaryStrategy,
-      layoutDirection: "Centered hierarchical composition with isolated negative spacing anchors.",
-      typographyDirection: typographyA,
-      colorDirection: {
-        paletteType: lang === "bn" 
-          ? "Festive Marigold & Crimson" 
-          : lang === "ar" || lang === "ur"
-            ? "Royal Emerald & Warm Gold Accent"
-            : "Obsidian Deep & Neon Cyber Cyan",
-        background: lang === "bn" ? "#fdfbf7" : lang === "ar" || lang === "ur" ? "#062f21" : "#020617",
-        primary: lang === "bn" ? "#9a3412" : lang === "ar" || lang === "ur" ? "#fef08a" : "#f1f5f9",
-        accent: lang === "bn" ? "#dc2626" : lang === "ar" || lang === "ur" ? "#fbbf24" : "#22d3ee",
-        contrastDescription: "High-contrast focal hierarchy"
+      themeName: isTraditional ? "Heritage Festive Alpona Harmony" : "Modern Dark High-Contrast Cyber",
+      strategyType: isTraditional ? "Traditional" : (preferredStyle as any || "Modern"),
+      layoutDirection: "Centered circular hierarchy with layered backdrop graphics.",
+      typographyDirection: {
+        headingFont: isTraditional ? "Atma" : "Space Grotesk",
+        bodyFont: "Inter",
+        scalingRatio: "Major Third (1.25x)"
       },
-      whitespaceStrategy: "Preserve 50% empty canvas on border boundaries to avoid reading obstruction.",
-      brandPlacementDirection: "Symmetrical upper center header line.",
-      ctaPlacementDirection: "Lower horizontal highlighted focal bounding box.",
-      strengths: ["Captures cultural style cues with precise typographic baseline", "Excellent display readability"],
-      tradeoffs: ["Less optimized for heavy paragraphs of fine text"],
-      rankingScore: 96
+      colorDirection: {
+        paletteType: isTraditional ? "Vibrant Festive Crimson-Marigold" : "Neon Cyan Slate",
+        background: isTraditional ? "#fafafa" : "#020617",
+        primary: isTraditional ? "#b45309" : "#f1f5f9",
+        accent: isTraditional ? "#dc2626" : "#22d3ee",
+        contrastDescription: "Ultra-vibrant focal balance"
+      },
+      whitespaceStrategy: "Allow 50% whitespace on left and right margins to hold alignment anchors.",
+      brandPlacementDirection: "Snap-fitted upper center header line.",
+      ctaPlacementDirection: "Lower center focal boundary overlay.",
+      strengths: ["Highly readable on modern devices", "Beautifully represents heritage cues"],
+      tradeoffs: ["Less suited for very long copy blocks"],
+      rankingScore: 95
     });
 
-    // Concept B - The Minimalist Alternative
-    const typographyB = getTypographyForLanguage("Minimal");
+    // Concept B (Alternative Minimalist)
     candidates.push({
       conceptId: "concept-b",
-      themeName: "Sleek Archival Swiss Minimalist",
+      themeName: "Sleek Minimal Architectural Grid",
       strategyType: "Minimal",
-      layoutDirection: "Asymmetric split columns with structured side headings.",
-      typographyDirection: typographyB,
+      layoutDirection: "Asymmetric split layout with focal typography side column.",
+      typographyDirection: {
+        headingFont: "Inter",
+        bodyFont: "Inter",
+        scalingRatio: "Minor Third (1.20x)"
+      },
       colorDirection: {
-        paletteType: "Pure Obsidian Matte Slate",
+        paletteType: "Monochromatic Obsidian Slate",
         background: "#090d16",
         primary: "#e2e8f0",
         accent: "#f43f5e",
-        contrastDescription: "Elegant, eye-safe subtle illumination"
+        contrastDescription: "Subtle professional elegance"
       },
-      whitespaceStrategy: "65% generous empty layout fields. Elements act as sparse visual anchors.",
-      brandPlacementDirection: "Top-left crisp border snapped anchor.",
-      ctaPlacementDirection: "Bottom-right direct compact filled pill button.",
-      strengths: ["Extremely elegant, modern look", "Ultra-clean visual breathing room"],
-      tradeoffs: ["May feel too stark for high-spirited celebratory requirements"],
-      rankingScore: 88
+      whitespaceStrategy: "Generous whitespace. 65% of the total canvas area remains untouched.",
+      brandPlacementDirection: "Upper-left core margin snap.",
+      ctaPlacementDirection: "Lower right active fill button.",
+      strengths: ["Extremely elegant and modern", "Very professional visual status"],
+      tradeoffs: ["Might feel slightly cold for festive requests"],
+      rankingScore: 84
     });
 
-    // Concept C - The Premium Luxury Alternative
-    const typographyC = getTypographyForLanguage("Luxury");
+    // Concept C (Alternative Luxury)
     candidates.push({
       conceptId: "concept-c",
-      themeName: "Royal Metallic Golden Velvet Editorial",
+      themeName: "Royal Metallic Golden Editorial",
       strategyType: "Luxury",
-      layoutDirection: "Symmetrical editorial layout with intricate thin-border frameworks.",
-      typographyDirection: typographyC,
+      layoutDirection: "Symmetrical classical column grid, elegant floral backdrops.",
+      typographyDirection: {
+        headingFont: "Playfair Display",
+        bodyFont: "Inter",
+        scalingRatio: "Golden Ratio (1.618x)"
+      },
       colorDirection: {
-        paletteType: "Velvet Metallic Imperial Gold",
+        paletteType: "Classic Royal Gold Accent",
         background: "#030712",
         primary: "#f3f4f6",
         accent: "#d97706",
-        contrastDescription: "Regal warm glowing contrast"
+        contrastDescription: "Premium dark royal glow"
       },
-      whitespaceStrategy: "45% background layout padding to emphasize center balance weight.",
-      brandPlacementDirection: "Top center thin hairline snapped emblem.",
-      ctaPlacementDirection: "Centered lower active classical button.",
-      strengths: ["Conveys prestigious and high-end brand tier", "Superior aesthetic weight alignment"],
-      tradeoffs: ["Requires fine vector assets to render optimally"],
-      rankingScore: 82
+      whitespaceStrategy: "45% background breathing padding to establish weight.",
+      brandPlacementDirection: "Top center thin border snapped logo.",
+      ctaPlacementDirection: "Centered lower active link block.",
+      strengths: ["Feels highly expensive and exclusive", "Strong emotional resonance"],
+      tradeoffs: ["Requires specific vector asset sets"],
+      rankingScore: 78
     });
-
-    // Rank candidates by preferred style match if supplied
-    if (preferredStyle) {
-      candidates.sort((a, b) => {
-        if (a.strategyType.toLowerCase() === preferredStyle.toLowerCase()) return -1;
-        if (b.strategyType.toLowerCase() === preferredStyle.toLowerCase()) return 1;
-        return 0;
-      });
-      // Re-adjust ranking scores
-      candidates[0].rankingScore = 98;
-      candidates[1].rankingScore = 85;
-      candidates[2].rankingScore = 75;
-    }
 
     return candidates;
   }

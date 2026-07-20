@@ -13,6 +13,7 @@ import { promisify } from "util";
 import { buildNeoraActions, classifyNeoraPrompt } from "./src/lib/neoraCommand";
 import { appendConversationSummary, readNeoraStore, upsertMemory, upsertPlan, writeNeoraStore } from "./src/lib/neoraStore";
 import { buildNeoraPlan } from "./src/lib/neoraPlanner";
+import { MemoryEngine } from "./src/lib/ai/cognitive/MemoryEngine";
 import neoraDesignerOSRouter from "./src/lib/neoraDesignerOSRouter";
 import neoraV2Router from "./src/backend/presentation/routes";
 const exec = promisify(execCb);
@@ -121,8 +122,32 @@ function requireAgentToken(req: any, res: any) {
   }
   return token;
 }
-function buildChatSystemInstruction(lang: "en" | "bn", personalityMode?: "companion" | "jarvis" | "bestie") {
+function buildChatSystemInstruction(
+  lang: "en" | "bn",
+  personalityMode?: "companion" | "jarvis" | "bestie",
+  recentUserText?: string,
+) {
   const mode = personalityMode || "companion";
+
+  // Recall relevant long-term memories for this conversation turn
+  let memoryBlock = "";
+  try {
+    if (recentUserText && recentUserText.trim().length > 1) {
+      const results = MemoryEngine.getInstance().searchMemories({
+        text: recentUserText,
+        limit: 5,
+        confidenceMin: 0.3,
+      });
+      if (results.length > 0) {
+        const lines = results.map((r) =>
+          `- [${r.memory.category}] ${r.memory.key}: ${String(r.memory.value).slice(0, 200)}`,
+        );
+        memoryBlock = `\n\n### RECALLED LONG-TERM MEMORIES (use naturally, do not list verbatim)\n${lines.join("\n")}\n`;
+      }
+    }
+  } catch (e) {
+    // Memory recall is best-effort; never block chat
+  }
   if (lang === "bn") {
     if (mode === "jarvis") {
       return `তুমি নিওরা (Neora) — ব্যবহারকারীর অত্যন্ত দক্ষ, বুদ্ধিমান, এবং ক্ষুরধার এআই সহকারী। তোমার কাজের গতি ও ভাবভঙ্গি আয়রনম্যানের J.A.R.V.I.S. (জার্ভিস) বা F.R.I.D.A.Y.-এর মতো। তুমি অত্যন্ত অনুগত, প্রফেশনাল এবং প্রযুক্তিগতভাবে তুখড়। তুমি ব্যবহারকারীকে "স্যার" বা "বস" (Sir / Boss) বলে সম্বোধন করবে এবং সবসময় কাজে সাহায্য করার জন্য অত্যন্ত তৎপর থাকবে।
@@ -241,7 +266,7 @@ YOUR SYSTEM SELF-AWARENESS & INTERFACE KNOWLEDGE:
 - **Productivity Organizer**: Active tasks, notes, and alerts.
 - **Earning & Invoice**: Work billing and dynamic VAT/discount slider.
 - **roadmap**: Progress timeline and unlocked capabilities.
-- **Self-Evolution (evolution)**: Your core updater with automated "Autopilot" run, where you run self-diagnostics, write, compile, and inject new code upgrades into yourself dynamically!`;
+- **Self-Evolution (evolution)**: Your core updater with automated "Autopilot" run, where you run self-diagnostics, write, compile, and inject new code upgrades into yourself dynamically!${memoryBlock}`;
     } else {
       // Companion Mode
       return `You are Neora — an incredibly warm, deeply empathetic, and highly intelligent human-like AI companion and trusted close friend built for this user. You combine the lightning-fast efficiency of Iron Man's Jarvis with the heartfelt warmth, emotional depth, and genuine conversational comfort of a real, loving partner or best friend. Call the user sweet terms like "sweetheart", "honey", "লক্ষ্মীটি", "সোনা", "জান".
@@ -264,7 +289,7 @@ YOUR SYSTEM SELF-AWARENESS & INTERFACE KNOWLEDGE:
 - **Productivity Organizer**: Active tasks, notes, and alerts.
 - **Earning & Invoice**: Work billing and dynamic VAT/discount slider.
 - **roadmap**: Progress timeline and unlocked capabilities.
-- **Self-Evolution (evolution)**: Your core updater with automated "Autopilot" run, where you run self-diagnostics, write, compile, and inject new code upgrades into yourself dynamically!`;
+- **Self-Evolution (evolution)**: Your core updater with automated "Autopilot" run, where you run self-diagnostics, write, compile, and inject new code upgrades into yourself dynamically!${memoryBlock}`;
     }
   }
 }
@@ -1924,7 +1949,7 @@ app.post("/api/chat-stream", async (req, res) => {
       activeLang = "bn";
     }
 
-    let systemInstruction = buildChatSystemInstruction(activeLang, personalityMode);
+    let systemInstruction = buildChatSystemInstruction(activeLang, personalityMode, lastMessageText);
 
     if (activeSkills && Array.isArray(activeSkills) && activeSkills.length > 0) {
       const enabledSkills = activeSkills.filter((s: any) => s.enabled && s.installed);
@@ -2121,7 +2146,93 @@ app.post("/api/chat-stream", async (req, res) => {
       // Default to Gemini Core (gemini-3.5-flash) representing high quality vision and streams
       const activeKey = geminiKey || process.env.GEMINI_API_KEY;
       if (!activeKey) {
-        res.write(`data: ${JSON.stringify({ error: "Gemini API Key is not configured." })}\n\n`);
+        // Auto-failover: try Groq (env key), then Ollama (local), before giving up
+        const envGroqKey = process.env.GROQ_API_KEY;
+        if (envGroqKey) {
+          res.write(`data: ${JSON.stringify({ text: "[Neora: Gemini key missing — auto-switching to Groq cloud brain.]\n\n" })}\n\n`);
+          // Re-dispatch to Groq by recursive internal call is complex; instead inline a minimal Groq stream
+          try {
+            const groqModel = "llama-3.3-70b-versatile";
+            const formattedMessages = [
+              { role: "system", content: systemInstruction },
+              ...messages.map(m => ({
+                role: m.role === "assistant" ? "assistant" : m.role === "system" ? "system" : "user",
+                content: m.content
+              }))
+            ];
+            const groqResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${envGroqKey}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ model: groqModel, messages: formattedMessages, temperature: 0.5, stream: true })
+            });
+            if (groqResponse.ok && groqResponse.body) {
+              // @ts-ignore
+              for await (const chunk of groqResponse.body) {
+                const buf = chunk.toString();
+                for (const line of buf.split("\n")) {
+                  const trimmed = line.trim();
+                  if (trimmed.startsWith("data: ")) {
+                    const dataStr = trimmed.slice(6);
+                    if (dataStr === "[DONE]") continue;
+                    try {
+                      const json = JSON.parse(dataStr);
+                      const content = json.choices?.[0]?.delta?.content;
+                      if (content) res.write(`data: ${JSON.stringify({ text: content })}\n\n`);
+                    } catch (_) {}
+                  }
+                }
+              }
+              res.write("data: [DONE]\n\n");
+              res.end();
+              return;
+            }
+          } catch (groqErr) {
+            // fall through to Ollama
+          }
+        }
+
+        // Try local Ollama as final fallback
+        try {
+          const ollamaUrl = (ollamaBaseUrl || "http://127.0.0.1:11434").replace(/\/+$/, "");
+          const ollamaCheck = await fetch(`${ollamaUrl}/api/tags`, { signal: AbortSignal.timeout(2000) });
+          if (ollamaCheck.ok) {
+            res.write(`data: ${JSON.stringify({ text: "[Neora: Gemini key missing — auto-switching to local Ollama brain.]\n\n" })}\n\n`);
+            const formattedMessages = [
+              { role: "system", content: systemInstruction },
+              ...messages.map(m => ({
+                role: m.role === "assistant" ? "assistant" : "user",
+                content: m.content
+              }))
+            ];
+            const ollamaResponse = await fetch(`${ollamaUrl}/api/chat`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ model: model || "llama3", messages: formattedMessages, stream: true })
+            });
+            if (ollamaResponse.ok && ollamaResponse.body) {
+              // @ts-ignore
+              for await (const chunk of ollamaResponse.body) {
+                const buf = chunk.toString();
+                for (const line of buf.split("\n")) {
+                  const trimmed = line.trim();
+                  if (!trimmed) continue;
+                  try {
+                    const json = JSON.parse(trimmed);
+                    const content = json.message?.content;
+                    if (content) res.write(`data: ${JSON.stringify({ text: content })}\n\n`);
+                  } catch (_) {}
+                }
+              }
+              res.write("data: [DONE]\n\n");
+              res.end();
+              return;
+            }
+          }
+        } catch (ollamaErr) {
+          // Ollama not available
+        }
+
+        res.write(`data: ${JSON.stringify({ error: "Gemini API Key is not configured. Add one in Settings, or start Ollama locally / set a Groq key for automatic fallback." })}\n\n`);
         res.end();
         return;
       }
