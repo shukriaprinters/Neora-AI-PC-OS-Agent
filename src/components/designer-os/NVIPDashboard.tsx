@@ -9,6 +9,7 @@ import {
 import { 
   AssetCategory, AnalyzerType, ProviderAdapter, UnifiedVisualReport, TelemetryEvent 
 } from "../../lib/ai/vision/PerceptionTypes";
+import { EnterpriseKernel } from "../../lib/ai/cognitive/EnterpriseKernel";
 
 interface Props {
   lang: "en" | "bn";
@@ -36,6 +37,9 @@ const defaultMetrics = {
 };
 
 export function NVIPDashboard({ lang, onAddSystemLog }: Props) {
+  const kernel = EnterpriseKernel.getInstance();
+  const [serviceStatus, setServiceStatus] = useState<string>("running");
+
   // Local React state
   const [report, setReport] = useState<UnifiedVisualReport | null>(null);
   const [telemetry, setTelemetry] = useState<TelemetryEvent[]>([]);
@@ -92,10 +96,26 @@ export function NVIPDashboard({ lang, onAddSystemLog }: Props) {
     fetchBackendData();
     const interval = setInterval(fetchBackendData, 4000);
 
+    const handleKernelUpdate = () => {
+      const status = kernel.getServices().find(s => s.id === "nvip")?.status || "running";
+      setServiceStatus(status);
+    };
+
+    handleKernelUpdate();
+
+    const unsubscribeKernel = kernel.subscribe((ev) => {
+      if (ev.topic === "ServiceStatusChanged") {
+        handleKernelUpdate();
+      }
+    });
+
     // Run a default analysis so there is data immediately visible
     triggerDefaultAnalysis();
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      unsubscribeKernel();
+    };
   }, []);
 
   const triggerDefaultAnalysis = async () => {
@@ -225,6 +245,33 @@ export function NVIPDashboard({ lang, onAddSystemLog }: Props) {
     setTestLogs(testResults);
     setTestActive(false);
   };
+
+  if (serviceStatus === "stopped") {
+    return (
+      <div className="p-8 bg-slate-950 text-slate-100 rounded-xl border border-red-900/30 space-y-6 flex flex-col items-center justify-center text-center min-h-[400px]">
+        <div className="p-4 bg-red-500/10 text-red-400 rounded-full border border-red-500/20 animate-pulse">
+          <AlertTriangle className="w-12 h-12" />
+        </div>
+        <div className="space-y-2 max-w-md">
+          <h2 className="text-xl font-bold tracking-tight text-white">
+            {lang === "bn" ? "নিওরা ওএস ভিশন ইন্টেলিজেন্স সার্ভিস অফলাইন" : "Vision Intelligence & Document Understanding Service Offline"}
+          </h2>
+          <p className="text-xs text-slate-400">
+            {lang === "bn" 
+              ? "নিওরা NVIP ডোমেন সার্ভিসটি সেন্ট্রাল অপারেটিং কার্নেলে বন্ধ করা হয়েছে। মাল্টি-মোডাল ইমেজ বিশ্লেষণ, OCR প্রসেসিং এবং ডিজাইন স্পেসিফিকেশন জেনারেটর সাময়িকভাবে বন্ধ আছে।" 
+              : "The Neora NVIP domain service has been stopped in the central Enterprise Kernel. Multi-modal image analysis, OCR processing, and design specification generators are temporarily offline."}
+          </p>
+        </div>
+        <button
+          onClick={() => kernel.startService("nvip")}
+          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-xs font-bold text-white rounded transition flex items-center gap-2 cursor-pointer"
+        >
+          <Play className="w-4 h-4" />
+          {lang === "bn" ? "সার্ভিস পুনরায় চালু করুন" : "Start Vision Service"}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4 p-4 text-slate-200">

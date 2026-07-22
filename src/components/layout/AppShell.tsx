@@ -3,29 +3,32 @@ import {
   Brain, LayoutDashboard, MessageSquare, Monitor,
   Settings, Workflow, Activity, Zap, Shield, ChevronRight, ChevronLeft, LayoutGrid,
   DollarSign, Filter, Milestone, BookOpen, Laptop, Tv, Sliders, Share2, Hammer,
-  Menu, Languages
+  Menu, Languages, Palette, Sparkles, Clipboard, Terminal, Cpu
 } from "lucide-react";
 import { NebulaBackground } from "../NebulaBackground";
 import { VoiceOrb } from "../VoiceOrb";
 import { motion } from "motion/react";
 
 const navItems = [
-  { id: "home",         label: "Dashboard",   icon: LayoutGrid,      color: "#00d4ff" },
-  { id: "chat",         label: "Neural Chat", icon: MessageSquare,   color: "#00d4ff" },
-  { id: "builder",      label: "Builder",     icon: Hammer,          color: "#c084fc" },
-  { id: "neoraTv",      label: "Neora TV",    icon: Tv,              color: "#ff007c" },
-  { id: "autonomy",     label: "Automation",  icon: Workflow,        color: "#1a9fff" },
-  { id: "productivity", label: "Memory",      icon: Brain,           color: "#7c3aed" },
-  { id: "memoriesGraph",label: "Memories Graph",icon: Share2,        color: "#38bdf8" },
-  { id: "invoice",      label: "Earning",     icon: DollarSign,      color: "#f5a623" },
-  { id: "osAgent",      label: "OS Agent",    icon: Monitor,         color: "#00ff88" },
-  { id: "webOs",        label: "Neora PC",    icon: Laptop,          color: "#00ff88" },
-  { id: "filterLab",    label: "Filter Lab",  icon: Filter,          color: "#00d4ff" },
-  { id: "roadmap",      label: "Roadmap",     icon: Milestone,       color: "#1a9fff" },
-  { id: "blueprint",    label: "Specs",       icon: BookOpen,        color: "#00d4ff" },
-  { id: "evolution",    label: "Self-Evolution", icon: Zap,          color: "#00ffcc" },
-  { id: "dev",          label: "Settings",    icon: Settings,        color: "#f5a623" },
-  { id: "vscode",       label: "Workspace",   icon: LayoutDashboard, color: "#00d4ff" },
+  { id: "home",          label: "Dashboard",        icon: Activity,        color: "#00d4ff" },
+  { id: "chat",          label: "Neural Chat",      icon: MessageSquare,   color: "#00d4ff" },
+  { id: "neoraTv",       label: "Neora TV",         icon: Tv,              color: "#ff007c" },
+  { id: "autonomy",      label: "Agent Planner",    icon: Sliders,         color: "#1a9fff" },
+  { id: "productivity",  label: "Organizer Studio", icon: Clipboard,       color: "#7c3aed" },
+  { id: "memoriesGraph", label: "Memories Graph",   icon: Share2,          color: "#38bdf8" },
+  { id: "invoice",       label: "Earning Studio",   icon: DollarSign,      color: "#f5a623" },
+  { id: "dev",           label: "Dev & Design",     icon: Terminal,        color: "#f5a623" },
+  { id: "osAgent",       label: "PC OS Agent",      icon: Laptop,          color: "#00ff88" },
+  { id: "filterLab",     label: "Filter Lab",       icon: Filter,          color: "#00d4ff" },
+  { id: "roadmap",       label: "Roadmap",          icon: Milestone,       color: "#1a9fff" },
+  { id: "blueprint",     label: "Specs",            icon: BookOpen,        color: "#00d4ff" },
+  { id: "vscode",        label: "VS Code",          icon: Terminal,        color: "#00d4ff" },
+  { id: "graphicStudio", label: "Design Studio",    icon: Palette,         color: "#00ff88" },
+  { id: "designerOS",    label: "Neora Designer OS",icon: Sparkles,        color: "#ec4899" },
+  { id: "aiDevStudio",   label: "AI Dev Studio",    icon: Cpu,             color: "#a855f7" },
+  { id: "evolution",     label: "Self-Evolution",   icon: Cpu,             color: "#a78bfa" },
+  { id: "webOs",         label: "Neora PC",         icon: Laptop,          color: "#00ff88" },
+  { id: "builder",       label: "Builder",          icon: Hammer,          color: "#c084fc" },
 ] as const;
 
 type ActiveTab = typeof navItems[number]["id"];
@@ -68,6 +71,8 @@ export function AppShell({ activeTab, onChangeTab, onVoiceOpen, children, lang, 
     const mapping: Record<string, string> = {
       home: "ড্যাশবোর্ড",
       chat: "নিওরা চ্যাট",
+      graphicStudio: "ডিজাইন স্টুডিও",
+      designerOS: "নিওরা ডিজাইনার ওএস",
       builder: "বিল্ডার",
       neoraTv: "নিওরা টিভি",
       autonomy: "এজেন্ট প্ল্যানার",
@@ -80,8 +85,8 @@ export function AppShell({ activeTab, onChangeTab, onVoiceOpen, children, lang, 
       roadmap: "উন্নয়ন রোডম্যাপ",
       blueprint: "সিস্টেম ব্লুপ্রিন্ট",
       evolution: "স্বয়ংক্রিয় ইভোলিউশন",
-      dev: "সেটিংস",
-      vscode: "ওয়ার্কস্পেস",
+      dev: "ডেভ ও ডিজাইন",
+      vscode: "ভিএস কোড",
     };
     return mapping[id] || defaultLabel;
   };

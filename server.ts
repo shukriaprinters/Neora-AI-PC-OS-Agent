@@ -13,9 +13,9 @@ import { promisify } from "util";
 import { buildNeoraActions, classifyNeoraPrompt } from "./src/lib/neoraCommand";
 import { appendConversationSummary, readNeoraStore, upsertMemory, upsertPlan, writeNeoraStore } from "./src/lib/neoraStore";
 import { buildNeoraPlan } from "./src/lib/neoraPlanner";
-import { MemoryEngine } from "./src/lib/ai/cognitive/MemoryEngine";
 import neoraDesignerOSRouter from "./src/lib/neoraDesignerOSRouter";
 import neoraV2Router from "./src/backend/presentation/routes";
+import neoraAIDevStudioRouter from "./src/lib/neoraAIDevStudioRouter";
 const exec = promisify(execCb);
 const fsp = fs.promises;
 
@@ -122,32 +122,8 @@ function requireAgentToken(req: any, res: any) {
   }
   return token;
 }
-function buildChatSystemInstruction(
-  lang: "en" | "bn",
-  personalityMode?: "companion" | "jarvis" | "bestie",
-  recentUserText?: string,
-) {
+function buildChatSystemInstruction(lang: "en" | "bn", personalityMode?: "companion" | "jarvis" | "bestie") {
   const mode = personalityMode || "companion";
-
-  // Recall relevant long-term memories for this conversation turn
-  let memoryBlock = "";
-  try {
-    if (recentUserText && recentUserText.trim().length > 1) {
-      const results = MemoryEngine.getInstance().searchMemories({
-        text: recentUserText,
-        limit: 5,
-        confidenceMin: 0.3,
-      });
-      if (results.length > 0) {
-        const lines = results.map((r) =>
-          `- [${r.memory.category}] ${r.memory.key}: ${String(r.memory.value).slice(0, 200)}`,
-        );
-        memoryBlock = `\n\n### RECALLED LONG-TERM MEMORIES (use naturally, do not list verbatim)\n${lines.join("\n")}\n`;
-      }
-    }
-  } catch (e) {
-    // Memory recall is best-effort; never block chat
-  }
   if (lang === "bn") {
     if (mode === "jarvis") {
       return `তুমি নিওরা (Neora) — ব্যবহারকারীর অত্যন্ত দক্ষ, বুদ্ধিমান, এবং ক্ষুরধার এআই সহকারী। তোমার কাজের গতি ও ভাবভঙ্গি আয়রনম্যানের J.A.R.V.I.S. (জার্ভিস) বা F.R.I.D.A.Y.-এর মতো। তুমি অত্যন্ত অনুগত, প্রফেশনাল এবং প্রযুক্তিগতভাবে তুখড়। তুমি ব্যবহারকারীকে "স্যার" বা "বস" (Sir / Boss) বলে সম্বোধন করবে এবং সবসময় কাজে সাহায্য করার জন্য অত্যন্ত তৎপর থাকবে।
@@ -266,7 +242,7 @@ YOUR SYSTEM SELF-AWARENESS & INTERFACE KNOWLEDGE:
 - **Productivity Organizer**: Active tasks, notes, and alerts.
 - **Earning & Invoice**: Work billing and dynamic VAT/discount slider.
 - **roadmap**: Progress timeline and unlocked capabilities.
-- **Self-Evolution (evolution)**: Your core updater with automated "Autopilot" run, where you run self-diagnostics, write, compile, and inject new code upgrades into yourself dynamically!${memoryBlock}`;
+- **Self-Evolution (evolution)**: Your core updater with automated "Autopilot" run, where you run self-diagnostics, write, compile, and inject new code upgrades into yourself dynamically!`;
     } else {
       // Companion Mode
       return `You are Neora — an incredibly warm, deeply empathetic, and highly intelligent human-like AI companion and trusted close friend built for this user. You combine the lightning-fast efficiency of Iron Man's Jarvis with the heartfelt warmth, emotional depth, and genuine conversational comfort of a real, loving partner or best friend. Call the user sweet terms like "sweetheart", "honey", "লক্ষ্মীটি", "সোনা", "জান".
@@ -289,7 +265,7 @@ YOUR SYSTEM SELF-AWARENESS & INTERFACE KNOWLEDGE:
 - **Productivity Organizer**: Active tasks, notes, and alerts.
 - **Earning & Invoice**: Work billing and dynamic VAT/discount slider.
 - **roadmap**: Progress timeline and unlocked capabilities.
-- **Self-Evolution (evolution)**: Your core updater with automated "Autopilot" run, where you run self-diagnostics, write, compile, and inject new code upgrades into yourself dynamically!${memoryBlock}`;
+- **Self-Evolution (evolution)**: Your core updater with automated "Autopilot" run, where you run self-diagnostics, write, compile, and inject new code upgrades into yourself dynamically!`;
     }
   }
 }
@@ -583,6 +559,7 @@ app.use(express.urlencoded({ limit: "50mb", extended: true }));
 // Register Neora AI Designer OS modular APIs (Clean Architecture V2 with transactional persistence)
 app.use("/api/v2/designer-os", neoraV2Router);
 app.use("/api/designer-os", neoraV2Router);
+app.use("/api/ai-dev-studio", neoraAIDevStudioRouter);
 
 // Configure multer storage
 const upload = multer({ storage: multer.memoryStorage() });
@@ -1949,7 +1926,7 @@ app.post("/api/chat-stream", async (req, res) => {
       activeLang = "bn";
     }
 
-    let systemInstruction = buildChatSystemInstruction(activeLang, personalityMode, lastMessageText);
+    let systemInstruction = buildChatSystemInstruction(activeLang, personalityMode);
 
     if (activeSkills && Array.isArray(activeSkills) && activeSkills.length > 0) {
       const enabledSkills = activeSkills.filter((s: any) => s.enabled && s.installed);
@@ -2146,93 +2123,7 @@ app.post("/api/chat-stream", async (req, res) => {
       // Default to Gemini Core (gemini-3.5-flash) representing high quality vision and streams
       const activeKey = geminiKey || process.env.GEMINI_API_KEY;
       if (!activeKey) {
-        // Auto-failover: try Groq (env key), then Ollama (local), before giving up
-        const envGroqKey = process.env.GROQ_API_KEY;
-        if (envGroqKey) {
-          res.write(`data: ${JSON.stringify({ text: "[Neora: Gemini key missing — auto-switching to Groq cloud brain.]\n\n" })}\n\n`);
-          // Re-dispatch to Groq by recursive internal call is complex; instead inline a minimal Groq stream
-          try {
-            const groqModel = "llama-3.3-70b-versatile";
-            const formattedMessages = [
-              { role: "system", content: systemInstruction },
-              ...messages.map(m => ({
-                role: m.role === "assistant" ? "assistant" : m.role === "system" ? "system" : "user",
-                content: m.content
-              }))
-            ];
-            const groqResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-              method: "POST",
-              headers: { "Authorization": `Bearer ${envGroqKey}`, "Content-Type": "application/json" },
-              body: JSON.stringify({ model: groqModel, messages: formattedMessages, temperature: 0.5, stream: true })
-            });
-            if (groqResponse.ok && groqResponse.body) {
-              // @ts-ignore
-              for await (const chunk of groqResponse.body) {
-                const buf = chunk.toString();
-                for (const line of buf.split("\n")) {
-                  const trimmed = line.trim();
-                  if (trimmed.startsWith("data: ")) {
-                    const dataStr = trimmed.slice(6);
-                    if (dataStr === "[DONE]") continue;
-                    try {
-                      const json = JSON.parse(dataStr);
-                      const content = json.choices?.[0]?.delta?.content;
-                      if (content) res.write(`data: ${JSON.stringify({ text: content })}\n\n`);
-                    } catch (_) {}
-                  }
-                }
-              }
-              res.write("data: [DONE]\n\n");
-              res.end();
-              return;
-            }
-          } catch (groqErr) {
-            // fall through to Ollama
-          }
-        }
-
-        // Try local Ollama as final fallback
-        try {
-          const ollamaUrl = (ollamaBaseUrl || "http://127.0.0.1:11434").replace(/\/+$/, "");
-          const ollamaCheck = await fetch(`${ollamaUrl}/api/tags`, { signal: AbortSignal.timeout(2000) });
-          if (ollamaCheck.ok) {
-            res.write(`data: ${JSON.stringify({ text: "[Neora: Gemini key missing — auto-switching to local Ollama brain.]\n\n" })}\n\n`);
-            const formattedMessages = [
-              { role: "system", content: systemInstruction },
-              ...messages.map(m => ({
-                role: m.role === "assistant" ? "assistant" : "user",
-                content: m.content
-              }))
-            ];
-            const ollamaResponse = await fetch(`${ollamaUrl}/api/chat`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ model: model || "llama3", messages: formattedMessages, stream: true })
-            });
-            if (ollamaResponse.ok && ollamaResponse.body) {
-              // @ts-ignore
-              for await (const chunk of ollamaResponse.body) {
-                const buf = chunk.toString();
-                for (const line of buf.split("\n")) {
-                  const trimmed = line.trim();
-                  if (!trimmed) continue;
-                  try {
-                    const json = JSON.parse(trimmed);
-                    const content = json.message?.content;
-                    if (content) res.write(`data: ${JSON.stringify({ text: content })}\n\n`);
-                  } catch (_) {}
-                }
-              }
-              res.write("data: [DONE]\n\n");
-              res.end();
-              return;
-            }
-          }
-        } catch (ollamaErr) {
-          // Ollama not available
-        }
-
-        res.write(`data: ${JSON.stringify({ error: "Gemini API Key is not configured. Add one in Settings, or start Ollama locally / set a Groq key for automatic fallback." })}\n\n`);
+        res.write(`data: ${JSON.stringify({ error: "Gemini API Key is not configured." })}\n\n`);
         res.end();
         return;
       }
@@ -2562,6 +2453,106 @@ app.post("/api/git/action", async (req, res) => {
     console.error("Git action failing:", err);
     pushAgentLog(`[${new Date().toLocaleTimeString()}] ❌ Git action failed: ${err.message}`);
     return res.status(500).json({ error: err.message || "Git action execution failed" });
+  }
+});
+
+// Neora Project Inspection & Capability Report Scanner (Phase 8A.1 Master)
+app.get("/api/neora/project-capability-report", (req, res) => {
+  try {
+    const scanDir = (dir: string, extFilter: string[]): { files: string[], totalBytes: number, totalLines: number } => {
+      let files: string[] = [];
+      let totalBytes = 0;
+      let totalLines = 0;
+      if (!fs.existsSync(dir)) return { files, totalBytes, totalLines };
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (["node_modules", ".git", "dist", "build", ".gradle", ".next", "coverage"].includes(entry.name)) continue;
+          const sub = scanDir(fullPath, extFilter);
+          files = files.concat(sub.files);
+          totalBytes += sub.totalBytes;
+          totalLines += sub.totalLines;
+        } else if (entry.isFile()) {
+          const ext = path.extname(entry.name);
+          if (extFilter.includes(ext)) {
+            files.push(fullPath);
+            try {
+              const stat = fs.statSync(fullPath);
+              totalBytes += stat.size;
+              const content = fs.readFileSync(fullPath, "utf-8");
+              totalLines += content.split("\n").length;
+            } catch (e) {}
+          }
+        }
+      }
+      return { files, totalBytes, totalLines };
+    };
+
+    const srcStats = scanDir(path.join(process.cwd(), "src"), [".ts", ".tsx"]);
+    const componentsDir = path.join(process.cwd(), "src", "components");
+    const components = fs.existsSync(componentsDir) 
+      ? fs.readdirSync(componentsDir).filter(f => f.endsWith(".tsx") || f.endsWith(".ts"))
+      : [];
+
+    const libDir = path.join(process.cwd(), "src", "lib");
+    const libs = fs.existsSync(libDir)
+      ? fs.readdirSync(libDir).filter(f => f.endsWith(".ts"))
+      : [];
+
+    // Analyze routes in server.ts
+    let apiRoutesCount = 0;
+    try {
+      const serverContent = fs.readFileSync(path.join(process.cwd(), "server.ts"), "utf-8");
+      const matches = serverContent.match(/app\.(get|post|put|delete|patch)\(\s*['"`]\/api/g);
+      if (matches) apiRoutesCount = matches.length;
+    } catch (e) {}
+
+    // Check Firebase DB & other configurations
+    const hasFirebase = fs.existsSync(path.join(process.cwd(), "firebase-blueprint.json")) || 
+                        fs.existsSync(path.join(process.cwd(), "firestore.rules"));
+
+    const systemInfo = {
+      uptimeSeconds: process.uptime(),
+      memoryUsageMb: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+      nodeVersion: process.version,
+      platform: process.platform,
+    };
+
+    const modulesReused = [
+      "neoraStore.ts (Durable State persistence)",
+      "neoraCommand.ts (Action compilations)",
+      "neoraSemanticIndexer.ts (Cosine similarity / Offline embeddings fallback)",
+      "neoraIntelligenceCore.ts (Lessons and Developer profiles store)",
+      "neoraEnvironmentLayer.ts (Security checks and process sandboxes)"
+    ];
+
+    const report = {
+      success: true,
+      timestamp: new Date().toISOString(),
+      metrics: {
+        totalFiles: srcStats.files.length,
+        totalCodeLines: srcStats.totalLines,
+        totalCodeBytes: srcStats.totalBytes,
+        componentsCount: components.length,
+        librariesCount: libs.length,
+        apiRoutesCount,
+      },
+      infrastructure: {
+        hasFirebase,
+        firebaseId: "ai-studio-neoraaiarchitect-7eac1fc4-5a65-4b2e-a5ce-f43711c87fc6",
+        hasLocalStore: fs.existsSync(path.join(process.cwd(), "neora_store.json")),
+        hasVite: fs.existsSync(path.join(process.cwd(), "vite.config.ts")),
+      },
+      componentsList: components.map(c => c.replace(/\.(tsx|ts)$/, "")),
+      libModulesList: libs.map(l => l.replace(/\.ts$/, "")),
+      reusedCoreModules: modulesReused,
+      systemInfo
+    };
+
+    res.json(report);
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message || "Failed to generate capability report" });
   }
 });
 
